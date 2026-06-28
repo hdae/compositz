@@ -2,6 +2,9 @@
 .deno/
 deno.lock.bak
 
+# npm — workspace-root node_modules (packages/ui Vite member; nodeModulesDir=auto)
+node_modules/
+
 # Build / dist
 /dist/
 /build/

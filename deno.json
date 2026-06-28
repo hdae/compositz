@@ -4,8 +4,11 @@
     "./packages/core",
     "./packages/cli",
     "./packages/server",
-    "./packages/desktop"
+    "./packages/desktop",
+    "./packages/ui"
   ],
+  "$comment_nodeModulesDir": "Required by the packages/ui Vite member (Fresh 2 needs a real node_modules). nodeModulesDir is a workspace-root-only setting, so it applies to every member; `auto` lets Deno auto-materialize the shared root node_modules (incl. transitive type deps like @types/node) for the pure-Deno packages without hand-listing them.",
+  "nodeModulesDir": "auto",
   "imports": {
     "@hono/hono": "jsr:@hono/hono@^4.12.27",
     "@std/fmt/colors": "jsr:@std/fmt@^1.0.3/colors",
@@ -21,6 +24,9 @@
     "desktop": "deno desktop --backend cef -A --unstable-net -o dist/compositz-cef packages/desktop/main.ts",
     "desktop:webview": "deno desktop -A --unstable-net packages/desktop/main.ts",
     "serve": "deno run -A --unstable-net packages/server/main.ts",
+    "ui": "deno task --cwd packages/ui dev",
+    "ui:build": "deno task --cwd packages/ui build",
+    "ui:check": "deno task --cwd packages/ui check",
     "schema": "deno run -A scripts/gen_schema.ts",
     "test": "deno test -A --unstable-net",
     "check": "deno check packages/core/mod.ts packages/cli/main.ts packages/server/main.ts packages/desktop/main.ts",
