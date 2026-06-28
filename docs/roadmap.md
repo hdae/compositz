@@ -1,0 +1,69 @@
+# Roadmap
+
+Status legend: ✅ done & verified · 🔄 in progress · ⏳ planned · ❓ open decision
+
+## Phase 0 — Foundations PoC ✅
+
+De-risk the two load-bearing unknowns before building.
+
+- ✅ Core Engine API client over the transport abstraction: build → run → logs → stop on **Windows
+  (node:net npipe)**. (Linux unix-socket path is code-symmetric; verify on a real Linux/CI host.)
+- ✅ Deno Desktop opens a window and navigates to a running container's web UI.
+- ✅ Permissions, chunked HTTP, multiplexed log framing characterized empirically.
+
+## Phase 1 — Recipe → build → run ✅
+
+- ✅ Manifest model (`compositz.yaml`) as a **Zod** schema → validator + types + generated JSON
+  Schema.
+- ✅ Recipe loader + in-memory tar build context (`@std/tar`).
+- ✅ `EngineClient.build` (classic `POST /build`, streamed log).
+- ✅ `toCreateSpec` (ports / env / volumes / GPU / labels) + `up` / `down` with GPU tri-state
+  fallback.
+- ✅ CLI `install` / `up` / `down` / `ps`; example recipe `recipes/hello-web`.
+- ⏳ Build hardening: stream large contexts (not in-memory), honor `.dockerignore`, optional
+  BuildKit. (Deferred — classic builder is sufficient for now.)
+
+## Phase 2 — Management UI 🔄
+
+- ✅ **Hono API server** (`packages/server`): `/api/health|recipes|containers`, `POST …/up|down`,
+  SSE `/api/events` (live status) + install build-log stream. Verified live.
+- ❓ **UI framework decision** — reopened after acknowledging an SPA-leaning bias in the first
+  evaluation. **TanStack Start** (fullstack React, runs on Deno, `deno desktop` auto-detects it) is
+  the front-runner to spike; React+Vite SPA + the existing Hono API is the fallback. See
+  [decisions.md ADR-008](decisions.md#adr-008-ui-framework-under-reconsideration).
+  - Next: spike TanStack Start on Deno **in an isolated environment** (the npm scaffold hung on the
+    dev machine — do not run heavy/untrusted npm scaffolds on the host).
+- ⏳ Build the management UI: recipe list, install/up/down, live status, "open web UI", streamed
+  build/run logs.
+- ⏳ Desktop shell: list/launch recipes, embed each app's web UI (multi-window).
+- ❓ Live Deno→page update channel: with a fullstack framework this is server functions/loaders +
+  SSE; with the SPA path it's the page subscribing to Hono SSE. Decide alongside ADR-008.
+
+## Phase 3 — Hardening ⏳
+
+- ⏳ **Shared model cache**: one named volume (HF_HOME / ~/.cache/huggingface / ~/.ollama) mounted
+  into every container.
+- ⏳ **Volume lifecycle & GC**: per-app named volumes; `gc --reclaim`; uv `repair` / `rebuild`
+  wrappers (uv has no venv-aware GC or verify — Compositz wraps it).
+- ⏳ **GPU runtime detection**: choose nvidia vs CDI from `/info` / `/version`.
+- ⏳ **s6-overlay v3** multi-daemon recipe pattern + an example recipe.
+- ⏳ **Strict isolation** opt-out per recipe (copy-mode cache, per-app cache) for troubleshooting.
+- ⏳ **Version-pinning policy** (committed): uv.lock hash pin; base/CUDA image tags pinned (no
+  `:latest`); Deno version pinned in CI; manifest `manifestVersion` with a min-platform gate.
+
+## Phase 4 — Packaging & distribution ⏳
+
+- ⏳ Windows packaging & **code signing** (`signtool` on the backend `.exe` + `denort.dll`).
+- ⏳ **Auto-update**: Deno's updater is unix-only — an external updater is required on Windows (the
+  primary platform).
+- ⏳ Revisit the **WebView2 backend** once the upstream crash fix lands (Deno 2.9.1/2.9.2) to drop
+  the ~440 MB CEF bundle for the lightweight system webview.
+- ⏳ **Catalog**: static `index.json` generated from the recipe repo, served via CDN/GitHub.
+- ⏳ **Recipe authoring tooling** for LLM agents (deferred; core currently just consumes recipes).
+
+## Cross-cutting / always-on
+
+- Keep the `/api` + SSE contract stable and versioned — it is the durable interface for the UI and a
+  future headless `compositz serve`.
+- Verify the Linux unix-socket path on a real Linux host / CI (only Windows is exercised today).
+- Pin the Deno toolchain in CI (≥ 2.9).
