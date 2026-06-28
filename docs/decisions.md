@@ -92,10 +92,13 @@ WebView2.
 
 **Why (verified):** the default WebView2/laufey backend crashes on window creation (`0xC0000409`) —
 a laufey 0.4.0 ↔ WebView2 149 skew, fixed upstream in
-[denoland/deno#35566](https://github.com/denoland/deno/pull/35566) (expected Deno 2.9.1/2.9.2). CEF
-bundles its own Chromium (~440 MB), no system dependency, and renders the container UI today
-(machine-verified). Core's npipe transport works inside the desktop runtime; build-time `-A` is
-baked in.
+[denoland/deno#35566](https://github.com/denoland/deno/pull/35566) — merged 2026-06-27 but **not in
+the released 2.9.0**; no 2.9.1/2.9.2 exists yet (canary-only as of 2026-06-28), so the earlier
+"expected 2.9.1/2.9.2" is an unconfirmed guess. This does not affect us: `--backend cef` bundles its
+own Chromium (~440 MB), bypasses WebView2 entirely, and renders the container UI on **stable 2.9.0**
+(machine-verified). Core's npipe transport works inside the desktop runtime (and `node:net` named-pipe
+connect is confirmed implemented since 2.6.2 — deno#28332 closed 2025-12-19); build-time `-A` is baked
+in.
 
 **Consequences:** ship CEF for now; **revisit the lightweight WebView2 backend** once the fix lands
 (Phase 4). `deno task desktop` builds CEF; `deno task desktop:webview` builds the (currently broken)
@@ -103,34 +106,41 @@ system-webview variant for re-testing.
 
 ---
 
-## ADR-008 — UI framework · ❓ Under reconsideration
+## ADR-008 — UI framework: Fresh 2 (Vite) · ✅ Accepted
 
-**Not yet decided.** The first evaluation leaned toward a React+Vite SPA + the standalone Hono API,
-but that evaluation was **biased**: it judged fullstack frameworks (Fresh, TanStack Start) by "can
-they do SPA," which is the wrong question and stacked the deck. Recorded here honestly rather than
-locked in.
+`packages/ui` is built with **Fresh 2 on the Vite path** (`@fresh/plugin-vite`, Fresh's default;
+`--builder` is the non-Vite opt-out).
 
-**Current state:**
+**Why:** all three candidates (TanStack Start, Fresh, SvelteKit) were empirically spiked on Deno
+2.9.0 (isolated scratch dirs, project-local `bin/deno`). The decisive criterion — a server route
+handler imports the real `@compositz/core` (→ `node:net` / `Deno.connect` / jsr `@std/*`), bundles
+**server-only**, the client stays clean, and `deno desktop` packages it — **passed for all three**, so
+the choice turned on Deno-nativeness vs ecosystem familiarity, not raw feasibility. Fresh won on:
 
-- **TanStack Start** is the front-runner to evaluate. It is fullstack React on Vite/Nitro, **runs on
-  Deno** (Nitro targets Deno; Deno's docs list it), and **`deno desktop` auto-detects it** (build,
-  then `deno desktop .`; `--hmr` for dev). Its **server functions / loaders can call
-  `@compositz/core` in-process** — which could remove the separate Hono API and fetch-client layer
-  entirely. The user uses TanStack daily and wants to try it.
-- The earlier argument that "the CLI reuses the same HTTP API" is weak — the CLI already calls core
-  directly and does not need the HTTP API. So loose-HTTP-coupling is not a decisive reason for a
-  separate API.
-- **Fallback:** React + Vite SPA (TanStack Router + Query) consuming the existing Hono API over
-  HTTP + SSE.
-- Toolchain note: React + Vite on Deno needs `nodeModulesDir: "auto"` (the zero-node_modules
-  Deno-native resolver does not support React).
+- **Least toolchain friction**: `@fresh/plugin-vite` resolves the jsr / import-map deps natively — no
+  `@deno/vite-plugin` bridge that both Start and SvelteKit required.
+- **Cleanest `deno desktop`**: detected out of the box and consumes `_fresh/` directly with no
+  output-path shim (Start needs a `.output/server/index.mjs` re-export; SvelteKit needs a
+  `svelte.config.js` to be detected at all), and the lightest bundle (73 MB vs 228 / 107 MB
+  node_modules).
+- **Deno alignment**: Fresh is Deno's own framework (powers deno.com), the best odds of tracking
+  future `deno desktop` / Deno changes. The islands model makes the server/client boundary
+  structural, and `fresh:check-imports` **fails the build** when `node:*` reaches client code
+  (verified by fault injection — the mirror of Start's Import Protection and SvelteKit's `$lib/server`).
+- The user is Preact-experienced; Vite is Fresh 2's default/recommended path.
 
-**Open action:** spike TanStack Start on Deno **in an isolated environment** and decide. The npm
-scaffold (`create-tsrouter-app`) hung when run directly on the dev machine — do heavy npm
-scaffolding in isolation, not on the host.
+**Consequences:**
 
-**If we adopt Start:** the Hono server (`packages/server`) stays useful as a standalone headless API
-(`compositz serve`) but may not be the desktop UI's data path.
+- `packages/ui` = Fresh 2 (Vite), a workspace member. Engine calls live in **route handlers**
+  (server-only) and **never** in islands / client code. `@compositz/core` is imported by its
+  workspace name.
+- `packages/server` (Hono) is **retained** as a standalone headless API (`compositz serve`); its
+  conditional removal from the UI data path is deferred, not decided here.
+- `deno desktop` is **experimental** in Deno 2.9.0 — pin the toolchain and re-verify on upgrades.
+- One residual to confirm on the first real build: workspace-name resolution of `@compositz/core` in
+  Fresh's Vite SSR (the spike used a file-path import-map entry as a faithful proxy).
+- `deno desktop` needs Deno ≥ 2.9; the devbox Deno here caps at 2.8.3, so a project-local `bin/deno`
+  is used — see [ADR-011](#adr-011--project-local-deno-29-binary-bindeno--accepted).
 
 ---
 
@@ -151,3 +161,17 @@ a Phase 3 nicety.
 namespace live only in `packages/core/src/brand.ts`.
 
 **Why:** the name will likely change; a rename must be a one-file edit, not a repo-wide grep.
+
+---
+
+## ADR-011 — Project-local Deno 2.9 binary (`bin/deno`) · ✅ Accepted
+
+`deno desktop` is a Deno 2.9 feature, but this dev box's devbox-global Deno caps at **2.8.3**. We keep
+an official Deno **2.9.0** linux-x64 binary at `bin/deno` (SHA256-verified, **gitignored**) and invoke
+it by absolute path for any 2.9 feature (`deno desktop`, the `packages/ui` build). The PATH Deno
+(2.8.3) stays fine for everything else.
+
+**Why:** unblock the desktop / UI work locally without waiting on devbox to ship ≥ 2.9.
+
+**Consequences:** temporary — once the environment provides Deno ≥ 2.9, drop `bin/deno` and its
+`.gitignore` entry. CI must pin Deno ≥ 2.9 independently.

@@ -27,17 +27,18 @@ De-risk the two load-bearing unknowns before building.
 
 - ✅ **Hono API server** (`packages/server`): `/api/health|recipes|containers`, `POST …/up|down`,
   SSE `/api/events` (live status) + install build-log stream. Verified live.
-- ❓ **UI framework decision** — reopened after acknowledging an SPA-leaning bias in the first
-  evaluation. **TanStack Start** (fullstack React, runs on Deno, `deno desktop` auto-detects it) is
-  the front-runner to spike; React+Vite SPA + the existing Hono API is the fallback. See
-  [decisions.md ADR-008](decisions.md#adr-008-ui-framework-under-reconsideration).
-  - Next: spike TanStack Start on Deno **in an isolated environment** (the npm scaffold hung on the
-    dev machine — do not run heavy/untrusted npm scaffolds on the host).
+- ✅ **UI framework decided: Fresh 2 (Vite).** All three candidates (Start / Fresh / SvelteKit) were
+  spiked on Deno 2.9.0; all are feasible for in-process `@compositz/core` with a clean client
+  boundary, so the choice turned on Deno-nativeness. Fresh won (no `@deno/vite-plugin` bridge,
+  cleanest `deno desktop` fit, Deno-aligned). See
+  [decisions.md ADR-008](decisions.md#adr-008--ui-framework-fresh-2-vite--accepted).
+  - Next: scaffold `packages/ui` as a workspace member; first feature = read-only recipe list backed
+    by `listRecipes()` + `EngineClient.ps()` in a route handler.
 - ⏳ Build the management UI: recipe list, install/up/down, live status, "open web UI", streamed
   build/run logs.
 - ⏳ Desktop shell: list/launch recipes, embed each app's web UI (multi-window).
-- ❓ Live Deno→page update channel: with a fullstack framework this is server functions/loaders +
-  SSE; with the SPA path it's the page subscribing to Hono SSE. Decide alongside ADR-008.
+- ⏳ Live status channel: a Fresh route handler streams SSE (container status / build logs) from
+  core's async-iterable streams; islands consume it via `EventSource`.
 
 ## Phase 3 — Hardening ⏳
 

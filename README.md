@@ -4,7 +4,8 @@ Run each local-AI app as **one isolated Docker container** — Pinokio's one-cli
 container isolation and Dockge-style management. Windows desktop app + Linux CLI.
 
 > Status (2026-06): Phase 0 & 1 done and verified; Phase 2 (management UI) in progress — Hono API
-> done, UI framework being decided. Full plan in **[docs/](docs/README.md)**.
+> done, UI framework decided = **Fresh 2 (Vite)**; `packages/ui` next. Full plan in
+> **[docs/](docs/README.md)**.
 
 ## Documentation
 
