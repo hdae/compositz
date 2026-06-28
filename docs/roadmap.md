@@ -45,11 +45,13 @@ De-risk the two load-bearing unknowns before building.
   `/api/recipes/:id/:action` for up/down. `up` builds the image first if missing. SSE teardown keys
   off `ReadableStream.cancel()` (client disconnect), not `request.signal` (deno#29111 legacy abort).
   Runtime-smoked on the offline-degrade path (no Docker here).
-- ⏳ **Increment 2c**: explicit install with a **streamed build log** (SSE of core's build
-  iterable), and "open web UI" surfaced once running.
-- ⏳ **Recipe ingestion**: load a recipe file in the app → save it to a persistent data directory;
-  `recipesDir` becomes that app-data dir (currently the repo `recipes/`, env-overridable). Pairs
-  with the Phase 4 catalog.
+- ✅ **Explicit install + live build log (Increment 2c)**: an Install button streams the build log
+  (`POST /api/recipes/:id/install`, NDJSON read via `fetch`), then marks the recipe installed. "Open
+  UI" surfaces once running. POST-stream chosen over EventSource (GET) to avoid re-triggering the
+  build on reconnect.
+- ⏳ **Recipe ingestion** (spec being refined): load a recipe file in the app → save it to a
+  persistent data directory; `recipesDir` becomes that app-data dir (currently the repo `recipes/`,
+  env-overridable). Pairs with the Phase 4 catalog.
 - ⏳ Desktop shell: list/launch recipes, embed each app's web UI (multi-window).
 
 ## Phase 3 — Hardening ⏳
