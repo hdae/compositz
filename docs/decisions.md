@@ -138,8 +138,10 @@ so the choice turned on Deno-nativeness vs ecosystem familiarity, not raw feasib
 - `packages/server` (Hono) is **retained** as a standalone headless API (`compositz serve`); its
   conditional removal from the UI data path is deferred, not decided here.
 - `deno desktop` is **experimental** in Deno 2.9.0 — pin the toolchain and re-verify on upgrades.
-- One residual to confirm on the first real build: workspace-name resolution of `@compositz/core` in
-  Fresh's Vite SSR (the spike used a file-path import-map entry as a faithful proxy).
+- The spike-era residual (workspace-name resolution of `@compositz/core` in Fresh's Vite SSR) is now
+  **resolved** — confirmed on the first real `packages/ui` build. Workspace integration specifics
+  (mandatory membership, root `nodeModulesDir: "auto"`) are recorded in
+  [ADR-012](#adr-012--packagesui-joins-the-deno-workspace-root-nodemodulesdir-auto--accepted-verified).
 - `deno desktop` needs Deno ≥ 2.9; the devbox Deno here caps at 2.8.3, so a project-local `bin/deno`
   is used — see [ADR-011](#adr-011--project-local-deno-29-binary-bindeno--accepted).
 
@@ -176,3 +178,31 @@ Deno (2.8.3) stays fine for everything else.
 
 **Consequences:** temporary — once the environment provides Deno ≥ 2.9, drop `bin/deno` and its
 `.gitignore` entry. CI must pin Deno ≥ 2.9 independently.
+
+---
+
+## ADR-012 — `packages/ui` joins the Deno workspace; root `nodeModulesDir: "auto"` · ✅ Accepted (verified)
+
+The Fresh 2 (Vite) UI is a **member of the root Deno workspace**, and the workspace root sets
+`"nodeModulesDir": "auto"`.
+
+**Why (verified on first real build, overturning the spike-era residual):**
+
+- **Membership is mandatory, not optional.** Fresh's Vite plugin (`@deno/loader`) walks up to the
+  repo-root `deno.json`, and if the project isn't listed in its `workspace` array it hard-errors
+  (`Config file must be a member of the workspace`). The scratch spikes never hit this (no parent
+  workspace), which is why they mapped `@compositz/core` by file path. As a real member, the import
+  resolves by **workspace name** in Fresh Vite SSR with no import-map entry — the prior "confirm
+  workspace-name resolution" residual is **closed**.
+- **`nodeModulesDir` is a workspace-root-only setting**, so the Vite member's need for a real local
+  `node_modules` forces the choice on every member. `"auto"` (not the scaffold's `"manual"`) is
+  required: `"manual"` makes the pure-Deno packages fail typecheck on transitive type deps they
+  never list (e.g. `npm:@types/node`); `"auto"` lets Deno materialize the shared root `node_modules`
+  for all members. Both the UI build and `deno check` of core/cli/server/desktop pass under
+  `"auto"`.
+
+**Consequences:** one hoisted `node_modules/` at the repo root (gitignored); `deno install` (or any
+`deno` run under `auto`) populates it. The server-only boundary is enforced by Fresh's
+`fresh:check-imports` — importing `@compositz/core` (→ `node:net`) from an **island** fails the
+build (fault-injected and confirmed). Engine code therefore lives only in route handlers, never
+islands. See [roadmap.md Phase 2](roadmap.md#phase-2--management-ui-).

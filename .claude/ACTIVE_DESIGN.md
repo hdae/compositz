@@ -4,15 +4,19 @@
 
 ## Current focus
 
-**Build `packages/ui` — Increment 1.** Fresh 2 (Vite) as a new workspace member. First feature is
-read-only: a Fresh **route handler** calls `@compositz/core` `listRecipes()` + `EngineClient.ps()`
-in-process and renders a recipe list (installed / running) on `routes/index.tsx`. up/down, SSE live
-status, and desktop embedding are later increments (explicitly out of scope for Increment 1).
+**`packages/ui` Increment 1 — ✅ DONE.** Fresh 2 (Vite) workspace member; `routes/index.tsx`'s
+**route handler** calls `@compositz/core` `listRecipes()` + `EngineClient.ps()` in-process and
+renders a read-only recipe list (installed / running), with an "engine offline" degrade. View-model
+derivation is the pure, Docker-free, unit-tested `lib/dashboard.ts` (6 tests). Verified:
+`deno task
+ui:build`, `ui:check`, full `test` (36) all green; the server-only boundary was
+fault-injected (island import of core fails the build). Engine round-trips were **not**
+runtime-verified (no Docker here) — that's the first manual check.
 
-Planned steps: scaffold `deno run -Ar jsr:@fresh/init . --tailwind` into `packages/ui/` → add
-`./packages/ui` to the root `deno.json` workspace array + `ui` / `ui:build` tasks → import
-`@compositz/core` by workspace name → recipe-list route → `deno task check` + build green. Keep
-`packages/server` (Hono).
+**Next: Increment 2** — actions (install / up / down) wired to `@compositz/core` operations from
+route handlers / form posts, then a live-status channel (a Fresh route handler streams SSE from
+core's async iterables; an island consumes it via `EventSource`). Desktop embedding is later.
+`packages/server` (Hono) stays for now (see below).
 
 ## Decisions recently settled
 
@@ -21,24 +25,30 @@ Planned steps: scaffold `deno run -Ar jsr:@fresh/init . --tailwind` into `packag
   client boundary; Fresh chosen for Deno-nativeness + cleanest `deno desktop`. See
   `docs/decisions.md`.
 - **ADR-011: project-local `bin/deno` (2.9.0, gitignored)** because devbox Deno caps at 2.8.3.
+- **ADR-012 (verified): `packages/ui` is a workspace member; root `nodeModulesDir: "auto"`.**
+  Fresh's Vite plugin _requires_ membership (errors otherwise), which closed the workspace-name
+  resolution residual; `auto` (not the scaffold's `manual`) is needed so the pure-Deno packages keep
+  type-checking. One hoisted root `node_modules/` (gitignored).
 - **`packages/server` (Hono) retained** as headless `compositz serve`; removal from the UI data path
-  deferred — revisit once `packages/ui` is real.
+  deferred — revisit once the UI grows its action/SSE paths (Increment 2).
 
 ## Pitfalls index
 
 - **Engine calls are server-only.** In Fresh, import `@compositz/core` in route handlers, never in
   islands / client code — `fresh:check-imports` fails the build if `node:net` reaches the client
-  (verified). Mirror of Start's `*.server.ts` / SvelteKit's `$lib/server` rule.
-- **Residual to confirm**: workspace-name resolution of `@compositz/core` in Fresh Vite SSR (spikes
-  used a file-path import-map entry). Confirm on the first `packages/ui` build.
+  (fault-injected and confirmed). Mirror of Start's `*.server.ts` / SvelteKit's `$lib/server` rule.
+- **UI runs from `packages/ui` cwd**: `recipesDir` defaults to `../../recipes` (repo-root recipes/);
+  the `deno task ui` / `ui:build` wrappers set the cwd. Override with `COMPOSITZ_RECIPES_DIR`.
 - **`deno desktop` needs Deno ≥ 2.9** → invoke `/home/developer/workspace/compositz/bin/deno`
   (2.9.0). It is experimental in 2.9.0; the default WebView2 backend is broken on Windows (fix
   #35566 canary-only) — use `--backend cef`.
 - **No `docker` in this dev env** → engine round-trips and `deno desktop` _launch_ can't run here,
   only build / bundle. Hand off runtime checks as numbered manual steps.
 
-## Resume point (post-compact)
+## Resume point
 
-Decision made: **Fresh 2 (Vite)** for `packages/ui`. Next action: scaffold `packages/ui` per the
-Increment 1 plan above and wire it into the root workspace. Throwaway spikes live in the session
-scratchpad; the 3-way comparison is in memory (`compositz-ui-framework-spikes`).
+`packages/ui` Increment 1 is committed and green. Next action: **Increment 2** — install / up / down
+actions from route handlers, then SSE live status (see Current focus). Open the recipe-list code at
+`packages/ui/routes/index.tsx` (I/O + page) and `packages/ui/lib/dashboard.ts` (pure view-model).
+First manual check still pending: run the UI against a live Docker engine and confirm installed /
+running render correctly (couldn't run here — no Docker).

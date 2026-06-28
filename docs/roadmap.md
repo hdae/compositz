@@ -32,10 +32,14 @@ De-risk the two load-bearing unknowns before building.
   boundary, so the choice turned on Deno-nativeness. Fresh won (no `@deno/vite-plugin` bridge,
   cleanest `deno desktop` fit, Deno-aligned). See
   [decisions.md ADR-008](decisions.md#adr-008--ui-framework-fresh-2-vite--accepted).
-  - Next: scaffold `packages/ui` as a workspace member; first feature = read-only recipe list backed
-    by `listRecipes()` + `EngineClient.ps()` in a route handler.
-- ⏳ Build the management UI: recipe list, install/up/down, live status, "open web UI", streamed
-  build/run logs.
+- ✅ **`packages/ui` scaffolded (Increment 1)**: Fresh 2 (Vite) workspace member; a route handler
+  calls `listRecipes()` + `EngineClient.ps()` **in-process** and renders a read-only recipe list
+  (installed / running), degrading to an "engine offline" badge when Docker is unreachable.
+  View-model derivation is a pure, Docker-free, unit-tested function. Workspace integration
+  (membership mandatory, root `nodeModulesDir: "auto"`, server-only boundary fault-tested) in
+  [decisions.md ADR-012](decisions.md#adr-012--packagesui-joins-the-deno-workspace-root-nodemodulesdir-auto--accepted-verified).
+- ⏳ Build out the management UI (Increment 2+): install/up/down actions, live status, "open web
+  UI", streamed build/run logs.
 - ⏳ Desktop shell: list/launch recipes, embed each app's web UI (multi-window).
 - ⏳ Live status channel: a Fresh route handler streams SSE (container status / build logs) from
   core's async-iterable streams; islands consume it via `EventSource`.

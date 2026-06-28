@@ -23,21 +23,21 @@ _manager_ is trusted; the _apps_ are sandboxed.
 
 ## Status at a glance (2026-06-28)
 
-| Component          | Status                                                                                                                                                                    |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/core`    | ✅ Implemented + tested (30 unit tests). Docker Engine client, transports, recipe model (Zod), build, operations                                                          |
-| `packages/cli`     | ✅ `doctor` / `install` / `up` / `down` / `ps` / `hello` — verified against the live engine                                                                               |
-| `packages/server`  | ✅ Hono `/api` + SSE — verified against the live engine                                                                                                                   |
-| `packages/desktop` | ✅ Deno Desktop (CEF) recipe-driven launch — renders a recipe's web UI (machine-verified). WebView2 backend blocked on an upstream Deno fix                               |
-| `packages/ui`      | ⏳ Not started — **decided: Fresh 2 (Vite)** (all 3 candidates spiked on Deno 2.9; see [decisions.md ADR-008](decisions.md#adr-008--ui-framework-fresh-2-vite--accepted)) |
+| Component          | Status                                                                                                                                                                                                                                                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/core`    | ✅ Implemented + tested (30 unit tests). Docker Engine client, transports, recipe model (Zod), build, operations                                                                                                                                                                                                                            |
+| `packages/cli`     | ✅ `doctor` / `install` / `up` / `down` / `ps` / `hello` — verified against the live engine                                                                                                                                                                                                                                                 |
+| `packages/server`  | ✅ Hono `/api` + SSE — verified against the live engine                                                                                                                                                                                                                                                                                     |
+| `packages/desktop` | ✅ Deno Desktop (CEF) recipe-driven launch — renders a recipe's web UI (machine-verified). WebView2 backend blocked on an upstream Deno fix                                                                                                                                                                                                 |
+| `packages/ui`      | 🔄 **Fresh 2 (Vite), Increment 1 done** — workspace member; a route handler renders a read-only recipe list from in-process `@compositz/core` (see [ADR-008](decisions.md#adr-008--ui-framework-fresh-2-vite--accepted) / [ADR-012](decisions.md#adr-012--packagesui-joins-the-deno-workspace-root-nodemodulesdir-auto--accepted-verified)) |
 
-| Phase                                                                                    | Status                                                                                     |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| **0 — Foundations PoC** (Docker control on Win+Linux; Deno Desktop window)               | ✅ Done, empirically verified                                                              |
-| **1 — Recipe → build → run**                                                             | ✅ Core flow done, verified                                                                |
-| **2 — Management UI**                                                                    | 🔄 In progress (Hono server done; UI framework decided = Fresh 2/Vite; `packages/ui` next) |
-| **3 — Hardening** (shared cache, volumes/GC, GPU detection, s6 multi-daemon, versioning) | ⏳ Planned                                                                                 |
-| **4 — Packaging & distribution** (signing, update, catalog, recipe tooling)              | ⏳ Planned                                                                                 |
+| Phase                                                                                    | Status                                                                                                 |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **0 — Foundations PoC** (Docker control on Win+Linux; Deno Desktop window)               | ✅ Done, empirically verified                                                                          |
+| **1 — Recipe → build → run**                                                             | ✅ Core flow done, verified                                                                            |
+| **2 — Management UI**                                                                    | 🔄 In progress (Hono server done; `packages/ui` Fresh 2/Vite Increment 1 done — read-only recipe list) |
+| **3 — Hardening** (shared cache, volumes/GC, GPU detection, s6 multi-daemon, versioning) | ⏳ Planned                                                                                             |
+| **4 — Packaging & distribution** (signing, update, catalog, recipe tooling)              | ⏳ Planned                                                                                             |
 
 ## Quick start
 
@@ -60,7 +60,7 @@ packages/core/      TypeScript library: Engine API client, transports, recipe mo
 packages/cli/       Linux-first CLI (also the debugging surface)
 packages/server/    Hono backend wrapping core (/api + SSE) — shared by desktop & a future `compositz serve`
 packages/desktop/   Deno Desktop app (Windows-first); embeds container web UIs in a native window
-packages/ui/        Management UI SPA (planned)
+packages/ui/        Management UI (Fresh 2 / Vite) — in-process @compositz/core via route handlers
 recipes/            Recipe definitions (compositz.yaml + Dockerfile + assets)
 spec/               Generated JSON Schema for the manifest
 scripts/            Dev scripts (e.g. schema generation)
