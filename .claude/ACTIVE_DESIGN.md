@@ -30,8 +30,6 @@ reflection needs a manual Docker check.
 **Next (sequenced):** **RI-1…RI-4** (recipe ingestion + storage + launch config) per the now-agreed
 spec in [docs/recipe-ingestion.md](../../docs/recipe-ingestion.md) /
 [ADR-014](../../docs/decisions.md). Key agreed principles: **stay on Docker's rails** (borrow Docker
-Compose config vocabulary — [docs/recipe-ingestion.md](../../docs/recipe-ingestion.md) /
-[ADR-014](../../docs/decisions.md). Key agreed principles: **stay on Docker's rails** (borrow Docker
 Compose config vocabulary — `environment`/`ports`/`volumes` + `${VAR}` — no custom schema; runtime
 stays single-container, ADR-001 holds); **3-tier storage** (app-data = recipes/overrides/settings;
 configurable **data-root** = host-bind outputs via `${COMPOSITZ_DATA}`; shared named volume =
