@@ -1,0 +1,22 @@
+# Deno
+.deno/
+deno.lock.bak
+
+# Build / dist
+/dist/
+/build/
+/desktop/        # `deno desktop` default bundle output (regenerate with `deno task desktop`)
+*.exe
+*.dll
+denort*
+
+# Editor / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Local scratch
+/tmp/
+*.log
