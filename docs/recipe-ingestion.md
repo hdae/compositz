@@ -1,10 +1,11 @@
 # Recipe ingestion, storage & launch configuration
 
-> Status: **agreed design** (decisions in
-> [ADR-014](decisions.md#adr-014--recipe-sourcing-3-tier-storage--manifest-v2--accepted)). This is
-> the detailed target spec + increment plan. The live manifest is still **v1**
-> ([recipe-format.md](recipe-format.md)); **v2 below lands in RI-1**, which flips the Zod schema and
-> recipe-format together.
+> Status: **manifest v2 + storage + effective-spec are implemented & verified (RI-1 done)** —
+> decisions in
+> [ADR-014](decisions.md#adr-014--recipe-sourcing-3-tier-storage--manifest-v2--accepted) /
+> [ADR-015](decisions.md#adr-015--manifest-v2-core-structured-mounts--createmountpoint-managed-cache-layout--accepted-verified),
+> live manifest in [recipe-format.md](recipe-format.md). **Ingestion (RI-2/3) and the override UI
+> (RI-4) are still planned** — this doc holds their design plus the increment plan.
 
 ## Guiding principle — every field maps to a Docker concept
 
@@ -45,9 +46,10 @@ is sourced into the **recipe store** (`<app-data>/recipes/<id>/`) from:
 
 Ingest = extract → **Zod-validate** → store. Building the image is the separate **Install** step.
 
-## Manifest v2 (target spec — implemented in RI-1)
+## Manifest v2 (implemented in RI-1)
 
-Breaking change from v1 (unreleased → no migration). Example (full):
+Breaking change from v1 (unreleased → no migration). The authoritative field reference is now
+[recipe-format.md](recipe-format.md); the annotated example below shows the shape. Example (full):
 
 ```yaml
 manifestVersion: 2
@@ -142,19 +144,28 @@ spec is **derived** from _manifest ⊕ override_ — the manifest is never mutat
 
 ## Increment plan
 
-| Inc.     | Scope                                                                                                                                                                                   |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **RT**   | ✅ Docker `/events` real-time status (done & verified).                                                                                                                                 |
-| **RI-1** | **Manifest v2** (Zod + recipe-format) + storage layout + data-root + bind/volume mounts + cache provisioning & env injection + effective-spec derivation (manifest ⊕ override) in core. |
-| **RI-2** | Recipe **store** + **tar/zip ingestion** (UI upload → extract → validate → store).                                                                                                      |
-| **RI-3** | **GitHub ingestion** (`owner/repo[@ref][/subdir]` → tarball → store).                                                                                                                   |
-| **RI-4** | Per-install **override UI** (host-port remap w/ auto-suggest, env values, placement) + multi-web "Open UI" buttons.                                                                     |
+| Inc.     | Scope                                                                                                                                                                                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **RT**   | ✅ Docker `/events` real-time status (done & verified).                                                                                                                                                                                                            |
+| **RI-1** | ✅ **Manifest v2** (Zod + recipe-format) + storage layout + data-root + bind/volume mounts (structured `Mounts` + `CreateMountpoint`) + cache provisioning & env injection + effective-spec derivation (manifest ⊕ launch override) in core. Done & live-verified. |
+| **RI-2** | Recipe **store** + **tar/zip ingestion** (UI upload → extract → validate → store).                                                                                                                                                                                 |
+| **RI-3** | **GitHub ingestion** (`owner/repo[@ref][/subdir]` → tarball → store).                                                                                                                                                                                              |
+| **RI-4** | Per-install **override UI** (host-port remap w/ auto-suggest, env values, placement) + multi-web "Open UI" buttons.                                                                                                                                                |
 
-## Open details (resolve when the increment lands)
+## Open details
 
-- RI-1: Windows bind-mount path handling (Docker Desktop file sharing); per-OS default data-root +
-  first-run setup; exact injected-env list per cache type.
-- **Authoring helper**: ship a **reference entrypoint** (uv-sync boilerplate using `$VIRTUAL_ENV` /
+Resolved in RI-1 (now in [recipe-format.md](recipe-format.md) /
+[ADR-015](decisions.md#adr-015--manifest-v2-core-structured-mounts--createmountpoint-managed-cache-layout--accepted-verified)):
+the injected-env list per cache type, the in-container `/compositz` layout, per-OS default
+data-root + app-data dir, and bind-source creation (daemon-side `CreateMountpoint`).
+
+Still open for later increments:
+
+- **Windows bind on Docker Desktop**: `CreateMountpoint` handles source creation, but Docker Desktop
+  file-sharing for the data-root drive still needs first-run handling (RI-4 / packaging).
+- **Live cache exercise**: no shipped recipe uses `venv`/`huggingface` yet, so those volumes/env are
+  unit-tested but not yet machine-run end-to-end.
+- **Authoring helper**: a **reference entrypoint** (uv-sync boilerplate using `$VIRTUAL_ENV` /
   `$UV_CACHE_DIR`) so recipes don't reinvent it — recipe-format appendix (future).
 - RI-3: GitHub auth for private repos (public-only first cut).
 - Multi-instance UI (run N of one recipe) is deferred; the schema is already instance-ready

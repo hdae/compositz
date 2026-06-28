@@ -280,3 +280,40 @@ direct Docker concept makes the tool a thin, learnable layer over Docker rather 
 RI-1…RI-4** in [recipe-ingestion.md](recipe-ingestion.md#increment-plan). Deferred: private-repo
 GitHub auth, multi-instance UI (schema is already instance-ready), a reference uv entrypoint helper,
 Windows bind-path handling.
+
+## ADR-015 — Manifest v2 core: structured Mounts + CreateMountpoint, managed cache layout · ✅ Accepted (verified)
+
+The implementation decisions settled while building RI-1 (the "Open details" ADR-014 deferred).
+Code: [manifest.ts](../packages/core/src/recipe/manifest.ts),
+[run.ts](../packages/core/src/recipe/run.ts), [storage.ts](../packages/core/src/storage.ts).
+
+- **Mounts, not legacy `Binds`.** Every mount/cache goes through `HostConfig.Mounts`
+  (`Type: bind|volume`, `Source`, `Target`), which is unambiguous on Windows (a `C:\…` bind source
+  has a colon that breaks `Binds` splitting) and expresses bind vs named-volume uniformly.
+- **Bind mounts set `BindOptions.CreateMountpoint: true`.** DECIDED after a live 400 from the
+  daemon: unlike `Binds`, a `Mounts` bind does **not** auto-create a missing host source.
+  CreateMountpoint (API 1.44+) makes the **daemon** create `<data-root>/<id>/<name>` — required
+  because the source is on the daemon host, which a remote `DOCKER_HOST` cannot reach from the core
+  process. Verified against engine 29.5.3 / API 1.54.
+- **Managed cache layout (the in-container authoring contract):** root `/compositz`. `venv` → volume
+  `compositz_uv` at `/compositz/uv` injecting `UV_CACHE_DIR=/compositz/uv/cache` +
+  `VIRTUAL_ENV=/compositz/uv/venvs/<id>/<instance>` (venv + uv cache on one volume ⇒ hardlink-safe,
+  [ADR-006](#adr-006--uv-venv-hardlink-constraint--accepted)); `huggingface` → `compositz_hf` at
+  `/compositz/hf` injecting `HF_HOME`; `custom` → `compositz_cache_<name>` at
+  `/compositz/cache/<name>` injecting `<env>` (shared = that path; instance = a `<id>/<instance>`
+  subpath).
+- **Managed env wins deterministically.** Env is assembled in a `Map` keyed by name (user values
+  first, then cache vars, then `COMPOSITZ_INSTANCE`), so a managed var overrides a colliding user
+  var regardless of Docker's undefined duplicate-key precedence.
+- **Names are charset-constrained** (`^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$`; env names are POSIX). Mount
+  and cache names flow into host paths and volume names, so this blocks path traversal out of the
+  data-root and keeps volume names valid. Mount `target` must be absolute.
+- **Host-port auto-increment** is a pure helper (`resolveHostPorts`) fed by the host ports already
+  published by running containers (read via `ps` in `up`, after removing the prior instance).
+  Best-effort (it can't see non-Docker listeners; small TOCTOU before create).
+
+**Consequences:** `EngineClient.Mount` gains `BindOptions`; consumers (cli/ui/desktop) were
+unchanged because the breaking surface is the manifest YAML + internal derivation, while `webUrl` /
+`up` / `recipeImageTag` / `installRecipe` kept compatible signatures (`webUrl` = the first web
+port). Still open for later increments: live HF/venv cache exercise (no shipped recipe uses them
+yet), Docker Desktop Windows file-sharing for bind sources, and the reference uv entrypoint helper.

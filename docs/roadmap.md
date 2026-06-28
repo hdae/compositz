@@ -54,12 +54,17 @@ De-risk the two load-bearing unknowns before building.
   safety refresh + 2 s reconnect/offline fallback. Replaced the 2 s poll. **Verified against the
   real engine** (a down→up cycle streamed `running→exited→[]→created→running` live), along with the
   Increment 1/2/2c online paths.
-- ⏳ **Recipe ingestion + storage + launch config (RI-1…RI-4)** — design agreed, **manifest v2
-  finalized**, see [recipe-ingestion.md](recipe-ingestion.md): RI-1 = manifest v2 (mounts with
-  bind/volume `placement`, `cache` presets+custom with env-injected paths, multi-`web` ports,
-  `image`-or-`build`) + 3-tier storage + configurable host **data-root** for bind outputs +
-  effective-spec derivation (manifest ⊕ per-install override). RI-2/3 = tar/zip + GitHub sourcing
-  into an app-data recipe store. RI-4 = override UI. Breaking (unreleased).
+- ✅ **Recipe ingestion + storage + launch config — RI-1 (manifest v2 in core)**: manifest v2
+  (mounts with bind/volume `placement`, `cache` presets+custom with env-injected paths, multi-`web`
+  ports, `image`-or-`build`) + 3-tier storage + configurable host **data-root** for bind outputs +
+  effective-spec derivation (manifest ⊕ launch override). Structured `HostConfig.Mounts` with
+  `BindOptions.CreateMountpoint` (daemon-side bind-source creation). Breaking (unreleased);
+  consumers unchanged. Full suite green + live-verified on the real engine. See
+  [recipe-ingestion.md](recipe-ingestion.md) /
+  [ADR-015](decisions.md#adr-015--manifest-v2-core-structured-mounts--createmountpoint-managed-cache-layout--accepted-verified).
+- ⏳ **Recipe ingestion + launch UI (RI-2…RI-4)**: RI-2/3 = tar/zip + GitHub sourcing into an
+  app-data recipe store; RI-4 = per-install override UI (host-port remap w/ auto-suggest, env
+  values, placement) + multi-web "Open UI" buttons.
 - ⏳ Desktop shell: list/launch recipes, embed each app's web UI (multi-window).
 
 ## Phase 3 — Hardening ⏳
