@@ -125,6 +125,31 @@ export interface BuildProgress {
   id?: string;
 }
 
+/** One event object from the `GET /events` stream (Docker Engine event). */
+export interface DockerEvent {
+  /** Object kind, e.g. "container", "image", "volume", "network". */
+  Type?: string;
+  /** Lifecycle action, e.g. "create", "start", "die", "destroy". */
+  Action?: string;
+  /** The object the event is about; Attributes carries labels (incl. ours). */
+  Actor?: { ID?: string; Attributes?: Record<string, string> };
+  /** Legacy fields (older API): status == Action, id == Actor.ID. */
+  status?: string;
+  id?: string;
+  from?: string;
+  time?: number;
+  timeNano?: number;
+}
+
+export interface EventsOptions {
+  /** Engine-side filters, e.g. { type: ["container"], label: ["io.compositz.managed=true"] }. */
+  filters?: Record<string, string[]>;
+  /** Unix seconds; replay events since this time before following live ones. */
+  since?: number;
+  /** Abort to close the stream promptly (the read otherwise parks on the socket). */
+  signal?: AbortSignal;
+}
+
 /**
  * GPU passthrough equivalent to `--gpus all`. The docker CLI emits an EMPTY driver
  * (`""`) and lets the daemon pick the device driver; "nvidia" also works but the

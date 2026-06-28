@@ -13,6 +13,8 @@ import type {
   ContainerCreateSpec,
   ContainerSummary,
   ContainerWaitResponse,
+  DockerEvent,
+  EventsOptions,
   LogFrame,
   LogsOptions,
   PullProgress,
@@ -199,6 +201,38 @@ export class EngineClient {
         yield p;
       }
     } finally {
+      conn.close();
+    }
+  }
+
+  /**
+   * GET /events — follow the engine event stream (container/image/... lifecycle),
+   * yielding one {@link DockerEvent} per line. Long-lived: it parks on the socket
+   * waiting for the next event, so pass `opts.signal` and abort it to close the
+   * stream promptly (e.g. when the consumer disconnects).
+   */
+  async *events(opts: EventsOptions = {}): AsyncGenerator<DockerEvent> {
+    const q = new URLSearchParams();
+    if (opts.filters) q.set("filters", JSON.stringify(opts.filters));
+    if (opts.since != null) q.set("since", String(opts.since));
+    const conn = await this.#open();
+    const onAbort = () => conn.close();
+    opts.signal?.addEventListener("abort", onAbort, { once: true });
+    try {
+      await writeRequest(conn, { method: "GET", path: this.#path(`/events?${q}`) });
+      const res = await readResponse(conn);
+      if (res.status >= 300) {
+        throw new EngineHttpError(res.status, res.statusText, await readText(res));
+      }
+      for await (const obj of jsonLines(res.body)) {
+        yield obj as DockerEvent;
+      }
+    } catch (e) {
+      // Aborting closes the conn, which surfaces here as a read error — expected.
+      if (opts.signal?.aborted) return;
+      throw e;
+    } finally {
+      opts.signal?.removeEventListener("abort", onAbort);
       conn.close();
     }
   }

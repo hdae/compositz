@@ -46,6 +46,8 @@ export {
   type ContainerSummary,
   type ContainerWaitResponse,
   type DeviceRequest,
+  type DockerEvent,
+  type EventsOptions,
   GPU_ALL_CDI,
   GPU_ALL_NVIDIA,
   type HostConfig,
