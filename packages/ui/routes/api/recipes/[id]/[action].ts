@@ -9,10 +9,13 @@ import {
 } from "@compositz/core";
 import { define } from "../../../../utils.ts";
 
-// SERVER-ONLY: imports @compositz/core (→ node:net). POST actions for a recipe.
-// `up` builds the image first if it is missing (build log is drained here;
-// streaming it to the client is a later increment). The island posts to this and
-// lets the SSE channel (routes/api/events.ts) reflect the new state.
+// SERVER-ONLY: imports @compositz/core (→ node:net). POST actions for a recipe:
+//   up      build-if-needed + run, returns JSON
+//   down    stop + remove, returns JSON
+//   install build the image, streaming the build log as NDJSON (one JSON object
+//           per line: {type:"log",line} … then {type:"done",tag} or {type:"error",error})
+// The island posts here and lets the SSE channel (routes/api/events.ts) reflect
+// up/down state; install reads the streamed body directly for live build output.
 
 const recipesDir = Deno.env.get("COMPOSITZ_RECIPES_DIR") ?? "../../recipes";
 const client = new EngineClient();
@@ -47,6 +50,8 @@ export const handler = define.handlers({
           await down(client, id);
           return Response.json({ ok: true });
         }
+        case "install":
+          return installStream(id);
         default:
           return Response.json({ ok: false, error: `unknown action: ${action}` }, { status: 400 });
       }
@@ -57,3 +62,38 @@ export const handler = define.handlers({
     }
   },
 });
+
+/** Build the recipe's image, streaming the build log as newline-delimited JSON. */
+function installStream(id: string): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (obj: unknown): boolean => {
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+          return true;
+        } catch {
+          return false; // client gone mid-write
+        }
+      };
+      try {
+        const recipe = await loadRecipe(`${recipesDir}/${id}`);
+        const tag = recipeImageTag(recipe.manifest);
+        for await (const progress of installRecipe(client, recipe)) {
+          if (progress.stream && !send({ type: "log", line: progress.stream })) return;
+        }
+        send({ type: "done", tag });
+      } catch (e) {
+        send({ type: "error", error: e instanceof Error ? e.message : String(e) });
+      } finally {
+        try {
+          controller.close();
+        } catch { /* already closed */ }
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: { "content-type": "application/x-ndjson", "cache-control": "no-cache" },
+  });
+}
