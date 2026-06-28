@@ -1,10 +1,10 @@
-// Pure view-model derivation for the recipe dashboard.
+// Pure view-model derivation for the recipe dashboard — shared by the server
+// (initial render) and the client island (live SSE updates).
 //
-// This module is deliberately free of any runtime `@compositz/core` value
-// import (only the `ContainerSummary` *type*, which is erased at compile time).
-// The engine/recipe I/O lives in the server-only route handler; this file just
-// turns the fetched data into rows, so it is testable without Docker and safe to
-// pull into any bundle. See routes/index.tsx for the I/O side.
+// Deliberately free of any runtime `@compositz/core` value import (only the
+// `ContainerSummary` *type*, erased at compile time), so it is safe to bundle
+// into an island and testable without Docker. The engine I/O lives in
+// server-only route handlers (routes/api/*). See routes/index.tsx.
 
 import type { ContainerSummary } from "@compositz/core";
 
@@ -20,10 +20,21 @@ export type RecipeView = {
   imageTag: string;
 };
 
-/** A live read of the engine: managed containers + which image tags exist. */
+/**
+ * A managed container reduced to what the dashboard needs — slim enough to push
+ * over SSE as JSON. `recipe` is the recipe id carried by the container label
+ * (null if absent); `state` is Docker's container state ("running", "exited", …).
+ */
+export type ContainerStatus = {
+  recipe: string | null;
+  state: string;
+};
+
+/** A live read of the engine: managed containers + which image tags exist locally. */
 export type EngineSnapshot = {
-  containers: ContainerSummary[];
-  installedTags: Set<string>;
+  containers: ContainerStatus[];
+  /** Image tags that exist locally (kept as an array so it serializes for props/SSE). */
+  installedTags: string[];
 };
 
 /** One rendered dashboard row: a recipe plus its derived runtime status. */
@@ -39,27 +50,32 @@ export type RecipeRow = {
   running: boolean;
 };
 
-/** The full payload the index route hands to its page component. */
-export type Dashboard = {
-  recipes: RecipeRow[];
-  engineOnline: boolean;
-  /** Human-readable reason the engine was unreachable, when offline. */
-  engineError: string | null;
-};
+/**
+ * Map raw engine container summaries to the slim {@link ContainerStatus} shape.
+ * Server-only in practice (the input comes from `EngineClient.ps`), but pure.
+ *
+ * @param recipeLabelKey the container label that carries a recipe id
+ *   (e.g. `io.compositz.recipe`).
+ */
+export function toContainerStatuses(
+  summaries: ContainerSummary[],
+  recipeLabelKey: string,
+): ContainerStatus[] {
+  return summaries.map((c) => ({
+    recipe: c.Labels[recipeLabelKey] ?? null,
+    state: c.State,
+  }));
+}
 
 /**
  * Derive dashboard rows from recipes and an optional engine snapshot.
  *
  * When `snapshot` is `null` the engine was unreachable: installed status is
  * unknown (`null`) and nothing is reported running, but recipes still list.
- *
- * @param recipeLabelKey the container label that carries a recipe id
- *   (e.g. `io.compositz.recipe`), used to match containers to recipes.
  */
 export function toRecipeRows(
   recipes: RecipeView[],
   snapshot: EngineSnapshot | null,
-  recipeLabelKey: string,
 ): RecipeRow[] {
   return recipes.map((r) => {
     const base = {
@@ -73,8 +89,8 @@ export function toRecipeRows(
       return { ...base, installed: null, running: false };
     }
     const running = snapshot.containers.some(
-      (c) => c.Labels[recipeLabelKey] === r.id && c.State === "running",
+      (c) => c.recipe === r.id && c.state === "running",
     );
-    return { ...base, installed: snapshot.installedTags.has(r.imageTag), running };
+    return { ...base, installed: snapshot.installedTags.includes(r.imageTag), running };
   });
 }

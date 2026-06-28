@@ -1,6 +1,12 @@
 import { assertEquals } from "@std/assert";
 import type { ContainerSummary } from "@compositz/core";
-import { type EngineSnapshot, type RecipeView, toRecipeRows } from "./dashboard.ts";
+import {
+  type ContainerStatus,
+  type EngineSnapshot,
+  type RecipeView,
+  toContainerStatuses,
+  toRecipeRows,
+} from "./dashboard.ts";
 
 const RECIPE_LABEL = "io.compositz.recipe";
 
@@ -16,7 +22,15 @@ function view(over: Partial<RecipeView> = {}): RecipeView {
   };
 }
 
-function container(over: Partial<ContainerSummary> = {}): ContainerSummary {
+function status(over: Partial<ContainerStatus> = {}): ContainerStatus {
+  return { recipe: "hello-web", state: "running", ...over };
+}
+
+function snapshot(over: Partial<EngineSnapshot> = {}): EngineSnapshot {
+  return { containers: [], installedTags: [], ...over };
+}
+
+function summary(over: Partial<ContainerSummary> = {}): ContainerSummary {
   return {
     Id: "abc123",
     Names: ["/compositz-hello-web"],
@@ -29,12 +43,8 @@ function container(over: Partial<ContainerSummary> = {}): ContainerSummary {
   };
 }
 
-function snapshot(over: Partial<EngineSnapshot> = {}): EngineSnapshot {
-  return { containers: [], installedTags: new Set(), ...over };
-}
-
 Deno.test("engine offline (null snapshot): recipes list, installed unknown, not running", () => {
-  const rows = toRecipeRows([view()], null, RECIPE_LABEL);
+  const rows = toRecipeRows([view()], null);
   assertEquals(rows.length, 1);
   assertEquals(rows[0].installed, null);
   assertEquals(rows[0].running, false);
@@ -42,33 +52,42 @@ Deno.test("engine offline (null snapshot): recipes list, installed unknown, not 
 });
 
 Deno.test("a running managed container for the recipe marks the row running", () => {
-  const snap = snapshot({ containers: [container({ State: "running" })] });
-  const rows = toRecipeRows([view()], snap, RECIPE_LABEL);
+  const rows = toRecipeRows([view()], snapshot({ containers: [status({ state: "running" })] }));
   assertEquals(rows[0].running, true);
 });
 
 Deno.test("a stopped container does not mark the row running", () => {
-  const snap = snapshot({ containers: [container({ State: "exited" })] });
-  const rows = toRecipeRows([view()], snap, RECIPE_LABEL);
+  const rows = toRecipeRows([view()], snapshot({ containers: [status({ state: "exited" })] }));
   assertEquals(rows[0].running, false);
 });
 
 Deno.test("a running container for a different recipe does not bleed across rows", () => {
-  const snap = snapshot({
-    containers: [container({ Labels: { [RECIPE_LABEL]: "something-else" } })],
-  });
-  const rows = toRecipeRows([view({ id: "hello-web" })], snap, RECIPE_LABEL);
+  const rows = toRecipeRows(
+    [view({ id: "hello-web" })],
+    snapshot({ containers: [status({ recipe: "something-else" })] }),
+  );
   assertEquals(rows[0].running, false);
 });
 
 Deno.test("installed reflects whether the recipe's image tag exists locally", () => {
-  const present = snapshot({ installedTags: new Set(["compositz/hello-web:0.1.0"]) });
-  assertEquals(toRecipeRows([view()], present, RECIPE_LABEL)[0].installed, true);
+  const present = snapshot({ installedTags: ["compositz/hello-web:0.1.0"] });
+  assertEquals(toRecipeRows([view()], present)[0].installed, true);
 
-  const absent = snapshot({ installedTags: new Set(["compositz/other:1.0.0"]) });
-  assertEquals(toRecipeRows([view()], absent, RECIPE_LABEL)[0].installed, false);
+  const absent = snapshot({ installedTags: ["compositz/other:1.0.0"] });
+  assertEquals(toRecipeRows([view()], absent)[0].installed, false);
 });
 
 Deno.test("no recipes yields no rows", () => {
-  assertEquals(toRecipeRows([], snapshot(), RECIPE_LABEL), []);
+  assertEquals(toRecipeRows([], snapshot()), []);
+});
+
+Deno.test("toContainerStatuses maps the recipe label and state, null when unlabeled", () => {
+  const out = toContainerStatuses([
+    summary({ State: "running", Labels: { [RECIPE_LABEL]: "hello-web" } }),
+    summary({ State: "exited", Labels: {} }),
+  ], RECIPE_LABEL);
+  assertEquals(out, [
+    { recipe: "hello-web", state: "running" },
+    { recipe: null, state: "exited" },
+  ]);
 });
