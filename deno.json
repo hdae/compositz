@@ -33,7 +33,13 @@
   },
   "lint": {
     "rules": {
-      "tags": ["recommended"]
+      "tags": [
+        "recommended"
+      ]
     }
+  },
+  "minimumDependencyAge": {
+    "age": 1440,
+    "exclude": []
   }
 }
