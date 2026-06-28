@@ -51,8 +51,9 @@ De-risk the two load-bearing unknowns before building.
   build on reconnect.
 - ✅ **Real-time status (RT)** — `EngineClient.events()` streams Docker `GET /events`; the Fresh SSE
   handler (`/api/events`) is event-driven (push on each container lifecycle change), with a 15 s
-  safety refresh + 2 s reconnect/offline fallback. Replaced the 2 s poll. (Engine-online event
-  reflection needs a manual Docker check; offline-degrade smoked here.)
+  safety refresh + 2 s reconnect/offline fallback. Replaced the 2 s poll. **Verified against the
+  real engine** (a down→up cycle streamed `running→exited→[]→created→running` live), along with the
+  Increment 1/2/2c online paths.
 - ⏳ **Recipe ingestion + storage + launch config (RI-1…RI-4)** — spec agreed, see
   [recipe-ingestion.md](recipe-ingestion.md): tar/zip + GitHub sourcing into an app-data recipe
   store; a configurable host **data-root** for outputs (bind-mounted via `${COMPOSITZ_DATA}`); a

@@ -22,10 +22,12 @@ still need manual Docker checks. SSE teardown uses `ReadableStream.cancel()`, no
 auto-scrolling log, and optimistically marks installed on done. POST-stream (not EventSource/GET) so
 a reconnect can't re-trigger the build.
 
-**RT — ✅ DONE.** `EngineClient.events()` streams Docker `GET /events`; `/api/events` is now
+**RT — ✅ DONE & verified.** `EngineClient.events()` streams Docker `GET /events`; `/api/events` is
 event-driven (push per container lifecycle change) with a 15 s safety refresh + 2 s
-reconnect/offline fallback. The 2 s poll is gone. Offline-degrade smoked; engine-online event
-reflection needs a manual Docker check.
+reconnect/offline fallback. The 2 s poll is gone. **Verified against the real engine**
+(DOCKER_HOST=tcp): a down→up cycle streamed `running→exited→[]→created→running` live. Increments
+1/2/2c online paths (engine-online list, install build-log NDJSON, up/down POST) also verified the
+same way.
 
 **Next (sequenced):** **RI-1…RI-4** (recipe ingestion + storage + launch config) per the now-agreed
 spec in [docs/recipe-ingestion.md](../../docs/recipe-ingestion.md) /
@@ -60,9 +62,12 @@ caches); sources = **tar/zip + GitHub**. Desktop shell after.
 - **`deno desktop` needs Deno ≥ 2.9** → invoke `/home/developer/workspace/compositz/bin/deno`
   (2.9.0). It is experimental in 2.9.0; the default WebView2 backend is broken on Windows (fix
   #35566 canary-only) — use `--backend cef`.
-- **No `docker` in this dev env** → engine round-trips and `deno desktop` _launch_ can't run here,
-  only build / bundle. The offline-degrade path _is_ runtime-smokable (built server + curl). Hand
-  off the engine-online checks as numbered manual steps.
+- **Docker IS reachable over TCP** (no CLI/socket here):
+  `export
+  DOCKER_HOST=tcp://host.docker.internal:2375` (the user exposed the daemon;
+  `localhost:2375` does NOT work from WSL, `host.docker.internal` does). Real
+  `up`/`down`/`install`/`/events` were verified this way. Only `deno desktop` _launch_ still can't
+  run here. See [[compositz-docker-tcp-debug]] in memory.
 - **SSE in Fresh: don't tear down off `request.signal`** — Deno's legacy behavior aborts it on a
   _successful response_ (deno#29111), which fires immediately for a streaming body. Drive teardown
   from `ReadableStream.cancel()` (client disconnect) via an `AbortController`. See
@@ -75,6 +80,6 @@ spec agreed and recorded (ADR-014 + docs/recipe-ingestion.md). Next action: **RI
 persistence foundation: a configurable host **data-root** + bind-mount support, Compose-style
 `volumes`/`ports`/ `env` with `${COMPOSITZ_DATA}` interpolation, and effective-spec derivation
 (manifest ⊕ per-install override) in core. Touches `packages/core/src/recipe/run.ts` + `manifest.ts`
-(breaking, unreleased) and a new override/store module. Manual check still pending against a live
-Docker engine (real-event status reflection, install build-log, up/down/"Open UI", button transition
-— only offline paths were smokable here).
+(breaking, unreleased) and a new override/store module. (Online paths are now verified via
+DOCKER_HOST=tcp://host.docker.internal:2375 — see [[compositz-docker-tcp-debug]]; only the
+in-browser button optimistic transition is still eyeball-only.)
