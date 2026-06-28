@@ -17,6 +17,10 @@ denort*
 .DS_Store
 Thumbs.db
 
+# Local toolchain — downloaded Deno >= 2.9 (devbox global caps at 2.8.3; `deno desktop` needs 2.9)
+/bin/deno
+/bin/deno.exe
+
 # Local scratch
 /tmp/
 *.log
