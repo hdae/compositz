@@ -4,8 +4,8 @@ Run each local-AI app as **one isolated Docker container** — Pinokio's one-cli
 container isolation and Dockge-style management. Windows desktop app + Linux CLI.
 
 > Status (2026-06): Phase 0 & 1 done and verified; Phase 2 (management UI) in progress —
-> **`packages/ui`** (Fresh 2 / Vite) lists recipes and is growing live status + up/down actions; the
-> UI calls `@compositz/core` in-process (the standalone Hono server was retired). Full plan in
+> **`packages/ui`** (Fresh 2 / Vite) lists recipes with live SSE status and up/down actions, calling
+> `@compositz/core` in-process (the standalone Hono server was retired). Full plan in
 > **[docs/](docs/README.md)**.
 
 ## Documentation

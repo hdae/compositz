@@ -40,11 +40,17 @@ De-risk the two load-bearing unknowns before building.
   View-model derivation is a pure, Docker-free, unit-tested function. Workspace integration
   (membership mandatory, root `nodeModulesDir: "auto"`, server-only boundary fault-tested) in
   [decisions.md ADR-012](decisions.md#adr-012--packagesui-joins-the-deno-workspace-root-nodemodulesdir-auto--accepted-verified).
-- ⏳ Build out the management UI (Increment 2+): install/up/down actions, live status, "open web
-  UI", streamed build/run logs.
+- ✅ **Live status + up/down actions (Increment 2)**: the recipe list is an island that live-updates
+  from a Fresh SSE route handler (`/api/events`, polls `EngineClient.ps` every 2s) and posts to
+  `/api/recipes/:id/:action` for up/down. `up` builds the image first if missing. SSE teardown keys
+  off `ReadableStream.cancel()` (client disconnect), not `request.signal` (deno#29111 legacy abort).
+  Runtime-smoked on the offline-degrade path (no Docker here).
+- ⏳ **Increment 2c**: explicit install with a **streamed build log** (SSE of core's build
+  iterable), and "open web UI" surfaced once running.
+- ⏳ **Recipe ingestion**: load a recipe file in the app → save it to a persistent data directory;
+  `recipesDir` becomes that app-data dir (currently the repo `recipes/`, env-overridable). Pairs
+  with the Phase 4 catalog.
 - ⏳ Desktop shell: list/launch recipes, embed each app's web UI (multi-window).
-- ⏳ Live status channel: a Fresh route handler streams SSE (container status / build logs) from
-  core's async-iterable streams; islands consume it via `EventSource`.
 
 ## Phase 3 — Hardening ⏳
 
