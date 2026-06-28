@@ -1,0 +1,5 @@
+{
+  "name": "@compositz/cli",
+  "version": "0.0.0",
+  "exports": "./main.ts"
+}
