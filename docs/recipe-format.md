@@ -1,5 +1,10 @@
 # Recipe format
 
+> This documents the **live v1 manifest**. A breaking **v2** (mounts/cache/multi-web ports + author
+> metadata) is agreed and lands in increment **RI-1** — see
+> [recipe-ingestion.md](recipe-ingestion.md#manifest-v2-target-spec--implemented-in-ri-1). This file
+> flips to v2 when RI-1 does.
+
 A **recipe** is a directory under `recipes/<id>/` containing:
 
 ```

@@ -54,11 +54,12 @@ De-risk the two load-bearing unknowns before building.
   safety refresh + 2 s reconnect/offline fallback. Replaced the 2 s poll. **Verified against the
   real engine** (a down→up cycle streamed `running→exited→[]→created→running` live), along with the
   Increment 1/2/2c online paths.
-- ⏳ **Recipe ingestion + storage + launch config (RI-1…RI-4)** — spec agreed, see
-  [recipe-ingestion.md](recipe-ingestion.md): tar/zip + GitHub sourcing into an app-data recipe
-  store; a configurable host **data-root** for outputs (bind-mounted via `${COMPOSITZ_DATA}`); a
-  **Compose-aligned** per-install override overlay (`environment`/`ports`/`volumes`). Manifest
-  evolves toward Compose syntax (breaking; unreleased).
+- ⏳ **Recipe ingestion + storage + launch config (RI-1…RI-4)** — design agreed, **manifest v2
+  finalized**, see [recipe-ingestion.md](recipe-ingestion.md): RI-1 = manifest v2 (mounts with
+  bind/volume `placement`, `cache` presets+custom with env-injected paths, multi-`web` ports,
+  `image`-or-`build`) + 3-tier storage + configurable host **data-root** for bind outputs +
+  effective-spec derivation (manifest ⊕ per-install override). RI-2/3 = tar/zip + GitHub sourcing
+  into an app-data recipe store. RI-4 = override UI. Breaking (unreleased).
 - ⏳ Desktop shell: list/launch recipes, embed each app's web UI (multi-window).
 
 ## Phase 3 — Hardening ⏳

@@ -29,13 +29,15 @@ reconnect/offline fallback. The 2 s poll is gone. **Verified against the real en
 1/2/2c online paths (engine-online list, install build-log NDJSON, up/down POST) also verified the
 same way.
 
-**Next (sequenced):** **RI-1…RI-4** (recipe ingestion + storage + launch config) per the now-agreed
-spec in [docs/recipe-ingestion.md](../../docs/recipe-ingestion.md) /
-[ADR-014](../../docs/decisions.md). Key agreed principles: **stay on Docker's rails** (borrow Docker
-Compose config vocabulary — `environment`/`ports`/`volumes` + `${VAR}` — no custom schema; runtime
-stays single-container, ADR-001 holds); **3-tier storage** (app-data = recipes/overrides/settings;
-configurable **data-root** = host-bind outputs via `${COMPOSITZ_DATA}`; shared named volume =
-caches); sources = **tar/zip + GitHub**. Desktop shell after.
+**Next (sequenced):** **RI-1…RI-4** (recipe ingestion + storage + launch config). The **manifest
+v2** shape is now finalized — full spec in
+[docs/recipe-ingestion.md](../../docs/recipe-ingestion.md#manifest-v2-target-spec--implemented-in-ri-1)
+/ [ADR-014](../../docs/decisions.md). Key agreed points: every field maps to a Docker concept +
+light author metadata (no settings DSL, runtime single-container — ADR-001 holds); `build` XOR
+`image`; `ports[]` `name`+multi-`web`(+auto host port); `mounts[]` `name`+`placement`(default
+**volume**, bind host path = `<data-root>/<id>/<name>`); `cache[]` presets
+`venv`/`huggingface`+`custom`, **env-injected paths**, per-instance venv subpath fixed; `env[]`
+`required`+`default`. Sources = tar/zip + GitHub. Desktop shell after.
 
 ## Decisions recently settled
 
@@ -76,10 +78,10 @@ caches); sources = **tar/zip + GitHub**. Desktop shell after.
 ## Resume point
 
 UI Increments 1/2/2c + RT (Docker `/events` real-time) are committed and green; recipe-ingestion
-spec agreed and recorded (ADR-014 + docs/recipe-ingestion.md). Next action: **RI-1** — the
-persistence foundation: a configurable host **data-root** + bind-mount support, Compose-style
-`volumes`/`ports`/ `env` with `${COMPOSITZ_DATA}` interpolation, and effective-spec derivation
-(manifest ⊕ per-install override) in core. Touches `packages/core/src/recipe/run.ts` + `manifest.ts`
-(breaking, unreleased) and a new override/store module. (Online paths are now verified via
-DOCKER_HOST=tcp://host.docker.internal:2375 — see [[compositz-docker-tcp-debug]]; only the
-in-browser button optimistic transition is still eyeball-only.)
+spec agreed and recorded — **manifest v2 finalized** (ADR-014 + docs/recipe-ingestion.md). The user
+asked to **/compact, then implement**. Next action after compact: **RI-1** — implement manifest v2
+(`packages/core/src/recipe/manifest.ts` Zod schema + `run.ts` `toCreateSpec` + the example recipe +
+`recipe-format.md`, all breaking/unreleased), the 3-tier storage + data-root + bind/volume mounts +
+cache provisioning & env injection, and effective-spec derivation (manifest ⊕ per-install override).
+Verify with `DOCKER_HOST=tcp://host.docker.internal:2375` (see [[compositz-docker-tcp-debug]] — real
+up/down/install/events work here; keep actions managed-only + reversible).
