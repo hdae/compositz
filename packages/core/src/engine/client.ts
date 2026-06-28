@@ -1,0 +1,246 @@
+// Typed Docker Engine API client. One fresh connection per request (Connection: close);
+// streaming endpoints (pull, logs) return async generators that close the connection
+// when fully consumed.
+
+import { connect, type DockerEndpoint, type DuplexConn, resolveEndpoint } from "../transport.ts";
+import { jsonLines, readResponse, readText, writeRequest } from "../http.ts";
+import { CompositzError, EngineHttpError } from "../errors.ts";
+import { demuxLog } from "./logs.ts";
+import type {
+  BuildOptions,
+  BuildProgress,
+  ContainerCreateResponse,
+  ContainerCreateSpec,
+  ContainerSummary,
+  ContainerWaitResponse,
+  LogFrame,
+  LogsOptions,
+  PullProgress,
+  VersionResponse,
+} from "./types.ts";
+
+const encoder = new TextEncoder();
+
+/** Default pinned API version. Server (1.54) negotiates down; min supported is 1.40. */
+const DEFAULT_API_VERSION = "1.43";
+
+export interface EngineClientOptions {
+  endpoint?: DockerEndpoint;
+  apiVersion?: string;
+}
+
+export class EngineClient {
+  readonly endpoint: DockerEndpoint;
+  #apiVersion: string;
+
+  constructor(opts: EngineClientOptions = {}) {
+    this.endpoint = opts.endpoint ?? resolveEndpoint();
+    this.#apiVersion = opts.apiVersion ?? DEFAULT_API_VERSION;
+  }
+
+  // --- lifecycle -----------------------------------------------------------
+
+  /** GET /_ping — returns "OK" when the engine is reachable. */
+  async ping(): Promise<string> {
+    const conn = await this.#open();
+    try {
+      await writeRequest(conn, { method: "GET", path: "/_ping" });
+      const res = await readResponse(conn);
+      const text = await readText(res);
+      if (res.status !== 200) throw new EngineHttpError(res.status, res.statusText, text);
+      return text.trim();
+    } finally {
+      conn.close();
+    }
+  }
+
+  version(): Promise<VersionResponse> {
+    return this.#call<VersionResponse>("GET", "/version") as Promise<VersionResponse>;
+  }
+
+  /** POST /images/create — pull an image, streaming progress events. */
+  async pull(ref: string, onProgress?: (p: PullProgress) => void): Promise<void> {
+    const { name, tag } = splitImageRef(ref);
+    const q = new URLSearchParams({ fromImage: name });
+    if (tag) q.set("tag", tag);
+    const conn = await this.#open();
+    try {
+      await writeRequest(conn, { method: "POST", path: this.#path(`/images/create?${q}`) });
+      const res = await readResponse(conn);
+      if (res.status >= 300) {
+        throw new EngineHttpError(res.status, res.statusText, await readText(res));
+      }
+      for await (const obj of jsonLines(res.body)) {
+        const p = obj as PullProgress;
+        if (p.error) throw new CompositzError(`pull failed: ${p.error}`);
+        onProgress?.(p);
+      }
+    } finally {
+      conn.close();
+    }
+  }
+
+  async create(spec: ContainerCreateSpec, name?: string): Promise<ContainerCreateResponse> {
+    const path = name
+      ? `/containers/create?name=${encodeURIComponent(name)}`
+      : "/containers/create";
+    return (await this.#call<ContainerCreateResponse>("POST", path, { body: spec }))!;
+  }
+
+  /** POST /containers/{id}/start (204 ok; 304 = already started). */
+  async start(id: string): Promise<void> {
+    await this.#call("POST", `/containers/${id}/start`, { ok: [304] });
+  }
+
+  /** POST /containers/{id}/stop (204 ok; 304 = already stopped). */
+  async stop(id: string, timeoutSec?: number): Promise<void> {
+    const q = timeoutSec != null ? `?t=${timeoutSec}` : "";
+    await this.#call("POST", `/containers/${id}/stop${q}`, { ok: [304] });
+  }
+
+  /** POST /containers/{id}/wait — blocks until the container exits. */
+  async wait(id: string): Promise<ContainerWaitResponse> {
+    return (await this.#call<ContainerWaitResponse>("POST", `/containers/${id}/wait`))!;
+  }
+
+  async remove(id: string, opts: { force?: boolean; volumes?: boolean } = {}): Promise<void> {
+    const q = new URLSearchParams();
+    if (opts.force) q.set("force", "1");
+    if (opts.volumes) q.set("v", "1");
+    const qs = q.toString();
+    await this.#call("DELETE", `/containers/${id}${qs ? `?${qs}` : ""}`);
+  }
+
+  inspect(id: string): Promise<unknown> {
+    return this.#call("GET", `/containers/${id}/json`);
+  }
+
+  /** GET /images/{ref}/json — true if the image exists locally. */
+  async imageExists(ref: string): Promise<boolean> {
+    const conn = await this.#open();
+    try {
+      await writeRequest(conn, { method: "GET", path: this.#path(`/images/${ref}/json`) });
+      const res = await readResponse(conn);
+      await readText(res); // drain
+      return res.status === 200;
+    } finally {
+      conn.close();
+    }
+  }
+
+  /** GET /containers/json — list containers, optionally filtered (e.g. by label). */
+  async ps(opts: { all?: boolean; filters?: Record<string, string[]> } = {}): Promise<
+    ContainerSummary[]
+  > {
+    const q = new URLSearchParams();
+    q.set("all", opts.all ? "1" : "0");
+    if (opts.filters) q.set("filters", JSON.stringify(opts.filters));
+    return (await this.#call<ContainerSummary[]>("GET", `/containers/json?${q}`)) ?? [];
+  }
+
+  /** GET /containers/{id}/logs — demultiplexed stdout/stderr frames. */
+  async *logs(id: string, opts: LogsOptions = {}): AsyncGenerator<LogFrame> {
+    const q = new URLSearchParams();
+    q.set("stdout", opts.stdout === false ? "0" : "1");
+    q.set("stderr", opts.stderr === false ? "0" : "1");
+    if (opts.follow) q.set("follow", "1");
+    if (opts.timestamps) q.set("timestamps", "1");
+    if (opts.tail != null) q.set("tail", String(opts.tail));
+    if (opts.since != null) q.set("since", String(opts.since));
+    const conn = await this.#open();
+    try {
+      await writeRequest(conn, { method: "GET", path: this.#path(`/containers/${id}/logs?${q}`) });
+      const res = await readResponse(conn);
+      if (res.status >= 300) {
+        throw new EngineHttpError(res.status, res.statusText, await readText(res));
+      }
+      if (opts.tty) {
+        // TTY containers stream raw bytes with no 8-byte framing.
+        for await (const chunk of res.body) yield { stream: "stdout", data: chunk };
+      } else {
+        yield* demuxLog(res.body);
+      }
+    } finally {
+      conn.close();
+    }
+  }
+
+  /**
+   * POST /build — build an image from a tar context, streaming progress.
+   * Uses the classic builder (the plain Engine API endpoint); progress objects
+   * carry `stream` lines and a terminal `aux.ID` with the built image id.
+   */
+  async *build(context: Uint8Array, opts: BuildOptions = {}): AsyncGenerator<BuildProgress> {
+    const q = new URLSearchParams();
+    for (const t of [opts.tag, ...(opts.tags ?? [])].filter((t): t is string => !!t)) {
+      q.append("t", t);
+    }
+    q.set("dockerfile", opts.dockerfile ?? "Dockerfile");
+    if (opts.buildArgs) q.set("buildargs", JSON.stringify(opts.buildArgs));
+    if (opts.platform) q.set("platform", opts.platform);
+    if (opts.noCache) q.set("nocache", "1");
+    if (opts.pull) q.set("pull", "1");
+
+    const conn = await this.#open();
+    try {
+      await writeRequest(conn, {
+        method: "POST",
+        path: this.#path(`/build?${q}`),
+        headers: { "Content-Type": "application/x-tar" },
+        body: context,
+      });
+      const res = await readResponse(conn);
+      if (res.status >= 300) {
+        throw new EngineHttpError(res.status, res.statusText, await readText(res));
+      }
+      for await (const obj of jsonLines(res.body)) {
+        const p = obj as BuildProgress;
+        if (p.error) throw new CompositzError(`build failed: ${p.error ?? p.errorDetail?.message}`);
+        yield p;
+      }
+    } finally {
+      conn.close();
+    }
+  }
+
+  // --- internals -----------------------------------------------------------
+
+  #open(): Promise<DuplexConn> {
+    return connect(this.endpoint);
+  }
+
+  #path(p: string, versioned = true): string {
+    return versioned ? `/v${this.#apiVersion}${p}` : p;
+  }
+
+  /** Non-streaming call. Throws EngineHttpError unless status < 300 or in `ok`. */
+  async #call<T>(
+    method: string,
+    path: string,
+    opts: { body?: unknown; ok?: number[] } = {},
+  ): Promise<T | undefined> {
+    const conn = await this.#open();
+    try {
+      const body = opts.body === undefined ? undefined : encoder.encode(JSON.stringify(opts.body));
+      const headers = body ? { "Content-Type": "application/json" } : undefined;
+      await writeRequest(conn, { method, path: this.#path(path), headers, body });
+      const res = await readResponse(conn);
+      const text = await readText(res);
+      if (!(res.status < 300 || (opts.ok ?? []).includes(res.status))) {
+        throw new EngineHttpError(res.status, res.statusText, text);
+      }
+      return text.length ? (JSON.parse(text) as T) : undefined;
+    } finally {
+      conn.close();
+    }
+  }
+}
+
+/** Split "repo[:tag]" / "host:port/repo[:tag]" / "repo@sha256:..." into name + tag. */
+export function splitImageRef(ref: string): { name: string; tag: string } {
+  if (ref.includes("@")) return { name: ref, tag: "" }; // digest-pinned
+  const slash = ref.lastIndexOf("/");
+  const colon = ref.lastIndexOf(":");
+  if (colon > slash) return { name: ref.slice(0, colon), tag: ref.slice(colon + 1) };
+  return { name: ref, tag: "latest" };
+}
