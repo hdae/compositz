@@ -6,6 +6,7 @@ import {
   type RecipeView,
   toContainerStatuses,
   toRecipeRows,
+  withOptimisticAction,
 } from "./dashboard.ts";
 
 const RECIPE_LABEL = "io.compositz.recipe";
@@ -79,6 +80,36 @@ Deno.test("installed reflects whether the recipe's image tag exists locally", ()
 
 Deno.test("no recipes yields no rows", () => {
   assertEquals(toRecipeRows([], snapshot()), []);
+});
+
+Deno.test("withOptimisticAction(up) yields a running container for the recipe", () => {
+  const out = withOptimisticAction([], "hello-web", "up");
+  assertEquals(out, [{ recipe: "hello-web", state: "running" }]);
+  // reflected as running by toRecipeRows
+  assertEquals(toRecipeRows([view()], { containers: out, installedTags: [] })[0].running, true);
+});
+
+Deno.test("withOptimisticAction(down) drops the recipe's containers", () => {
+  const before: ContainerStatus[] = [{ recipe: "hello-web", state: "running" }];
+  assertEquals(withOptimisticAction(before, "hello-web", "down"), []);
+});
+
+Deno.test("withOptimisticAction does not touch other recipes' containers", () => {
+  const before: ContainerStatus[] = [{ recipe: "other", state: "running" }];
+  assertEquals(withOptimisticAction(before, "hello-web", "up"), [
+    { recipe: "other", state: "running" },
+    { recipe: "hello-web", state: "running" },
+  ]);
+  assertEquals(withOptimisticAction(before, "hello-web", "down"), [
+    { recipe: "other", state: "running" },
+  ]);
+});
+
+Deno.test("withOptimisticAction(up) replaces a stale entry for the same recipe", () => {
+  const before: ContainerStatus[] = [{ recipe: "hello-web", state: "exited" }];
+  assertEquals(withOptimisticAction(before, "hello-web", "up"), [
+    { recipe: "hello-web", state: "running" },
+  ]);
 });
 
 Deno.test("toContainerStatuses maps the recipe label and state, null when unlabeled", () => {

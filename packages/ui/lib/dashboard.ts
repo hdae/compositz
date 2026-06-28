@@ -94,3 +94,21 @@ export function toRecipeRows(
     return { ...base, installed: snapshot.installedTags.includes(r.imageTag), running };
   });
 }
+
+/**
+ * Fold a just-confirmed up/down action into a container snapshot, so the UI
+ * reflects the new state the moment the POST resolves (the operation is complete
+ * server-side) instead of waiting up to one SSE poll — which otherwise flickers
+ * the button back to its old label. The next real snapshot reconciles.
+ *
+ * `up` ⇒ exactly one running container for the recipe; `down` ⇒ none. Other
+ * recipes' containers are untouched.
+ */
+export function withOptimisticAction(
+  containers: ContainerStatus[],
+  recipeId: string,
+  action: "up" | "down",
+): ContainerStatus[] {
+  const others = containers.filter((c) => c.recipe !== recipeId);
+  return action === "up" ? [...others, { recipe: recipeId, state: "running" }] : others;
+}

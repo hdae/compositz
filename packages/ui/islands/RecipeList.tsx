@@ -4,6 +4,7 @@ import {
   type RecipeRow,
   type RecipeView,
   toRecipeRows,
+  withOptimisticAction,
 } from "../lib/dashboard.ts";
 
 // CLIENT island. It imports ONLY types + the pure `toRecipeRows` from
@@ -49,11 +50,15 @@ export default function RecipeList({ views, initial }: { views: RecipeView[]; in
     setPending((p) => ({ ...p, [id]: true }));
     try {
       const res = await fetch(`/api/recipes/${id}/${action}`, { method: "POST" });
-      if (!res.ok) {
+      if (res.ok) {
+        // The POST resolves only once the op is complete server-side, but the
+        // SSE-driven `containers` lags up to one poll. Fold the result in now so
+        // the label flips straight from "…" to the new state (no flicker back).
+        setContainers((cs) => withOptimisticAction(cs, id, action));
+      } else {
         const body = await res.json().catch(() => ({})) as { error?: string };
         console.error(`${action} ${id} failed:`, body.error ?? res.status);
       }
-      // Success: the SSE snapshot reflects the new state within ~2s.
     } finally {
       setPending((p) => ({ ...p, [id]: false }));
     }
