@@ -49,9 +49,10 @@ De-risk the two load-bearing unknowns before building.
   (`POST /api/recipes/:id/install`, NDJSON read via `fetch`), then marks the recipe installed. "Open
   UI" surfaces once running. POST-stream chosen over EventSource (GET) to avoid re-triggering the
   build on reconnect.
-- ⏳ **Real-time status (RT)** — replace the 2 s `ps` poll with Docker `GET /events`
-  (`EngineClient.events()`); the Fresh SSE handler goes event-driven (long safety refresh +
-  reconnect). Sequenced first; independent of recipe ingestion.
+- ✅ **Real-time status (RT)** — `EngineClient.events()` streams Docker `GET /events`; the Fresh SSE
+  handler (`/api/events`) is event-driven (push on each container lifecycle change), with a 15 s
+  safety refresh + 2 s reconnect/offline fallback. Replaced the 2 s poll. (Engine-online event
+  reflection needs a manual Docker check; offline-degrade smoked here.)
 - ⏳ **Recipe ingestion + storage + launch config (RI-1…RI-4)** — spec agreed, see
   [recipe-ingestion.md](recipe-ingestion.md): tar/zip + GitHub sourcing into an app-data recipe
   store; a configurable host **data-root** for outputs (bind-mounted via `${COMPOSITZ_DATA}`); a

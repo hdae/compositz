@@ -22,15 +22,20 @@ still need manual Docker checks. SSE teardown uses `ReadableStream.cancel()`, no
 auto-scrolling log, and optimistically marks installed on done. POST-stream (not EventSource/GET) so
 a reconnect can't re-trigger the build.
 
-**Next (sequenced):** **RT** — Docker `GET /events` real-time status (add `EngineClient.events()`,
-make `/api/events` event-driven, drop the 2 s poll). Then **RI-1…RI-4** (recipe ingestion +
-storage + launch config) per the now-agreed spec in
-[docs/recipe-ingestion.md](../../docs/recipe-ingestion.md) / [ADR-014](../../docs/decisions.md). Key
-agreed principles: **stay on Docker's rails** (borrow Docker Compose config vocabulary —
-`environment`/`ports`/`volumes` + `${VAR}` — no custom schema; runtime stays single-container,
-ADR-001 holds); **3-tier storage** (app-data = recipes/overrides/settings; configurable
-**data-root** = host-bind outputs via `${COMPOSITZ_DATA}`; shared named volume = caches); sources =
-**tar/zip + GitHub**. Desktop shell after.
+**RT — ✅ DONE.** `EngineClient.events()` streams Docker `GET /events`; `/api/events` is now
+event-driven (push per container lifecycle change) with a 15 s safety refresh + 2 s
+reconnect/offline fallback. The 2 s poll is gone. Offline-degrade smoked; engine-online event
+reflection needs a manual Docker check.
+
+**Next (sequenced):** **RI-1…RI-4** (recipe ingestion + storage + launch config) per the now-agreed
+spec in [docs/recipe-ingestion.md](../../docs/recipe-ingestion.md) /
+[ADR-014](../../docs/decisions.md). Key agreed principles: **stay on Docker's rails** (borrow Docker
+Compose config vocabulary — [docs/recipe-ingestion.md](../../docs/recipe-ingestion.md) /
+[ADR-014](../../docs/decisions.md). Key agreed principles: **stay on Docker's rails** (borrow Docker
+Compose config vocabulary — `environment`/`ports`/`volumes` + `${VAR}` — no custom schema; runtime
+stays single-container, ADR-001 holds); **3-tier storage** (app-data = recipes/overrides/settings;
+configurable **data-root** = host-bind outputs via `${COMPOSITZ_DATA}`; shared named volume =
+caches); sources = **tar/zip + GitHub**. Desktop shell after.
 
 ## Decisions recently settled
 
@@ -67,11 +72,11 @@ ADR-001 holds); **3-tier storage** (app-data = recipes/overrides/settings; confi
 
 ## Resume point
 
-`packages/ui` Increments 1, 2, 2c are committed and green. Recipe-ingestion spec is agreed and
-recorded (ADR-014 + docs/recipe-ingestion.md). Next action: **RT** — add `EngineClient.events()` to
-core (stream Docker `GET /events`, filtered to managed containers) and rewrite
-`routes/api/events.ts` to push on each event (keep a long safety refresh + reconnect/offline
-fallback), dropping the 2 s poll. Then RI-1 (storage + bind mounts + Compose-style mounts/`${VAR}` +
-effective-spec derivation). Key files: `packages/core/src/engine/client.ts` (add events()),
-`routes/api/events.ts`, `lib/dashboard.ts`. Manual check still pending against a live Docker engine
-(install build-log, up/down/"Open UI", button transition — only offline paths were smokable here).
+UI Increments 1/2/2c + RT (Docker `/events` real-time) are committed and green; recipe-ingestion
+spec agreed and recorded (ADR-014 + docs/recipe-ingestion.md). Next action: **RI-1** — the
+persistence foundation: a configurable host **data-root** + bind-mount support, Compose-style
+`volumes`/`ports`/ `env` with `${COMPOSITZ_DATA}` interpolation, and effective-spec derivation
+(manifest ⊕ per-install override) in core. Touches `packages/core/src/recipe/run.ts` + `manifest.ts`
+(breaking, unreleased) and a new override/store module. Manual check still pending against a live
+Docker engine (real-event status reflection, install build-log, up/down/"Open UI", button transition
+— only offline paths were smokable here).
