@@ -96,9 +96,9 @@ a laufey 0.4.0 ↔ WebView2 149 skew, fixed upstream in
 the released 2.9.0**; no 2.9.1/2.9.2 exists yet (canary-only as of 2026-06-28), so the earlier
 "expected 2.9.1/2.9.2" is an unconfirmed guess. This does not affect us: `--backend cef` bundles its
 own Chromium (~440 MB), bypasses WebView2 entirely, and renders the container UI on **stable 2.9.0**
-(machine-verified). Core's npipe transport works inside the desktop runtime (and `node:net` named-pipe
-connect is confirmed implemented since 2.6.2 — deno#28332 closed 2025-12-19); build-time `-A` is baked
-in.
+(machine-verified). Core's npipe transport works inside the desktop runtime (and `node:net`
+named-pipe connect is confirmed implemented since 2.6.2 — deno#28332 closed 2025-12-19); build-time
+`-A` is baked in.
 
 **Consequences:** ship CEF for now; **revisit the lightweight WebView2 backend** once the fix lands
 (Phase 4). `deno task desktop` builds CEF; `deno task desktop:webview` builds the (currently broken)
@@ -114,11 +114,11 @@ system-webview variant for re-testing.
 **Why:** all three candidates (TanStack Start, Fresh, SvelteKit) were empirically spiked on Deno
 2.9.0 (isolated scratch dirs, project-local `bin/deno`). The decisive criterion — a server route
 handler imports the real `@compositz/core` (→ `node:net` / `Deno.connect` / jsr `@std/*`), bundles
-**server-only**, the client stays clean, and `deno desktop` packages it — **passed for all three**, so
-the choice turned on Deno-nativeness vs ecosystem familiarity, not raw feasibility. Fresh won on:
+**server-only**, the client stays clean, and `deno desktop` packages it — **passed for all three**,
+so the choice turned on Deno-nativeness vs ecosystem familiarity, not raw feasibility. Fresh won on:
 
-- **Least toolchain friction**: `@fresh/plugin-vite` resolves the jsr / import-map deps natively — no
-  `@deno/vite-plugin` bridge that both Start and SvelteKit required.
+- **Least toolchain friction**: `@fresh/plugin-vite` resolves the jsr / import-map deps natively —
+  no `@deno/vite-plugin` bridge that both Start and SvelteKit required.
 - **Cleanest `deno desktop`**: detected out of the box and consumes `_fresh/` directly with no
   output-path shim (Start needs a `.output/server/index.mjs` re-export; SvelteKit needs a
   `svelte.config.js` to be detected at all), and the lightest bundle (73 MB vs 228 / 107 MB
@@ -126,7 +126,8 @@ the choice turned on Deno-nativeness vs ecosystem familiarity, not raw feasibili
 - **Deno alignment**: Fresh is Deno's own framework (powers deno.com), the best odds of tracking
   future `deno desktop` / Deno changes. The islands model makes the server/client boundary
   structural, and `fresh:check-imports` **fails the build** when `node:*` reaches client code
-  (verified by fault injection — the mirror of Start's Import Protection and SvelteKit's `$lib/server`).
+  (verified by fault injection — the mirror of Start's Import Protection and SvelteKit's
+  `$lib/server`).
 - The user is Preact-experienced; Vite is Fresh 2's default/recommended path.
 
 **Consequences:**
@@ -166,10 +167,10 @@ namespace live only in `packages/core/src/brand.ts`.
 
 ## ADR-011 — Project-local Deno 2.9 binary (`bin/deno`) · ✅ Accepted
 
-`deno desktop` is a Deno 2.9 feature, but this dev box's devbox-global Deno caps at **2.8.3**. We keep
-an official Deno **2.9.0** linux-x64 binary at `bin/deno` (SHA256-verified, **gitignored**) and invoke
-it by absolute path for any 2.9 feature (`deno desktop`, the `packages/ui` build). The PATH Deno
-(2.8.3) stays fine for everything else.
+`deno desktop` is a Deno 2.9 feature, but this dev box's devbox-global Deno caps at **2.8.3**. We
+keep an official Deno **2.9.0** linux-x64 binary at `bin/deno` (SHA256-verified, **gitignored**) and
+invoke it by absolute path for any 2.9 feature (`deno desktop`, the `packages/ui` build). The PATH
+Deno (2.8.3) stays fine for everything else.
 
 **Why:** unblock the desktop / UI work locally without waiting on devbox to ship ≥ 2.9.
 

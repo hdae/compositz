@@ -17,8 +17,9 @@ Planned steps: scaffold `deno run -Ar jsr:@fresh/init . --tailwind` into `packag
 ## Decisions recently settled
 
 - **ADR-008 (settled): UI framework = Fresh 2 (Vite).** All 3 candidates (Start / Fresh / SvelteKit)
-  empirically spiked on Deno 2.9.0; all feasible for in-process `@compositz/core` with a clean client
-  boundary; Fresh chosen for Deno-nativeness + cleanest `deno desktop`. See `docs/decisions.md`.
+  empirically spiked on Deno 2.9.0; all feasible for in-process `@compositz/core` with a clean
+  client boundary; Fresh chosen for Deno-nativeness + cleanest `deno desktop`. See
+  `docs/decisions.md`.
 - **ADR-011: project-local `bin/deno` (2.9.0, gitignored)** because devbox Deno caps at 2.8.3.
 - **`packages/server` (Hono) retained** as headless `compositz serve`; removal from the UI data path
   deferred — revisit once `packages/ui` is real.
@@ -33,7 +34,7 @@ Planned steps: scaffold `deno run -Ar jsr:@fresh/init . --tailwind` into `packag
 - **`deno desktop` needs Deno ≥ 2.9** → invoke `/home/developer/workspace/compositz/bin/deno`
   (2.9.0). It is experimental in 2.9.0; the default WebView2 backend is broken on Windows (fix
   #35566 canary-only) — use `--backend cef`.
-- **No `docker` in this dev env** → engine round-trips and `deno desktop` *launch* can't run here,
+- **No `docker` in this dev env** → engine round-trips and `deno desktop` _launch_ can't run here,
   only build / bundle. Hand off runtime checks as numbered manual steps.
 
 ## Resume point (post-compact)

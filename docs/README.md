@@ -23,21 +23,21 @@ _manager_ is trusted; the _apps_ are sandboxed.
 
 ## Status at a glance (2026-06-28)
 
-| Component          | Status                                                                                                                                                                           |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/core`    | ✅ Implemented + tested (30 unit tests). Docker Engine client, transports, recipe model (Zod), build, operations                                                                 |
-| `packages/cli`     | ✅ `doctor` / `install` / `up` / `down` / `ps` / `hello` — verified against the live engine                                                                                      |
-| `packages/server`  | ✅ Hono `/api` + SSE — verified against the live engine                                                                                                                          |
-| `packages/desktop` | ✅ Deno Desktop (CEF) recipe-driven launch — renders a recipe's web UI (machine-verified). WebView2 backend blocked on an upstream Deno fix                                      |
+| Component          | Status                                                                                                                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/core`    | ✅ Implemented + tested (30 unit tests). Docker Engine client, transports, recipe model (Zod), build, operations                                                          |
+| `packages/cli`     | ✅ `doctor` / `install` / `up` / `down` / `ps` / `hello` — verified against the live engine                                                                               |
+| `packages/server`  | ✅ Hono `/api` + SSE — verified against the live engine                                                                                                                   |
+| `packages/desktop` | ✅ Deno Desktop (CEF) recipe-driven launch — renders a recipe's web UI (machine-verified). WebView2 backend blocked on an upstream Deno fix                               |
 | `packages/ui`      | ⏳ Not started — **decided: Fresh 2 (Vite)** (all 3 candidates spiked on Deno 2.9; see [decisions.md ADR-008](decisions.md#adr-008--ui-framework-fresh-2-vite--accepted)) |
 
-| Phase                                                                                    | Status                                                           |
-| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| **0 — Foundations PoC** (Docker control on Win+Linux; Deno Desktop window)               | ✅ Done, empirically verified                                    |
-| **1 — Recipe → build → run**                                                             | ✅ Core flow done, verified                                      |
+| Phase                                                                                    | Status                                                                                     |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **0 — Foundations PoC** (Docker control on Win+Linux; Deno Desktop window)               | ✅ Done, empirically verified                                                              |
+| **1 — Recipe → build → run**                                                             | ✅ Core flow done, verified                                                                |
 | **2 — Management UI**                                                                    | 🔄 In progress (Hono server done; UI framework decided = Fresh 2/Vite; `packages/ui` next) |
-| **3 — Hardening** (shared cache, volumes/GC, GPU detection, s6 multi-daemon, versioning) | ⏳ Planned                                                       |
-| **4 — Packaging & distribution** (signing, update, catalog, recipe tooling)              | ⏳ Planned                                                       |
+| **3 — Hardening** (shared cache, volumes/GC, GPU detection, s6 multi-daemon, versioning) | ⏳ Planned                                                                                 |
+| **4 — Packaging & distribution** (signing, update, catalog, recipe tooling)              | ⏳ Planned                                                                                 |
 
 ## Quick start
 
