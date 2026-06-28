@@ -1,0 +1,5 @@
+{
+  "name": "@compositz/desktop",
+  "version": "0.0.0",
+  "exports": "./main.ts"
+}
