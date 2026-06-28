@@ -43,7 +43,7 @@ export const handler = define.handlers({
             ok: true,
             id: result.id,
             usedGpu: result.usedGpu,
-            url: webUrl(recipe.manifest) ?? null,
+            url: webUrl(recipe.manifest, { hostPorts: result.hostPorts }) ?? null,
           });
         }
         case "down": {

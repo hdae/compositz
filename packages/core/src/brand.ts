@@ -31,7 +31,28 @@ export function containerName(recipeId: string): string {
   return `${BRAND.name}-${recipeId}`;
 }
 
-/** Managed named-volume for a recipe, e.g. "compositz_comfyui_models". */
+/** Managed named-volume for a recipe mount, e.g. "compositz_comfyui_models". */
 export function volumeName(recipeId: string, name: string): string {
   return `${BRAND.name}_${recipeId}_${name}`;
 }
+
+/**
+ * Managed cache volume, not scoped to one recipe (shared/global), e.g.
+ * cacheVolumeName("uv") => "compositz_uv", cacheVolumeName("cache_torch") =>
+ * "compositz_cache_torch".
+ */
+export function cacheVolumeName(suffix: string): string {
+  return `${BRAND.name}_${suffix}`;
+}
+
+/** Env var name Compositz injects into containers, e.g. envVar("INSTANCE") => "COMPOSITZ_INSTANCE". */
+export function envVar(suffix: string): string {
+  return `${BRAND.name.toUpperCase()}_${suffix}`;
+}
+
+/**
+ * In-container mount root for Compositz-managed caches/venvs, e.g. "/compositz".
+ * Recipe authors read the per-cache paths via injected env vars (see `cache[]`),
+ * never this prefix directly.
+ */
+export const MANAGED_MOUNT_ROOT = `/${BRAND.name}`;

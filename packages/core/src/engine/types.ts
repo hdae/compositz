@@ -19,10 +19,31 @@ export interface RestartPolicy {
   MaximumRetryCount?: number;
 }
 
+/**
+ * A `HostConfig.Mounts` entry. Preferred over the legacy `Binds` strings: it is
+ * unambiguous on Windows (a `C:\…` source has a colon that breaks `Binds`
+ * splitting) and expresses bind vs named-volume uniformly.
+ */
+export interface Mount {
+  Type: "bind" | "volume";
+  /** Host path (bind) or named volume (volume). */
+  Source: string;
+  /** In-container path. */
+  Target: string;
+  ReadOnly?: boolean;
+  /**
+   * Bind-only options. Unlike the legacy `Binds` strings, a `Mounts` bind does NOT
+   * auto-create a missing host source — the daemon rejects it (400). `CreateMountpoint`
+   * (API 1.44+) restores daemon-side creation, which is required since the source is
+   * on the daemon host (a remote `DOCKER_HOST` is unreachable from here).
+   */
+  BindOptions?: { CreateMountpoint?: boolean };
+}
+
 export interface HostConfig {
   Binds?: string[];
   PortBindings?: Record<string, PortBinding[]>;
-  Mounts?: unknown[];
+  Mounts?: Mount[];
   DeviceRequests?: DeviceRequest[];
   RestartPolicy?: RestartPolicy;
   AutoRemove?: boolean;

@@ -34,8 +34,9 @@ export async function loadRecipe(dir: string): Promise<Recipe> {
     context.push({ path: file.rel, data: await Deno.readFile(file.abs) });
   }
 
-  const dockerfile = manifest.build.dockerfile;
-  if (!context.some((f) => f.path === dockerfile)) {
+  // `image`-based recipes have no build context to validate.
+  const dockerfile = manifest.build?.dockerfile;
+  if (dockerfile && !context.some((f) => f.path === dockerfile)) {
     throw new CompositzError(
       `recipe "${manifest.id}": Dockerfile "${dockerfile}" not found in ${root}`,
     );

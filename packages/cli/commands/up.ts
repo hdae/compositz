@@ -20,10 +20,10 @@ export async function upCmd(args: string[]): Promise<number> {
   }
 
   console.log(bold(`starting ${recipe.manifest.name}`));
-  const { id, usedGpu } = await up(client, recipe);
+  const { id, usedGpu, hostPorts } = await up(client, recipe);
   console.log(dim(`  container ${id.slice(0, 12)}  gpu=${usedGpu ? "on" : "off"}`));
 
-  const url = webUrl(recipe.manifest);
+  const url = webUrl(recipe.manifest, { hostPorts });
   console.log(green("OK — up") + (url ? green(" at ") + cyan(url) : ""));
   return 0;
 }

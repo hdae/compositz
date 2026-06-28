@@ -81,10 +81,10 @@ async function main(): Promise<void> {
     for await (const _ of installRecipe(client, recipe)) { /* drain build stream */ }
   }
 
-  const { id, usedGpu } = await up(client, recipe);
+  const { id, usedGpu, hostPorts } = await up(client, recipe);
   await logStep(`container ${id.slice(0, 12)} up (gpu=${usedGpu ? "on" : "off"})`);
 
-  const url = webUrl(recipe.manifest);
+  const url = webUrl(recipe.manifest, { hostPorts });
   if (!url) {
     await logStep("ERROR: recipe has no web UI (no `web:` block).");
     await down(client, recipe.id);

@@ -2,27 +2,43 @@
 
 export { CompositzError, EngineHttpError } from "./src/errors.ts";
 
-export { BRAND, containerName, imageTag, label, volumeName } from "./src/brand.ts";
+export {
+  BRAND,
+  cacheVolumeName,
+  containerName,
+  envVar,
+  imageTag,
+  label,
+  MANAGED_MOUNT_ROOT,
+  volumeName,
+} from "./src/brand.ts";
+
+export { appDataDir, bindHostPath, defaultDataRoot, type Platform } from "./src/storage.ts";
 
 export {
   type BuildSpec,
+  type CacheSpec,
+  type EnvSpec,
   type GpuMode,
   type Manifest,
   MANIFEST_VERSION,
   manifestJsonSchema,
   ManifestSchema,
+  type MountMapping,
   parseManifest,
   type PortMapping,
-  type VolumeMapping,
-  type WebSpec,
 } from "./src/recipe/manifest.ts";
 export { listRecipes, loadRecipe, type Recipe } from "./src/recipe/loader.ts";
 export {
+  DEFAULT_INSTANCE,
+  type LaunchConfig,
   recipeContainerName,
   recipeImageTag,
+  resolveHostPorts,
   toCreateSpec,
   type ToSpecOptions,
-  webHostPort,
+  type WebEndpoint,
+  webEndpoints,
   webUrl,
 } from "./src/recipe/run.ts";
 export { down, installRecipe, up, type UpResult } from "./src/recipe/operations.ts";
@@ -53,6 +69,7 @@ export {
   type HostConfig,
   type LogFrame,
   type LogsOptions,
+  type Mount,
   type PullProgress,
   type VersionResponse,
 } from "./src/engine/types.ts";

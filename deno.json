@@ -11,6 +11,7 @@
   "imports": {
     "@std/fmt/colors": "jsr:@std/fmt@^1.0.3/colors",
     "@std/assert": "jsr:@std/assert@^1.0.8",
+    "@std/path": "jsr:@std/path@^1.0.8",
     "@std/tar": "jsr:@std/tar@^0.1.10",
     "@std/yaml": "jsr:@std/yaml@^1.1.1",
     "zod": "npm:zod@^4.4.3"

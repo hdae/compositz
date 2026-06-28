@@ -5,27 +5,25 @@
   "properties": {
     "manifestVersion": {
       "type": "number",
-      "const": 1
+      "const": 2
     },
     "id": {
       "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+      "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+      "description": "Key for image/container/data/labels."
     },
     "name": {
       "type": "string",
-      "minLength": 1
+      "pattern": "\\S"
     },
     "version": {
       "type": "string",
-      "minLength": 1
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
     },
     "description": {
       "type": "string"
     },
     "build": {
-      "default": {
-        "dockerfile": "Dockerfile"
-      },
       "type": "object",
       "properties": {
         "dockerfile": {
@@ -42,47 +40,33 @@
           }
         }
       },
-      "additionalProperties": false
-    },
-    "web": {
-      "type": "object",
-      "properties": {
-        "port": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 65535,
-          "description": "Container port serving the web UI."
-        },
-        "hostPort": {
-          "description": "Host port to publish it on (default = port).",
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 65535
-        },
-        "path": {
-          "default": "/",
-          "type": "string"
-        }
-      },
-      "required": [
-        "port"
-      ],
       "additionalProperties": false,
-      "description": "The container's primary web UI."
+      "description": "Build the image from a Dockerfile context (mutually exclusive with `image`)."
+    },
+    "image": {
+      "description": "Prebuilt image reference (mutually exclusive with `build`).",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]*$"
     },
     "ports": {
       "default": [],
-      "description": "Additional ports to publish (besides web).",
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$",
+            "description": "Stable key — UI button label and per-install override key."
+          },
           "container": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 65535
+            "maximum": 65535,
+            "description": "Port the app listens on inside the container."
           },
           "host": {
+            "description": "Host port to publish on (default = container; auto-bumped on conflict).",
             "type": "integer",
             "minimum": 1,
             "maximum": 65535
@@ -94,23 +78,138 @@
               "tcp",
               "udp"
             ]
+          },
+          "web": {
+            "default": false,
+            "description": "Serves a browser UI — renders an \"Open UI\" button. Multiple allowed.",
+            "type": "boolean"
+          },
+          "path": {
+            "default": "/",
+            "description": "UI path (absolute), used to build the open URL.",
+            "type": "string",
+            "pattern": "^\\/"
+          },
+          "description": {
+            "type": "string"
           }
         },
         "required": [
+          "name",
           "container"
         ],
         "additionalProperties": false
       }
     },
-    "env": {
+    "mounts": {
       "default": [],
+      "description": "Persisted data. Declared => kept across restarts.",
       "type": "array",
       "items": {
-        "type": "string",
-        "pattern": "="
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$",
+            "description": "Stable key — host subdir / volume suffix."
+          },
+          "target": {
+            "type": "string",
+            "pattern": "^\\/",
+            "description": "In-container mount path."
+          },
+          "placement": {
+            "default": "volume",
+            "description": "bind => host <data-root>/<id>/<name> (browsable, slow on Windows); volume => managed named volume.",
+            "type": "string",
+            "enum": [
+              "bind",
+              "volume"
+            ]
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "target"
+        ],
+        "additionalProperties": false
       }
     },
-    "volumes": {
+    "cache": {
+      "default": [],
+      "description": "Opt-in managed caches; paths injected as env vars.",
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "venv"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "additionalProperties": false,
+            "description": "Per-instance uv venv + co-located uv cache on one volume (hardlink-safe). Injects VIRTUAL_ENV + UV_CACHE_DIR."
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "huggingface"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "additionalProperties": false,
+            "description": "Shared HuggingFace hub cache. Injects HF_HOME."
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "custom"
+              },
+              "name": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$",
+                "description": "Cache key (volume suffix)."
+              },
+              "env": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                "description": "Env var the mount path is injected into."
+              },
+              "scope": {
+                "default": "shared",
+                "description": "shared => one cache across apps; instance => a per-(app,instance) subpath.",
+                "type": "string",
+                "enum": [
+                  "shared",
+                  "instance"
+                ]
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "env"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "env": {
       "default": [],
       "type": "array",
       "items": {
@@ -118,16 +217,23 @@
         "properties": {
           "name": {
             "type": "string",
-            "minLength": 1
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
           },
-          "target": {
-            "type": "string",
-            "minLength": 1
+          "description": {
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "description": "The user must confirm a value before launch.",
+            "type": "boolean"
+          },
+          "default": {
+            "description": "Suggested/placeholder value (coexists with required).",
+            "type": "string"
           }
         },
         "required": [
-          "name",
-          "target"
+          "name"
         ],
         "additionalProperties": false
       }
