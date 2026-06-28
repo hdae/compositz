@@ -25,8 +25,10 @@ De-risk the two load-bearing unknowns before building.
 
 ## Phase 2 — Management UI 🔄
 
-- ✅ **Hono API server** (`packages/server`): `/api/health|recipes|containers`, `POST …/up|down`,
-  SSE `/api/events` (live status) + install build-log stream. Verified live.
+- ✅ ~~Hono API server (`packages/server`)~~ — built and verified live, then **retired** once the UI
+  proved in-process core calls
+  ([ADR-013](decisions.md#adr-013--retire-packagesserver-hono-the-ui-calls-core-in-process--accepted-reversible)).
+  Its `/api/*` + SSE design carries over to Fresh route handlers; no separate server process.
 - ✅ **UI framework decided: Fresh 2 (Vite).** All three candidates (Start / Fresh / SvelteKit) were
   spiked on Deno 2.9.0; all are feasible for in-process `@compositz/core` with a clean client
   boundary, so the choice turned on Deno-nativeness. Fresh won (no `@deno/vite-plugin` bridge,
@@ -68,7 +70,7 @@ De-risk the two load-bearing unknowns before building.
 
 ## Cross-cutting / always-on
 
-- Keep the `/api` + SSE contract stable and versioned — it is the durable interface for the UI and a
-  future headless `compositz serve`.
+- Keep the Fresh route-handler data contract (JSON + SSE) stable — it is the durable interface for
+  the UI, and the shape a future headless `compositz serve` would re-expose if revived (ADR-013).
 - Verify the Linux unix-socket path on a real Linux host / CI (only Windows is exercised today).
 - Pin the Deno toolchain in CI (≥ 2.9).

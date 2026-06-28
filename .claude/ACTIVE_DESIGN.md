@@ -29,8 +29,9 @@ core's async iterables; an island consumes it via `EventSource`). Desktop embedd
   Fresh's Vite plugin _requires_ membership (errors otherwise), which closed the workspace-name
   resolution residual; `auto` (not the scaffold's `manual`) is needed so the pure-Deno packages keep
   type-checking. One hoisted root `node_modules/` (gitignored).
-- **`packages/server` (Hono) retained** as headless `compositz serve`; removal from the UI data path
-  deferred — revisit once the UI grows its action/SSE paths (Increment 2).
+- **ADR-013: `packages/server` (Hono) retired** — the UI calls core in-process, desktop already did,
+  nothing imported the server. Reversible ("一旦"): revive a thin headless `compositz serve` later
+  if needed. Live status / build logs now stream from **Fresh route handlers** (Increment 2).
 
 ## Pitfalls index
 

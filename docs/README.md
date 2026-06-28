@@ -21,23 +21,22 @@ _manager_ is trusted; the _apps_ are sandboxed.
 | [decisions.md](decisions.md)         | Decision log (ADR-style) with rationale and evidence                                                   |
 | [recipe-format.md](recipe-format.md) | The `compositz.yaml` manifest spec + authoring guide                                                   |
 
-## Status at a glance (2026-06-28)
+## Status at a glance (2026-06-29)
 
 | Component          | Status                                                                                                                                                                                                                                                                                                                                      |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/core`    | ✅ Implemented + tested (30 unit tests). Docker Engine client, transports, recipe model (Zod), build, operations                                                                                                                                                                                                                            |
 | `packages/cli`     | ✅ `doctor` / `install` / `up` / `down` / `ps` / `hello` — verified against the live engine                                                                                                                                                                                                                                                 |
-| `packages/server`  | ✅ Hono `/api` + SSE — verified against the live engine                                                                                                                                                                                                                                                                                     |
 | `packages/desktop` | ✅ Deno Desktop (CEF) recipe-driven launch — renders a recipe's web UI (machine-verified). WebView2 backend blocked on an upstream Deno fix                                                                                                                                                                                                 |
 | `packages/ui`      | 🔄 **Fresh 2 (Vite), Increment 1 done** — workspace member; a route handler renders a read-only recipe list from in-process `@compositz/core` (see [ADR-008](decisions.md#adr-008--ui-framework-fresh-2-vite--accepted) / [ADR-012](decisions.md#adr-012--packagesui-joins-the-deno-workspace-root-nodemodulesdir-auto--accepted-verified)) |
 
-| Phase                                                                                    | Status                                                                                                 |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| **0 — Foundations PoC** (Docker control on Win+Linux; Deno Desktop window)               | ✅ Done, empirically verified                                                                          |
-| **1 — Recipe → build → run**                                                             | ✅ Core flow done, verified                                                                            |
-| **2 — Management UI**                                                                    | 🔄 In progress (Hono server done; `packages/ui` Fresh 2/Vite Increment 1 done — read-only recipe list) |
-| **3 — Hardening** (shared cache, volumes/GC, GPU detection, s6 multi-daemon, versioning) | ⏳ Planned                                                                                             |
-| **4 — Packaging & distribution** (signing, update, catalog, recipe tooling)              | ⏳ Planned                                                                                             |
+| Phase                                                                                    | Status                                                                                                                     |
+| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **0 — Foundations PoC** (Docker control on Win+Linux; Deno Desktop window)               | ✅ Done, empirically verified                                                                                              |
+| **1 — Recipe → build → run**                                                             | ✅ Core flow done, verified                                                                                                |
+| **2 — Management UI**                                                                    | 🔄 In progress — `packages/ui` (Fresh 2/Vite): recipe list done; live status + up/down next. Hono server retired (ADR-013) |
+| **3 — Hardening** (shared cache, volumes/GC, GPU detection, s6 multi-daemon, versioning) | ⏳ Planned                                                                                                                 |
+| **4 — Packaging & distribution** (signing, update, catalog, recipe tooling)              | ⏳ Planned                                                                                                                 |
 
 ## Quick start
 
@@ -46,7 +45,6 @@ deno task doctor                  # ping the engine, print versions
 deno task hello                   # full container round-trip
 deno task cli install hello-web   # build an image from recipes/hello-web/
 deno task cli up hello-web        # run it; prints http://localhost:8090/
-deno task serve                   # Hono API + SSE on :8787
 deno task desktop                 # build the CEF desktop app (run dist/compositz-cef/compositz-cef.bat)
 ```
 
@@ -58,7 +56,6 @@ Linux engine).
 ```
 packages/core/      TypeScript library: Engine API client, transports, recipe model, operations
 packages/cli/       Linux-first CLI (also the debugging surface)
-packages/server/    Hono backend wrapping core (/api + SSE) — shared by desktop & a future `compositz serve`
 packages/desktop/   Deno Desktop app (Windows-first); embeds container web UIs in a native window
 packages/ui/        Management UI (Fresh 2 / Vite) — in-process @compositz/core via route handlers
 recipes/            Recipe definitions (compositz.yaml + Dockerfile + assets)

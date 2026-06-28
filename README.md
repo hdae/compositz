@@ -3,9 +3,10 @@
 Run each local-AI app as **one isolated Docker container** — Pinokio's one-click UX with real
 container isolation and Dockge-style management. Windows desktop app + Linux CLI.
 
-> Status (2026-06): Phase 0 & 1 done and verified; Phase 2 (management UI) in progress — Hono API
-> done, and **`packages/ui`** (Fresh 2 / Vite) scaffolded with a read-only recipe list (Increment
-> 1). Full plan in **[docs/](docs/README.md)**.
+> Status (2026-06): Phase 0 & 1 done and verified; Phase 2 (management UI) in progress —
+> **`packages/ui`** (Fresh 2 / Vite) lists recipes and is growing live status + up/down actions; the
+> UI calls `@compositz/core` in-process (the standalone Hono server was retired). Full plan in
+> **[docs/](docs/README.md)**.
 
 ## Documentation
 
@@ -18,7 +19,6 @@ The full plan lives in [`docs/`](docs/README.md): [architecture](docs/architectu
 ```
 packages/core/      TypeScript library: Docker Engine API client, transports, recipe model
 packages/cli/       Linux-first CLI (also the debugging surface) — finished first
-packages/server/    Hono backend wrapping core (/api + SSE)
 packages/desktop/   Deno Desktop app (Windows-first), embeds container web UIs
 recipes/            Recipe definitions (Dockerfile + compositz.yaml manifest)
 spec/               Generated manifest JSON Schema
@@ -45,9 +45,9 @@ deno task cli up hello-web        # start it; prints http://localhost:8090/
 deno task cli ps                  # list managed containers
 deno task cli down hello-web      # stop + remove
 
-# API server: Hono backend wrapping core (REST + SSE). Backs both the desktop UI
-# and a future `compositz serve`. Same API the CLI uses.
-deno task serve                         # http://localhost:8787  (/api/* + SSE)
+# Management UI: Fresh 2 (Vite) dashboard — recipe list + live status + up/down.
+# Calls @compositz/core in-process from route handlers (no separate API server).
+deno task ui                      # dev server (prints the local URL)
 
 # Desktop: build the app, then run the launcher. It brings a recipe up and embeds
 # its web UI in a native window (default recipe: hello-web).

@@ -32,8 +32,8 @@ classic build-stream parser. All verified against a live engine.
 
 ## ADR-003 — The manager is trusted; isolation is at the container boundary · ✅ Accepted
 
-The CLI / server / desktop run with broad permissions (`-A`). Security is enforced by putting _apps_
-in containers, not by sandboxing the manager.
+The CLI / UI / desktop run with broad permissions (`-A`). Security is enforced by putting _apps_ in
+containers, not by sandboxing the manager.
 
 **Why:** the manager legitimately needs Docker, filesystem, and network access. On Windows the npipe
 transport in fact requires `--allow-all`. Pinokio's problem is uncontainerized _apps_, not manager
@@ -135,8 +135,9 @@ so the choice turned on Deno-nativeness vs ecosystem familiarity, not raw feasib
 - `packages/ui` = Fresh 2 (Vite), a workspace member. Engine calls live in **route handlers**
   (server-only) and **never** in islands / client code. `@compositz/core` is imported by its
   workspace name.
-- `packages/server` (Hono) is **retained** as a standalone headless API (`compositz serve`); its
-  conditional removal from the UI data path is deferred, not decided here.
+- `packages/server` (Hono) was retained here as a standalone headless API, then **retired** once the
+  UI proved in-process core calls — see
+  [ADR-013](#adr-013--retire-packagesserver-hono-the-ui-calls-core-in-process--accepted-reversible).
 - `deno desktop` is **experimental** in Deno 2.9.0 — pin the toolchain and re-verify on upgrades.
 - The spike-era residual (workspace-name resolution of `@compositz/core` in Fresh's Vite SSR) is now
   **resolved** — confirmed on the first real `packages/ui` build. Workspace integration specifics
@@ -206,3 +207,24 @@ The Fresh 2 (Vite) UI is a **member of the root Deno workspace**, and the worksp
 `fresh:check-imports` — importing `@compositz/core` (→ `node:net`) from an **island** fails the
 build (fault-injected and confirmed). Engine code therefore lives only in route handlers, never
 islands. See [roadmap.md Phase 2](roadmap.md#phase-2--management-ui-).
+
+---
+
+## ADR-013 — Retire `packages/server` (Hono); the UI calls core in-process · ✅ Accepted (reversible)
+
+The Hono backend (`packages/server`, the `/api` + SSE layer) is **removed**. The management UI talks
+to `@compositz/core` **directly from Fresh route handlers** (the engine-online proof from ADR-008 /
+ADR-012); the desktop shell already called core directly. No process speaks to the engine over an
+internal HTTP hop anymore.
+
+**Why:** with in-process core calls working in Fresh, the Hono API was a redundant indirection — a
+second data path to keep in sync with core, for no consumer that needed it (grep confirmed nothing
+imported `@compositz/server`; CLI and desktop use core directly). Deleting it removes the
+`@hono/hono` dependency and a whole package's worth of drift surface. Live status / build-log
+streaming move to **Fresh route handlers that stream SSE** (Phase 2 / Increment 2), reusing core's
+async iterables — the SSE _contract_ survives, only its host changes from Hono to Fresh.
+
+**Consequences:** no standalone headless API or `deno task serve` for now. **Reversible** (this is a
+"一旦" decision): a future headless `compositz serve` can re-add a thin server over the same core —
+the deleted code lives in git history (last present at the commit before this ADR). The
+cross-cutting "keep the `/api` contract stable" note now applies to the Fresh SSE endpoints.
