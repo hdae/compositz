@@ -49,9 +49,14 @@ De-risk the two load-bearing unknowns before building.
   (`POST /api/recipes/:id/install`, NDJSON read via `fetch`), then marks the recipe installed. "Open
   UI" surfaces once running. POST-stream chosen over EventSource (GET) to avoid re-triggering the
   build on reconnect.
-- ⏳ **Recipe ingestion** (spec being refined): load a recipe file in the app → save it to a
-  persistent data directory; `recipesDir` becomes that app-data dir (currently the repo `recipes/`,
-  env-overridable). Pairs with the Phase 4 catalog.
+- ⏳ **Real-time status (RT)** — replace the 2 s `ps` poll with Docker `GET /events`
+  (`EngineClient.events()`); the Fresh SSE handler goes event-driven (long safety refresh +
+  reconnect). Sequenced first; independent of recipe ingestion.
+- ⏳ **Recipe ingestion + storage + launch config (RI-1…RI-4)** — spec agreed, see
+  [recipe-ingestion.md](recipe-ingestion.md): tar/zip + GitHub sourcing into an app-data recipe
+  store; a configurable host **data-root** for outputs (bind-mounted via `${COMPOSITZ_DATA}`); a
+  **Compose-aligned** per-install override overlay (`environment`/`ports`/`volumes`). Manifest
+  evolves toward Compose syntax (breaking; unreleased).
 - ⏳ Desktop shell: list/launch recipes, embed each app's web UI (multi-window).
 
 ## Phase 3 — Hardening ⏳

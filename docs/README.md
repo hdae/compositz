@@ -14,12 +14,13 @@ _manager_ is trusted; the _apps_ are sandboxed.
 
 ## Documents
 
-| Doc                                  | What's in it                                                                                           |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| [architecture.md](architecture.md)   | Components, the Docker transport, the recipe pipeline, GPU, the uv runtime model, verified foundations |
-| [roadmap.md](roadmap.md)             | Phase 0–4 with current status and concrete next steps                                                  |
-| [decisions.md](decisions.md)         | Decision log (ADR-style) with rationale and evidence                                                   |
-| [recipe-format.md](recipe-format.md) | The `compositz.yaml` manifest spec + authoring guide                                                   |
+| Doc                                        | What's in it                                                                                           |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| [architecture.md](architecture.md)         | Components, the Docker transport, the recipe pipeline, GPU, the uv runtime model, verified foundations |
+| [roadmap.md](roadmap.md)                   | Phase 0–4 with current status and concrete next steps                                                  |
+| [decisions.md](decisions.md)               | Decision log (ADR-style) with rationale and evidence                                                   |
+| [recipe-format.md](recipe-format.md)       | The `compositz.yaml` manifest spec + authoring guide                                                   |
+| [recipe-ingestion.md](recipe-ingestion.md) | Recipe sourcing (tar/GitHub), 3-tier storage, Compose-aligned launch config + increment plan           |
 
 ## Status at a glance (2026-06-29)
 

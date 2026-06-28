@@ -228,3 +228,44 @@ async iterables — the SSE _contract_ survives, only its host changes from Hono
 "一旦" decision): a future headless `compositz serve` can re-add a thin server over the same core —
 the deleted code lives in git history (last present at the commit before this ADR). The
 cross-cutting "keep the `/api` contract stable" note now applies to the Fresh SSE endpoints.
+
+---
+
+## ADR-014 — Recipe sourcing, 3-tier storage & Compose-aligned launch config · ✅ Accepted
+
+How recipes are ingested, where data lives, and how launches are customized. Full spec:
+[recipe-ingestion.md](recipe-ingestion.md).
+
+**Decisions (from a design round with the user):**
+
+- **Stay on Docker's rails.** Recipe + launch config borrow **Docker Compose vocabulary and
+  conventions** (`environment` / `ports` / `volumes` syntax, `${VAR}` interpolation) instead of
+  Compositz-specific concepts; **no custom settings schema**. The runtime stays **single-container**
+  — we still do **not** run `docker compose`
+  ([ADR-001](#adr-001--one-container-per-app-no-compose--accepted) holds); we borrow Compose's
+  config _language_, not its orchestrator.
+- **Three storage tiers:** app-data (recipe store + per-install overrides + settings), a
+  **configurable data-root** (default `~/Compositz`) holding per-app **host-bind** persistent data
+  (the user's outputs — browsable, not buried in a named volume), and a Compositz-managed **shared
+  named volume** for big cross-app caches (Phase 3). Built-ins `${COMPOSITZ_DATA}` /
+  `${COMPOSITZ_CACHE}` interpolate into mounts.
+- **Ingestion sources:** a **tar/zip bundle** (upload) and **GitHub** (`owner/repo[@ref][/subdir]`
+  via codeload tarball — no `git` binary, reuse `@std/tar`). Ingest = extract + Zod-validate +
+  store; build stays the separate Install step.
+- **Launch customization** is a **Compose-style override overlay** (`environment` / `ports` /
+  `volumes`) stored per-install in app-data and merged over the manifest defaults at `up` time — the
+  effective spec is **derived each launch**, never written back into the manifest.
+  bind-vs-named-volume is expressed by Compose mount syntax (path vs name), not a custom field.
+- **Real-time status:** replace the 2 s `ps` poll with Docker **`GET /events`** (add
+  `EngineClient.events()`); the Fresh SSE handler becomes event-driven with a long safety refresh +
+  reconnect. Sequenced first (independent of the above).
+
+**Why:** the user's outputs must land on the host where they're reachable (current named-volume-only
+persistence — [run.ts](../packages/core/src/recipe/run.ts) — hides them); and aligning config with
+Compose keeps the tool a thin, learnable layer over Docker rather than a new DSL to learn.
+
+**Consequences:** the manifest evolves (breaking; unreleased, so no migration) toward Compose-style
+`ports` / `env` / `volumes` + `${VAR}`; `recipesDir` becomes the app-data recipe store
+(env-overridable as today). Sequenced as **RT → RI-1…RI-4** in
+[recipe-ingestion.md](recipe-ingestion.md#increment-plan). Private-repo GitHub auth and the exact
+Compose-aligned manifest shape are deferred to their increments.

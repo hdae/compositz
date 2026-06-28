@@ -22,10 +22,15 @@ still need manual Docker checks. SSE teardown uses `ReadableStream.cancel()`, no
 auto-scrolling log, and optimistically marks installed on done. POST-stream (not EventSource/GET) so
 a reconnect can't re-trigger the build.
 
-**Next (Phase 2 remainder):** **recipe ingestion** is on hold — the user wants to refine the spec
-first (load a recipe file in-app → save to a persistent data dir that becomes `recipesDir`). Then
-the **desktop shell** (list/launch recipes, embed each web UI). No code on either until
-specced/agreed.
+**Next (sequenced):** **RT** — Docker `GET /events` real-time status (add `EngineClient.events()`,
+make `/api/events` event-driven, drop the 2 s poll). Then **RI-1…RI-4** (recipe ingestion +
+storage + launch config) per the now-agreed spec in
+[docs/recipe-ingestion.md](../../docs/recipe-ingestion.md) / [ADR-014](../../docs/decisions.md). Key
+agreed principles: **stay on Docker's rails** (borrow Docker Compose config vocabulary —
+`environment`/`ports`/`volumes` + `${VAR}` — no custom schema; runtime stays single-container,
+ADR-001 holds); **3-tier storage** (app-data = recipes/overrides/settings; configurable
+**data-root** = host-bind outputs via `${COMPOSITZ_DATA}`; shared named volume = caches); sources =
+**tar/zip + GitHub**. Desktop shell after.
 
 ## Decisions recently settled
 
@@ -62,11 +67,11 @@ specced/agreed.
 
 ## Resume point
 
-`packages/ui` Increments 1, 2, 2c are committed and green (recipe list + live SSE status + up/down +
-install-with-build-log). Next action: **discuss the recipe-ingestion spec** (file load → persistent
-data dir → `recipesDir`) before coding it; desktop embedding after. Key files:
-`islands/RecipeList.tsx` (live UI, actions, install-log reader), `routes/api/events.ts` (status
-SSE), `routes/api/recipes/[id]/[action].ts` (up/down + install NDJSON stream), `lib/dashboard.ts`
-(pure, shared). Manual check still pending against a live Docker engine: install build-log
-streaming, up / down / "Open UI", and the button "…"→state transition (only offline paths were
-smokable here).
+`packages/ui` Increments 1, 2, 2c are committed and green. Recipe-ingestion spec is agreed and
+recorded (ADR-014 + docs/recipe-ingestion.md). Next action: **RT** — add `EngineClient.events()` to
+core (stream Docker `GET /events`, filtered to managed containers) and rewrite
+`routes/api/events.ts` to push on each event (keep a long safety refresh + reconnect/offline
+fallback), dropping the 2 s poll. Then RI-1 (storage + bind mounts + Compose-style mounts/`${VAR}` +
+effective-spec derivation). Key files: `packages/core/src/engine/client.ts` (add events()),
+`routes/api/events.ts`, `lib/dashboard.ts`. Manual check still pending against a live Docker engine
+(install build-log, up/down/"Open UI", button transition — only offline paths were smokable here).
