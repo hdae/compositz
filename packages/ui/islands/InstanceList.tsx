@@ -206,21 +206,25 @@ export default function InstanceList(
   /** Delete an instance server-side (container + per-instance image + dir) and drop its row. */
   async function removeInstance(id: string) {
     setActionError(null);
+    // Remove the row immediately so its panel (e.g. a "starting…" service while the
+    // container is still up) doesn't linger through the delete round-trip; restore it
+    // if the server rejects the delete. Also drop the per-id UI state.
+    const removed = views.find((v) => v.instanceId === id);
+    setViews((vs) => vs.filter((v) => v.instanceId !== id));
+    setLogs((m) => omit(m, id));
+    setExpanded((m) => omit(m, id));
+    setTabByInstance((m) => omit(m, id));
+    setInstalling((m) => omit(m, id));
+    setPending((m) => omit(m, id));
     try {
       const res = await fetch(`/api/instances/${id}/delete`, { method: "POST" });
-      if (res.ok) {
-        setViews((vs) => vs.filter((v) => v.instanceId !== id));
-        // Drop this instance's per-id UI state so the maps don't accumulate stale keys.
-        setLogs((m) => omit(m, id));
-        setExpanded((m) => omit(m, id));
-        setTabByInstance((m) => omit(m, id));
-        setInstalling((m) => omit(m, id));
-        setPending((m) => omit(m, id));
-      } else {
+      if (!res.ok) {
+        if (removed) setViews((vs) => [...vs, removed]);
         const body = await res.json().catch(() => ({})) as { error?: string };
         setActionError(`delete ${id} failed: ${body.error ?? `HTTP ${res.status}`}`);
       }
     } catch (e) {
+      if (removed) setViews((vs) => [...vs, removed]);
       setActionError(`delete ${id} failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
