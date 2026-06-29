@@ -27,13 +27,13 @@ over HTTP+SSE for a (future) web UI and a headless `compositz serve`.
 
 ## Components
 
-| Package   | Responsibility                                                                                                         |
-| --------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `core`    | Docker Engine API client, transport abstraction, recipe/manifest model, build, high-level operations (install/up/down) |
-| `cli`     | Linux-first command surface and the primary debugging tool                                                             |
-| `server`  | Hono app wrapping core: REST `/api/*` + SSE (`/api/events`, install build log)                                         |
-| `desktop` | Deno Desktop native shell; launches a recipe and embeds its web UI in a window                                         |
-| `ui`      | Management UI (framework TBD — see decisions.md)                                                                       |
+| Package  | Responsibility                                                                                                         |
+| -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `core`   | Docker Engine API client, transport abstraction, recipe/manifest model, build, high-level operations (install/up/down) |
+| `cli`    | Linux-first command surface and the primary debugging tool                                                             |
+| `server` | Hono app wrapping core: REST `/api/*` + SSE (`/api/events`, install build log)                                         |
+| desktop  | _Not a package_ — the `ui` Fresh app packaged as a native CEF window by `deno desktop` ([ADR-016](decisions.md))       |
+| `ui`     | Management UI (framework TBD — see decisions.md)                                                                       |
 
 ## Docker transport abstraction
 
@@ -140,9 +140,10 @@ These were proven against a live Docker Desktop (Engine API 1.54), not just desi
   works through the hand-rolled client.
 - **`POST /build`** with an `@std/tar` context returns the **classic builder** stream (`{stream}` +
   terminal `{aux.ID}`), not BuildKit — the parser matches.
-- **Deno Desktop**: `Deno.BrowserWindow` + `navigate(localhost)` works; core's npipe transport works
-  _inside_ the desktop runtime; `npm:zod` bundles into `deno desktop`. The default **WebView2
-  backend crashes** (`0xC0000409`, a laufey 0.4.0 ↔ WebView2 149 skew, fixed upstream in
-  [denoland/deno#35566](https://github.com/denoland/deno/pull/35566), expected in Deno 2.9.1/2.9.2);
-  the **CEF backend renders** the container UI today (verified: read back `document.title` of the
-  served page).
+- **Deno Desktop**: `deno desktop` **auto-detects the Fresh app** (`packages/ui`) and embeds its
+  built `_fresh/` into one native binary ([ADR-016](decisions.md)); core's npipe transport works
+  _inside_ the desktop runtime; `npm:zod` bundles in. The default **WebView2 backend crashes**
+  (`0xC0000409`, a laufey 0.4.0 ↔ WebView2 149 skew, fixed upstream in
+  [denoland/deno#35566](https://github.com/denoland/deno/pull/35566), canary-only); the **CEF
+  backend renders** today (verified: builds `dist/compositz.AppImage`, and the PoC read back the
+  served page `document.title`).

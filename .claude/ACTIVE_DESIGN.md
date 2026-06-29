@@ -44,11 +44,14 @@ auto-bumped port shows the right URL. `webUrl` = first web port; `recipeImageTag
 unchanged. **Live-verified** on engine 29.5.3 (hello-web up/down with the v2 spec; a bind+volume
 create accepted via CreateMountpoint).
 
-**Desktop now opens the Fresh management UI.** `packages/desktop/main.ts` spawns the UI server on a
-fixed port (same Deno binary) and points the CEF window at it — recipe ops happen in that UI (core
-in-process, ADR-013). Was a PoC that launched hello-web and showed its `:8090` directly. Run in
-place with `deno desktop --hmr …` (`deno task desktop` only BUILDS to dist/). `COMPOSITZ_UI_URL`
-points at an existing server. Bundling the built UI into the standalone app is Phase-4 packaging.
+**Desktop = the Fresh UI packaged by `deno desktop` (ADR-016).** There is **no `packages/desktop`**
+— `deno desktop` auto-detects the Fresh project (`packages/ui`) and embeds its built `_fresh/` into
+one native CEF binary; recipe ops happen in that UI (core in-process, ADR-013). Tasks live in
+`packages/ui` (run from there so detection fires): `deno task desktop:dev` (HMR — Fresh's Vite dev
+server + webview) and `deno task desktop` (`ui build` → `deno desktop … --output …AppImage`). The
+earlier hand-written `Deno.BrowserWindow` launcher (and the subprocess-spawn variant) were wrong: a
+packaged bundle has no `deno task`/source tree. Verified on Linux (builds `dist/compositz.AppImage`,
+CEF bundled); the live window + Windows `.msi` are manual/Phase-4.
 
 **Next (sequenced):** **RI-2…RI-4** (recipe ingestion + override UI). RI-2/3 = tar/zip + GitHub
 sourcing into the app-data recipe store; RI-4 = per-install override UI + multi-web "Open UI"
@@ -79,6 +82,13 @@ buttons (the schema already supports multiple `web: true`).
 - **`deno desktop` needs Deno ≥ 2.9** → invoke `/home/developer/workspace/compositz/bin/deno`
   (2.9.0). It is experimental in 2.9.0; the default WebView2 backend is broken on Windows (fix
   #35566 canary-only) — use `--backend cef`.
+- **`deno desktop` flags MUST precede any positional entrypoint.**
+  `deno desktop . --backend cef
+  --output X` silently swallows the flags as _script args_
+  (everything after `.` is `SCRIPT_ARG`), so it builds a default-WebView2 bundle into
+  `packages/ui/ui/`. Omit the entrypoint (cwd auto-detect) and pass flags only. `--output` needs an
+  app extension (`.AppImage`/`.msi`/…). See ADR-016. Run desktop tasks from `packages/ui` so Fresh
+  is detected (`_fresh/` must be built first).
 - **Docker IS reachable over TCP** (no CLI/socket here):
   `export
   DOCKER_HOST=tcp://host.docker.internal:2375` (the user exposed the daemon;

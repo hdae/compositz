@@ -66,11 +66,14 @@ De-risk the two load-bearing unknowns before building.
 - ⏳ **Recipe ingestion + launch UI (RI-2…RI-4)**: RI-2/3 = tar/zip + GitHub sourcing into an
   app-data recipe store; RI-4 = per-install override UI (host-port remap w/ auto-suggest, env
   values, placement) + multi-web "Open UI" buttons.
-- 🔄 **Desktop shell**: the desktop now opens the **Fresh management UI** in a CEF window (spawns
-  the UI server on a fixed port; recipe install/up/down happen in that UI via core in-process). Was
-  a PoC that launched one recipe and showed its web UI directly. Remaining: bundling the **built**
-  UI into the standalone app (Phase 4 packaging), and embedding each running app's web UI as
-  secondary windows (multi-window).
+- 🔄 **Desktop shell**: the desktop **is** the Fresh management UI, packaged by `deno desktop`
+  framework auto-detection (it embeds the built `_fresh/` into one native CEF binary — no separate
+  package; recipe ops happen in the UI via core in-process). Was a PoC that launched one recipe and
+  showed its web UI directly. Verified on Linux (`deno task desktop` → `dist/compositz.AppImage`).
+  See
+  [ADR-016](decisions.md#adr-016--desktop-app--the-fresh-ui-packaged-by-deno-desktop-framework-detection--accepted-verified).
+  Remaining: Windows `.msi` packaging + signing (Phase 4), and embedding each running app's web UI
+  as secondary windows (multi-window).
 
 ## Phase 3 — Hardening ⏳
 

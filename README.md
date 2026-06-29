@@ -49,19 +49,21 @@ deno task cli down hello-web      # stop + remove
 # Calls @compositz/core in-process from route handlers (no separate API server).
 deno task ui                      # dev server (prints the local URL)
 
-# Desktop: build the app, then run the launcher. It brings a recipe up and embeds
-# its web UI in a native window (default recipe: hello-web).
-deno task desktop                       # builds dist/compositz-cef/
-dist\compositz-cef\compositz-cef.bat    # launches the window (CEF backend)
-#   COMPOSITZ_RECIPE_DIR=<abs path>     # pick a different recipe
+# Desktop: the same Fresh management UI, packaged as a native window by `deno desktop`
+# (framework auto-detection — no separate entrypoint; recipe ops happen in the UI).
+deno task desktop:dev                   # run in a CEF window with HMR (dev)
+deno task desktop                       # build a native app → dist/compositz.AppImage
 ```
 
 The manager process runs **trusted** (`-A`): isolation is enforced at the _container_ boundary, not
 the host process. On Windows the named-pipe transport requires `--allow-all` (a Deno node:net
 constraint), which is consistent with that model.
 
-> **Desktop backend note:** the default `deno desktop` system-WebView2 backend currently crashes on
-> launch (`0xC0000409`) — a version skew between the experimental laufey 0.4.0 backend and
-> WebView2 149. We build with `--backend cef` (bundled Chromium, no system dependency), which is
-> verified working. Revisit the lighter WebView2 backend once the compat issue is fixed upstream.
-> `deno task desktop:webview` builds the (currently broken) WebView2 variant for re-testing.
+> **Desktop app:** the desktop **is** the Fresh management UI (`packages/ui`) — `deno desktop`
+> auto-detects the Fresh project and embeds its built `_fresh/` into one native binary (no separate
+> entrypoint). See [ADR-016](docs/decisions.md).
+>
+> **Backend note:** the default `deno desktop` system-WebView2 backend currently crashes on launch
+> (`0xC0000409`) — a laufey 0.4.0 ↔ WebView2 149 skew. We use `--backend cef` (bundled Chromium, no
+> system dependency), verified working. Revisit the lighter WebView2 backend once fixed upstream
+> (swap `--backend webview` on the desktop tasks to re-test).
