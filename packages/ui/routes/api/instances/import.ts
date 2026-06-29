@@ -1,4 +1,10 @@
-import { CompositzError, ingestBundle, instancesDir, MAX_BUNDLE_BYTES } from "@compositz/core";
+import {
+  CompositzError,
+  EngineHttpError,
+  ingestBundle,
+  instancesDir,
+  MAX_BUNDLE_BYTES,
+} from "@compositz/core";
 import { define } from "../../../utils.ts";
 
 // SERVER-ONLY: imports @compositz/core (→ node:net + filesystem). Accepts a recipe
@@ -6,15 +12,23 @@ import { define } from "../../../utils.ts";
 // it, and creates a new instance in the store. The island posts the chosen File as
 // the body; on success it reloads to show the new instance.
 //
-// The body is read with a hard size cap (streaming, never fully buffered) so a
-// huge upload can't exhaust memory before ingestion's own caps apply.
+// Defences against a hostile upload: the body is read with a hard streaming size
+// cap (never fully buffered past the cap), extraction caps the decompressed stream
+// (ingest.ts), and only ONE import runs at a time (so concurrent bombs can't
+// multiply peak memory).
 
 const store = instancesDir();
 
 class PayloadTooLarge extends Error {}
 
+let importInFlight = false;
+
 export const handler = define.handlers({
   async POST(ctx) {
+    if (importInFlight) {
+      return Response.json({ ok: false, error: "another import is in progress" }, { status: 429 });
+    }
+    importInFlight = true;
     try {
       const bytes = await readCappedBody(ctx.req, MAX_BUNDLE_BYTES);
       if (bytes.byteLength === 0) {
@@ -29,10 +43,18 @@ export const handler = define.handlers({
       });
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
-      // Bad input (oversized / bad archive / traversal / invalid manifest) is the
-      // client's fault; an unexpected OS/engine error is ours.
-      const status = e instanceof PayloadTooLarge ? 413 : e instanceof CompositzError ? 400 : 500;
+      // Classify: oversized → 413; a bad-input CompositzError → 400; an engine/OS
+      // fault (incl. EngineHttpError, which extends CompositzError) → 500.
+      const status = e instanceof PayloadTooLarge
+        ? 413
+        : e instanceof EngineHttpError
+        ? 500
+        : e instanceof CompositzError
+        ? 400
+        : 500;
       return Response.json({ ok: false, error }, { status });
+    } finally {
+      importInFlight = false;
     }
   },
 });
@@ -43,15 +65,17 @@ async function readCappedBody(req: Request, max: number): Promise<Uint8Array> {
   const reader = req.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > max) {
-      await reader.cancel();
-      throw new PayloadTooLarge(`upload exceeds ${max} bytes`);
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > max) throw new PayloadTooLarge(`upload exceeds ${max} bytes`);
+      chunks.push(value);
     }
-    chunks.push(value);
+  } catch (e) {
+    await reader.cancel().catch(() => {}); // release the lock / stop the body on any error
+    throw e;
   }
   const out = new Uint8Array(total);
   let off = 0;
