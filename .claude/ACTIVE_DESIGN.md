@@ -54,19 +54,19 @@ hand-written `Deno.BrowserWindow` launcher (and the subprocess-spawn variant) we
 bundle has no `deno task`/source tree. Verified on Linux; the live window + signed per-OS installers
 (`.msi`/`.AppImage`) are manual/Phase-4.
 
-**Instance-centric storage (ADR-017) — 🔄 in flight (RI-2).** Reframes ADR-014: **no recipe store,
-no app→instances hierarchy.** The runtime unit is a self-contained **instance** keyed by one
-`instanceId` (`<appId>-<rand>`); a recipe is just the bundle copied inside it
+**Instance-centric storage (ADR-017) + RI-2 — ✅ DONE, hardened & verified.** Reframes ADR-014: **no
+recipe store, no app→instances hierarchy.** The runtime unit is a self-contained **instance** keyed
+by one `instanceId` (`<appId>-<rand>`); a recipe is just the bundle copied inside it
 (`<app-data>/instances/<instanceId>/app/`). Every resource keys off `instanceId` (container
 `compositz-<instanceId>`, volume `compositz_<instanceId>_<name>`, bind
 `<data-root>/<instanceId>/<name>`, venv `venvs/<instanceId>`, **per-instance image**
 `compositz/<instanceId>`). RI-1's `DEFAULT_INSTANCE="default"` + `<id>/<instance>` nesting are
-removed. Second copy = re-import or `duplicate` (copies `app/` only, not data). Layout:
+removed. Second copy = re-import or `duplicate` (copies `app/` only, not data). Ingestion is
+security- and memory-hardened (see Resume point). Layout:
 [recipe-ingestion.md](../../docs/recipe-ingestion.md#storage--instance-centric).
 
-**Next (sequenced):** **RI-2…RI-4**. RI-2 = instance store + tar/tar.gz/dir ingestion (extract →
-validate → mint instanceId → create instance) + instanceId-threaded naming + `duplicate`; RI-3 =
-GitHub sourcing; RI-4 = per-instance override UI + multi-web "Open UI" buttons.
+**Next (sequenced):** **RI-3** (GitHub sourcing → `ingestBundle`) → **RI-4** (per-instance override
+UI + multi-web "Open UI" buttons).
 
 ## Decisions recently settled
 
@@ -121,12 +121,23 @@ GitHub sourcing; RI-4 = per-instance override UI + multi-web "Open UI" buttons.
 
 ## Resume point
 
-ADR-017 (instance-centric) recorded. **RI-2 in flight** — implementing the instance store +
-ingestion: core (`storage.instancesDir` + `recipe/instance.ts` model + `recipe/ingest.ts` secure
-extract + mint `instanceId` + `duplicate`) and instanceId-threaded naming
-(`brand`/`run`/`operations`); then UI (list instances + import upload + actions) and CLI
-(`import`/`duplicate`/`ls` + adapt `up`/`down`/ `install`/`ps`). The shipped `recipes/hello-web`
-becomes a sample to `compositz import`. Deferred: full instance **deletion** of volumes + host data
-(needs Engine volume endpoints the client lacks). Verify Docker paths with
-`DOCKER_HOST=tcp://host.docker.internal:2375` (see [[compositz-docker-tcp-debug]] — managed-only +
+**RI-2 (instance-centric store + ingestion) — ✅ DONE, hardened & verified.** core
+(`storage.instancesDir` + `recipe/instance.ts` + `recipe/ingest.ts` secure extract + `duplicate`) +
+instanceId-threaded naming (`brand`/`run`/`operations`); UI (instance list + drag-drop import +
+`/api/instances/*`); CLI (`import`/`ls`/`duplicate`/`rm` + adapted `up`/`down`/`install`/`ps`). The
+shipped `recipes/hello-web` is now a **sample to `compositz import`**. Two adversarial-review rounds
+hardened it: **secure tar extraction** (reject absolute/`..`/symlink/hardlink/device);
+**bounded-memory extraction** — input fed in 64 KiB slices so `DecompressionStream` streams + a byte
+limiter caps the inflated stream (a gzip bomb is rejected within a bounded RAM window — empirically
+RSS scales with the cap, not the bomb; `MAX_EXTRACTED_BYTES`=128 MiB); **atomic publish** (assemble
+in a `.pub-` dir → single rename; never delete a published instance on a transient re-read). Import
+is single-in-flight. 108 tests green; live import→up→down→rm verified (managed-only/reversible).
+
+**Next: RI-3** — GitHub ingestion (`owner/repo[@ref][/subdir]` → codeload `.tar.gz` over HTTPS →
+`ingestBundle`; no `git` binary). The ingest pipeline + caps already handle the tarball; RI-3 adds
+the fetch + ref/subdir resolution. Then **RI-4** (per-instance override UI + multi-web buttons).
+**Deferred:** full instance **deletion** of volumes + host data (needs Engine volume endpoints the
+client lacks — `rm` currently keeps data); the `installed`-badge SSE staleness
+([known-issues.md](../../docs/known-issues.md)). Verify Docker via
+`DOCKER_HOST=tcp://host.docker.internal:2375` ([[compositz-docker-tcp-debug]] — managed-only +
 reversible).
