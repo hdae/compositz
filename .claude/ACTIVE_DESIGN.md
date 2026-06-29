@@ -54,9 +54,19 @@ hand-written `Deno.BrowserWindow` launcher (and the subprocess-spawn variant) we
 bundle has no `deno task`/source tree. Verified on Linux; the live window + signed per-OS installers
 (`.msi`/`.AppImage`) are manual/Phase-4.
 
-**Next (sequenced):** **RI-2…RI-4** (recipe ingestion + override UI). RI-2/3 = tar/zip + GitHub
-sourcing into the app-data recipe store; RI-4 = per-install override UI + multi-web "Open UI"
-buttons (the schema already supports multiple `web: true`).
+**Instance-centric storage (ADR-017) — 🔄 in flight (RI-2).** Reframes ADR-014: **no recipe store, no
+app→instances hierarchy.** The runtime unit is a self-contained **instance** keyed by one `instanceId`
+(`<appId>-<rand>`); a recipe is just the bundle copied inside it
+(`<app-data>/instances/<instanceId>/app/`). Every resource keys off `instanceId` (container
+`compositz-<instanceId>`, volume `compositz_<instanceId>_<name>`, bind `<data-root>/<instanceId>/<name>`,
+venv `venvs/<instanceId>`, **per-instance image** `compositz/<instanceId>`). RI-1's
+`DEFAULT_INSTANCE="default"` + `<id>/<instance>` nesting are removed. Second copy = re-import or
+`duplicate` (copies `app/` only, not data). Layout:
+[recipe-ingestion.md](../../docs/recipe-ingestion.md#storage--instance-centric).
+
+**Next (sequenced):** **RI-2…RI-4**. RI-2 = instance store + tar/tar.gz/dir ingestion (extract →
+validate → mint instanceId → create instance) + instanceId-threaded naming + `duplicate`; RI-3 = GitHub
+sourcing; RI-4 = per-instance override UI + multi-web "Open UI" buttons.
 
 ## Decisions recently settled
 
@@ -78,8 +88,9 @@ buttons (the schema already supports multiple `web: true`).
 - **Engine calls are server-only.** In Fresh, import `@compositz/core` in route handlers, never in
   islands / client code — `fresh:check-imports` fails the build if `node:net` reaches the client
   (fault-injected and confirmed). Mirror of Start's `*.server.ts` / SvelteKit's `$lib/server` rule.
-- **UI runs from `packages/ui` cwd**: `recipesDir` defaults to `../../recipes` (repo-root recipes/);
-  the `deno task ui` / `ui:build` wrappers set the cwd. Override with `COMPOSITZ_RECIPES_DIR`.
+- **Instance store is in app-data** (ADR-017): `instancesDir()` = `COMPOSITZ_INSTANCES_DIR` ??
+  `appDataDir()/instances` (absolute — no longer cwd-relative). The shipped `recipes/` dir is now only
+  a **sample bundle to import** (`compositz import recipes/hello-web`), not the live store. No auto-seed.
 - **`deno desktop` needs Deno ≥ 2.9** → invoke `/home/developer/workspace/compositz/bin/deno`
   (2.9.0). It is experimental in 2.9.0; the default WebView2 backend is broken on Windows (fix
   #35566 canary-only) — use `--backend cef`.
@@ -109,11 +120,11 @@ buttons (the schema already supports multiple `web: true`).
 
 ## Resume point
 
-UI Increments 1/2/2c + RT + **RI-1 (manifest v2 in core)** are committed, green (full suite), and
-live-verified. Next action: **RI-2** — the recipe **store** + **tar/zip ingestion** (UI upload →
-extract via `@std/tar` → Zod-validate → store under the app-data recipe store). `appDataDir()` /
-`bindHostPath()` / `defaultDataRoot()` already exist in `packages/core/src/storage.ts`; `recipesDir`
-(today repo-root `recipes/`, env-overridable) becomes the app-data store. Then RI-3 (GitHub
-sourcing) and RI-4 (override UI + multi-web buttons). Verify Docker paths with
-`DOCKER_HOST=tcp://host.docker.internal:2375` (see [[compositz-docker-tcp-debug]] — keep actions
+ADR-017 (instance-centric) recorded. **RI-2 in flight** — implementing the instance store + ingestion:
+core (`storage.instancesDir` + `recipe/instance.ts` model + `recipe/ingest.ts` secure extract + mint
+`instanceId` + `duplicate`) and instanceId-threaded naming (`brand`/`run`/`operations`); then UI
+(list instances + import upload + actions) and CLI (`import`/`duplicate`/`ls` + adapt `up`/`down`/
+`install`/`ps`). The shipped `recipes/hello-web` becomes a sample to `compositz import`. Deferred: full
+instance **deletion** of volumes + host data (needs Engine volume endpoints the client lacks). Verify
+Docker paths with `DOCKER_HOST=tcp://host.docker.internal:2375` (see [[compositz-docker-tcp-debug]] —
 managed-only + reversible).

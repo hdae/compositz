@@ -20,31 +20,65 @@ over the Engine API, not a parallel config universe:
   [ADR-001](decisions.md#adr-001--one-container-per-app-no-compose--accepted) holds). Multi-daemon
   apps use s6-overlay inside one image.
 
-## Storage — three tiers
+## Storage — instance-centric
 
-| Tier              | Location                                                             | Holds                                                           |
-| ----------------- | -------------------------------------------------------------------- | --------------------------------------------------------------- |
-| **App-data**      | `$XDG_DATA_HOME/compositz` (Linux/mac) · `%APPDATA%\compositz` (Win) | recipe store (`recipes/<id>/`), per-install overrides, settings |
-| **Data-root**     | configurable; default `~/Compositz` (Win `%USERPROFILE%\Compositz`)  | per-app **host-visible** data (outputs) for **bind** mounts     |
-| **Named volumes** | Docker-managed (`compositz_<id>_<name>` / shared cache volumes)      | everything else — large/internal data and caches                |
+> Supersedes ADR-014's three-tier "recipe store". There is **no shared recipe store and no
+> app→instances hierarchy** ([ADR-017](decisions.md)): the runtime unit is a self-contained
+> **instance**, keyed by a single `instanceId`. A recipe is just the bundle an instance was made from,
+> copied inside it.
 
-- A **bind** mount lands at `<data-root>/<id>/<name>` (host-browsable). A **volume** mount uses a
-  per-mount named volume. Cache volumes are Compositz-managed (shared across apps where it makes
-  sense). The host path is **derived from the mount `name`** — authors never write `${...}` paths.
-- Cache mount paths are **injected as env vars** (see `cache[]`), so authors read e.g. `$HF_HOME`
-  rather than hard-coding or configuring a path.
+**app-data** — `appDataDir()`: `$XDG_DATA_HOME/compositz` (Linux/mac) · `%APPDATA%\compositz` (Win)
+
+```
+<app-data>/
+├── instances/
+│   ├── comfyui-a1b2c3/              # instanceId = <appId-slug>-<rand>  ← the single runtime key
+│   │   ├── app/                     # extracted bundle = the app definition (immutable after import)
+│   │   │   ├── compositz.yaml       #   manifest (id=comfyui, name, version, ports, mounts, cache, env, gpu)
+│   │   │   ├── Dockerfile
+│   │   │   └── …(build context)
+│   │   ├── meta.json                # provenance only: { source, createdAt }  (instanceId = dir name)
+│   │   └── config.yaml              # per-instance override (RI-4): hostPorts/env/placement/dataRoot
+│   └── comfyui-x7y8z9/              # a duplicate: app/ copied, fresh data
+└── settings.yaml                    # global settings (data-root override, …) — future
+```
+
+**data-root** — `defaultDataRoot()` (user-configurable): `~/Compositz` (Win `%USERPROFILE%\Compositz`).
+Holds **bind**-mount data only, keyed by instanceId:
+
+```
+<data-root>/<instanceId>/<mountName>/     # bindHostPath(dataRoot, instanceId, mountName); host-browsable
+```
+
+**Docker-managed** (by exact `instanceId` ⇒ self-contained teardown, no refcount):
+
+| Resource         | Name                                                                          |
+| ---------------- | ----------------------------------------------------------------------------- |
+| container        | `compositz-<instanceId>` (label `io.compositz.instance=<instanceId>`)          |
+| image (`build`)  | `compositz/<instanceId>:<version>` (per-instance; layer/build cache dedups)    |
+| volume mount     | `compositz_<instanceId>_<mountName>` (`placement: volume`)                     |
+| shared caches    | `compositz_uv` (venv subpath `venvs/<instanceId>`), `compositz_hf`, `compositz_cache_<name>` |
+
+- A **bind** mount lands at `<data-root>/<instanceId>/<name>` (host-browsable); a **volume** mount uses
+  a per-instance named volume. Host paths are **derived from the mount `name`** — authors never write
+  `${...}` paths. Cache mount paths are **injected as env vars** (see `cache[]`), so authors read e.g.
+  `$HF_HOME`.
 
 ## Recipe sources (ingestion)
 
-A recipe is a directory (`compositz.yaml` + `Dockerfile`/context, or an `image`-only manifest). It
-is sourced into the **recipe store** (`<app-data>/recipes/<id>/`) from:
+A recipe is a directory (`compositz.yaml` + `Dockerfile`/context, or an `image`-only manifest). It is
+imported to **create an instance** (`<app-data>/instances/<instanceId>/app/`) from:
 
-- **tar/zip bundle** — the recipe dir packed; uploaded/dropped in the UI.
-- **GitHub** — `owner/repo[@ref][/subdir]`: download the codeload tarball over HTTPS, extract the
-  (sub)dir, validate, store. **No `git` binary** — plain HTTP + `@std/tar`.
-- **local dir** (dev) — the repo `recipes/`, importable / seeded.
+- **tar / tar.gz bundle** — the recipe dir packed; uploaded/dropped in the UI. (`.zip` is out of scope;
+  GitHub codeload is `.tar.gz` anyway.)
+- **local directory** — a recipe dir on disk (dev seed: `compositz import recipes/hello-web`).
+- **GitHub** (RI-3) — `owner/repo[@ref][/subdir]`: download the codeload tarball over HTTPS, extract,
+  validate, create. **No `git` binary** — plain HTTPS + `@std/tar`.
 
-Ingest = extract → **Zod-validate** → store. Building the image is the separate **Install** step.
+Ingest = extract (security-hardened: reject absolute / `..` / symlink / hardlink entries) →
+**Zod-validate** → mint `instanceId` → store under `instances/<instanceId>/`. To run a **second copy**,
+re-import (or `duplicate`, which copies only `app/`, never persistent data). Building the image is the
+separate **Install** step.
 
 ## Manifest v2 (implemented in RI-1)
 
@@ -106,14 +140,13 @@ Field rules:
   (default `/`) · `description`. Each `web: true` port renders an "Open UI" button at
   `http://localhost:<host><path>`.
 - **`mounts[]`**: `name` (required) · `target` (required) · `placement` (`bind`|`volume`, **default
-  `volume`**) · `description`. bind ⇒ host `<data-root>/<id>/<name>`; volume ⇒
-  `compositz_<id>_<name>`. `placement` is the author's default, **overridable per install**.
+  `volume`**) · `description`. bind ⇒ host `<data-root>/<instanceId>/<name>`; volume ⇒
+  `compositz_<instanceId>_<name>`. `placement` is the author's default, **overridable per install**.
 - **`cache[]`** (opt-in): presets `venv` (per-instance uv venv + co-located uv cache, one volume;
   injects `VIRTUAL_ENV` + `UV_CACHE_DIR`) and `huggingface` (shared; injects `HF_HOME`); plus
   `custom` (`name` + `env` + `scope: shared|instance`). The venv subpath is **fixed**
-  `venvs/<id>/<instance>` (no per-recipe override — exceptions would explode the matrix).
-  `COMPOSITZ_INSTANCE` is injected (default `default`), so per-instance caches/venvs are
-  multi-instance-ready with no manifest change.
+  `venvs/<instanceId>` (no per-recipe override — exceptions would explode the matrix).
+  `COMPOSITZ_INSTANCE=<instanceId>` is injected, so per-instance caches/venvs isolate per deployment.
 - **`env[]`**: `name` (required) · `description` · `required` (default false) · `default`.
   `required: true` ⇒ the user must confirm a value; `default` is a suggested/placeholder (the two
   coexist). Resolved to `NAME=value`.
@@ -137,10 +170,10 @@ gpu: none
 
 ## Launch configuration — per-install override
 
-The manifest is the author's **defaults**; the user's customizations live in a separate per-install
-**override** (`<app-data>/config/<id>.yaml`) carrying only **values**: host-port remaps, env values,
-per-mount `placement` (bind/volume) and bind host-path, and the data-root. At `up` the effective
-spec is **derived** from _manifest ⊕ override_ — the manifest is never mutated.
+The manifest is the author's **defaults**; the user's customizations live in a separate per-instance
+**override** (`<app-data>/instances/<instanceId>/config.yaml`) carrying only **values**: host-port
+remaps, env values, per-mount `placement` (bind/volume) and bind host-path, and the data-root. At `up`
+the effective spec is **derived** from _manifest ⊕ override_ — the manifest is never mutated.
 
 ## Increment plan
 
@@ -148,9 +181,9 @@ spec is **derived** from _manifest ⊕ override_ — the manifest is never mutat
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **RT**   | ✅ Docker `/events` real-time status (done & verified).                                                                                                                                                                                                            |
 | **RI-1** | ✅ **Manifest v2** (Zod + recipe-format) + storage layout + data-root + bind/volume mounts (structured `Mounts` + `CreateMountpoint`) + cache provisioning & env injection + effective-spec derivation (manifest ⊕ launch override) in core. Done & live-verified. |
-| **RI-2** | Recipe **store** + **tar/zip ingestion** (UI upload → extract → validate → store).                                                                                                                                                                                 |
-| **RI-3** | **GitHub ingestion** (`owner/repo[@ref][/subdir]` → tarball → store).                                                                                                                                                                                              |
-| **RI-4** | Per-install **override UI** (host-port remap w/ auto-suggest, env values, placement) + multi-web "Open UI" buttons.                                                                                                                                                |
+| **RI-2** | **Instance store + ingestion** (tar/tar.gz/dir → extract → validate → mint `instanceId` → create instance) + instanceId-threaded naming + `duplicate`. See [ADR-017](decisions.md).                                                                                 |
+| **RI-3** | **GitHub ingestion** (`owner/repo[@ref][/subdir]` → tarball → create instance).                                                                                                                                                                                    |
+| **RI-4** | Per-instance **override UI** (host-port remap w/ auto-suggest, env values, placement) + multi-web "Open UI" buttons.                                                                                                                                               |
 
 ## Open details
 
