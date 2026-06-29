@@ -17,13 +17,20 @@ export async function importCmd(args: string[]): Promise<number> {
     return 1;
   }
 
-  const instance = stat.isDirectory
-    ? await ingestBundle({ kind: "dir", dir: path }, storeDir(), { source: `dir:${path}` })
-    : await ingestBundle(
-      { kind: "archive", bytes: await Deno.readFile(path) },
+  let instance;
+  if (stat.isDirectory) {
+    instance = await ingestBundle({ kind: "dir", dir: path }, storeDir(), {
+      source: `dir:${path}`,
+    });
+  } else {
+    // Stream the file through extraction (never buffer it whole in RAM).
+    const file = await Deno.open(path, { read: true });
+    instance = await ingestBundle(
+      { kind: "archive", stream: file.readable },
       storeDir(),
       { source: `file:${path}` },
     );
+  }
 
   console.log(green(`OK — imported ${instance.manifest.name}`) + dim(` as ${instance.instanceId}`));
   console.log(dim(`  run: compositz up ${instance.instanceId}`));

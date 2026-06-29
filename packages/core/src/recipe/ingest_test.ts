@@ -1,11 +1,11 @@
 import { assertEquals, assertMatch, assertRejects, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
 import {
+  type BundleSource,
   duplicateInstance,
   extractArchiveTo,
   ingestBundle,
   INSTANCE_ID_PATTERN,
-  MAX_BUNDLE_BYTES,
   randomInstanceId,
 } from "./ingest.ts";
 import { loadInstance } from "./instance.ts";
@@ -23,14 +23,7 @@ const enc = new TextEncoder();
 // --- a hand-rolled ustar tar builder, so we can craft MALICIOUS entries that
 // @std/tar's TarStream would refuse to write (absolute / `..` / symlink). ---------
 
-type TarEntry = {
-  path: string;
-  data?: Uint8Array;
-  typeflag?: string;
-  linkname?: string;
-  /** Override the declared size in the header (to craft an over-cap entry with no body). */
-  declared?: number;
-};
+type TarEntry = { path: string; data?: Uint8Array; typeflag?: string; linkname?: string };
 
 function tarHeader(path: string, size: number, typeflag: string, linkname: string): Uint8Array {
   const h = new Uint8Array(512);
@@ -56,7 +49,7 @@ function makeTar(entries: TarEntry[]): Uint8Array {
   const blocks: Uint8Array[] = [];
   for (const e of entries) {
     const data = e.data ?? new Uint8Array(0);
-    blocks.push(tarHeader(e.path, e.declared ?? data.length, e.typeflag ?? "0", e.linkname ?? ""));
+    blocks.push(tarHeader(e.path, data.length, e.typeflag ?? "0", e.linkname ?? ""));
     if (data.length) {
       const padded = new Uint8Array(Math.ceil(data.length / 512) * 512);
       padded.set(data);
@@ -81,6 +74,10 @@ async function gzip(bytes: Uint8Array): Promise<Uint8Array> {
   return await new Response(gz).bytes();
 }
 
+/** Wrap bytes as a byte stream (extraction now takes a ReadableStream). */
+const S = (bytes: Uint8Array): ReadableStream<Uint8Array> => ReadableStream.from([bytes]);
+const archive = (bytes: Uint8Array): BundleSource => ({ kind: "archive", stream: S(bytes) });
+
 async function withStore<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = await Deno.makeTempDir({ prefix: "compositz-store-" });
   try {
@@ -100,7 +97,7 @@ const VALID_TAR = () =>
 
 Deno.test("ingestBundle: a flat tar creates an instance under a minted id", async () => {
   await withStore(async (store) => {
-    const inst = await ingestBundle({ kind: "archive", bytes: VALID_TAR() }, store);
+    const inst = await ingestBundle(archive(VALID_TAR()), store);
     assertMatch(inst.instanceId, /^hello-[0-9a-z]{8}$/);
     assertEquals(inst.appId, "hello");
     assertEquals(inst.manifest.name, "Hello");
@@ -118,7 +115,7 @@ Deno.test("ingestBundle: a single top-level wrapper dir is unwrapped", async () 
       { path: "hello-recipe/compositz.yaml", data: enc.encode(MANIFEST) },
       { path: "hello-recipe/Dockerfile", data: enc.encode(DOCKERFILE) },
     ]);
-    const inst = await ingestBundle({ kind: "archive", bytes: tar }, store);
+    const inst = await ingestBundle(archive(tar), store);
     assertEquals(inst.appId, "hello");
     assertEquals((await Deno.stat(join(store, inst.instanceId, "app", "Dockerfile"))).isFile, true);
   });
@@ -126,7 +123,7 @@ Deno.test("ingestBundle: a single top-level wrapper dir is unwrapped", async () 
 
 Deno.test("ingestBundle: gzip is auto-detected by magic bytes", async () => {
   await withStore(async (store) => {
-    const inst = await ingestBundle({ kind: "archive", bytes: await gzip(VALID_TAR()) }, store);
+    const inst = await ingestBundle(archive(await gzip(VALID_TAR())), store);
     assertEquals(inst.appId, "hello");
   });
 });
@@ -148,7 +145,7 @@ Deno.test("ingestBundle: a local directory source is copied in", async () => {
 
 Deno.test("duplicateInstance: copies only app/, mints a new id", async () => {
   await withStore(async (store) => {
-    const a = await ingestBundle({ kind: "archive", bytes: VALID_TAR() }, store);
+    const a = await ingestBundle(archive(VALID_TAR()), store);
     const b = await duplicateInstance(store, a.instanceId);
     assertEquals(b.appId, "hello");
     assertEquals(b.instanceId === a.instanceId, false);
@@ -159,7 +156,7 @@ Deno.test("duplicateInstance: copies only app/, mints a new id", async () => {
 
 Deno.test("duplicateInstance: does NOT copy instance state placed outside app/", async () => {
   await withStore(async (store) => {
-    const a = await ingestBundle({ kind: "archive", bytes: VALID_TAR() }, store);
+    const a = await ingestBundle(archive(VALID_TAR()), store);
     // simulate per-instance state next to app/ (override config + a data marker)
     await Deno.writeTextFile(join(store, a.instanceId, "config.yaml"), "hostPorts: {}\n");
     await Deno.mkdir(join(store, a.instanceId, "data"));
@@ -179,7 +176,7 @@ Deno.test("duplicateInstance: does NOT copy instance state placed outside app/",
 Deno.test("extractArchiveTo: rejects a `..` traversal path", async () => {
   await withStore(async (dir) => {
     const tar = makeTar([{ path: "../escape.txt", data: enc.encode("pwned") }]);
-    await assertRejects(() => extractArchiveTo(tar, dir), Error, "escapes the bundle");
+    await assertRejects(() => extractArchiveTo(S(tar), dir), Error, "escapes the bundle");
     // nothing was written outside the destination
     assertEquals(await exists(join(dir, "..", "escape.txt")), false);
   });
@@ -188,28 +185,28 @@ Deno.test("extractArchiveTo: rejects a `..` traversal path", async () => {
 Deno.test("extractArchiveTo: rejects an absolute path", async () => {
   await withStore(async (dir) => {
     const tar = makeTar([{ path: "/tmp/compositz-escape.txt", data: enc.encode("pwned") }]);
-    await assertRejects(() => extractArchiveTo(tar, dir), Error, "escapes the bundle");
+    await assertRejects(() => extractArchiveTo(S(tar), dir), Error, "escapes the bundle");
   });
 });
 
 Deno.test("extractArchiveTo: rejects a symlink entry", async () => {
   await withStore(async (dir) => {
     const tar = makeTar([{ path: "link", typeflag: "2", linkname: "/etc/passwd" }]);
-    await assertRejects(() => extractArchiveTo(tar, dir), Error, "symlinks");
+    await assertRejects(() => extractArchiveTo(S(tar), dir), Error, "symlinks");
   });
 });
 
 Deno.test("extractArchiveTo: rejects a hardlink entry", async () => {
   await withStore(async (dir) => {
     const tar = makeTar([{ path: "hard", typeflag: "1", linkname: "secret" }]);
-    await assertRejects(() => extractArchiveTo(tar, dir), Error, "hardlinks");
+    await assertRejects(() => extractArchiveTo(S(tar), dir), Error, "hardlinks");
   });
 });
 
 Deno.test("extractArchiveTo: rejects a device-node entry (char/block/fifo)", async () => {
   await withStore(async (dir) => {
     const tar = makeTar([{ path: "dev", typeflag: "3" }]); // char device
-    await assertRejects(() => extractArchiveTo(tar, dir), Error, "devices");
+    await assertRejects(() => extractArchiveTo(S(tar), dir), Error, "devices");
   });
 });
 
@@ -217,82 +214,33 @@ Deno.test("extractArchiveTo: rejects a deeply-nested path that escapes after nor
   await withStore(async (dir) => {
     // normalizes to ../escape.txt
     const tar = makeTar([{ path: "subdir/../../escape.txt", data: enc.encode("pwned") }]);
-    await assertRejects(() => extractArchiveTo(tar, dir), Error, "escapes the bundle");
+    await assertRejects(() => extractArchiveTo(S(tar), dir), Error, "escapes the bundle");
   });
 });
 
 Deno.test("extractArchiveTo: rejects traversal inside a gzip archive too", async () => {
   await withStore(async (dir) => {
-    const tar = await gzip(makeTar([{ path: "../escape.txt", data: enc.encode("pwned") }]));
-    await assertRejects(() => extractArchiveTo(tar, dir), Error, "escapes the bundle");
+    const gz = await gzip(makeTar([{ path: "../escape.txt", data: enc.encode("pwned") }]));
+    await assertRejects(() => extractArchiveTo(S(gz), dir), Error, "escapes the bundle");
   });
 });
 
 Deno.test("extractArchiveTo: a path that normalizes back inside the root is allowed", async () => {
   await withStore(async (dir) => {
     // a/../b.txt normalizes to b.txt — legitimate, must NOT be rejected
-    await extractArchiveTo(makeTar([{ path: "a/../b.txt", data: enc.encode("ok") }]), dir);
+    await extractArchiveTo(S(makeTar([{ path: "a/../b.txt", data: enc.encode("ok") }])), dir);
     assertEquals(await Deno.readTextFile(join(dir, "b.txt")), "ok");
   });
 });
 
 Deno.test("extractArchiveTo: an empty-name entry is skipped, not fatal", async () => {
   await withStore(async (dir) => {
-    await extractArchiveTo(
-      makeTar([{ path: "", data: enc.encode("x") }, { path: "real.txt", data: enc.encode("ok") }]),
-      dir,
-    );
+    const tar = makeTar([
+      { path: "", data: enc.encode("x") },
+      { path: "real.txt", data: enc.encode("ok") },
+    ]);
+    await extractArchiveTo(S(tar), dir);
     assertEquals(await Deno.readTextFile(join(dir, "real.txt")), "ok");
-  });
-});
-
-Deno.test("extractArchiveTo: total extracted size over the cap is rejected (bomb guard)", async () => {
-  await withStore(async (dir) => {
-    // two real 100-byte entries (valid tar) against a 150-byte cap → bail on the second.
-    const tar = makeTar([
-      { path: "a.txt", data: new Uint8Array(100) },
-      { path: "b.txt", data: new Uint8Array(100) },
-    ]);
-    await assertRejects(() => extractArchiveTo(tar, dir, { maxBytes: 150 }), Error, "too large");
-  });
-});
-
-Deno.test("extractArchiveTo: a gzip whose INFLATED stream exceeds the cap is rejected", async () => {
-  await withStore(async (dir) => {
-    // The byte limiter must trip on the DECOMPRESSED stream — the path a real gzip
-    // bomb takes (a tiny compressed input inflating past the cap), which the
-    // uncompressed cap tests do not exercise.
-    const gz = await gzip(makeTar([
-      { path: "a.bin", data: new Uint8Array(2048) },
-      { path: "b.bin", data: new Uint8Array(2048) },
-    ]));
-    await assertRejects(() => extractArchiveTo(gz, dir, { maxBytes: 1024 }), Error, "decompressed");
-  });
-});
-
-Deno.test("extractArchiveTo: too many entries is rejected (bomb guard)", async () => {
-  await withStore(async (dir) => {
-    const tar = makeTar([
-      { path: "a.txt", data: enc.encode("x") },
-      { path: "b.txt", data: enc.encode("x") },
-      { path: "c.txt", data: enc.encode("x") },
-    ]);
-    await assertRejects(
-      () => extractArchiveTo(tar, dir, { maxEntries: 2 }),
-      Error,
-      "too many entries",
-    );
-  });
-});
-
-Deno.test("ingestBundle: an over-cap archive is rejected before extraction", async () => {
-  await withStore(async (store) => {
-    const bytes = new Uint8Array(MAX_BUNDLE_BYTES + 1); // size check precedes any parsing
-    await assertRejects(
-      () => ingestBundle({ kind: "archive", bytes }, store),
-      Error,
-      "bundle too large",
-    );
   });
 });
 
@@ -301,11 +249,7 @@ Deno.test("ingestBundle: an over-cap archive is rejected before extraction", asy
 Deno.test("ingestBundle: a bundle with no manifest is rejected", async () => {
   await withStore(async (store) => {
     const tar = makeTar([{ path: "README.md", data: enc.encode("hi") }]);
-    await assertRejects(
-      () => ingestBundle({ kind: "archive", bytes: tar }, store),
-      Error,
-      "no compositz.yaml",
-    );
+    await assertRejects(() => ingestBundle(archive(tar), store), Error, "no compositz.yaml");
   });
 });
 
@@ -317,11 +261,7 @@ Deno.test("ingestBundle: a bundle with two top-level manifests is ambiguous", as
       { path: "b/compositz.yaml", data: enc.encode(MANIFEST) },
       { path: "b/Dockerfile", data: enc.encode(DOCKERFILE) },
     ]);
-    await assertRejects(
-      () => ingestBundle({ kind: "archive", bytes: tar }, store),
-      Error,
-      "ambiguous",
-    );
+    await assertRejects(() => ingestBundle(archive(tar), store), Error, "ambiguous");
   });
 });
 
@@ -330,7 +270,7 @@ Deno.test("ingestBundle: an invalid manifest is rejected by Zod", async () => {
     const tar = makeTar([
       { path: "compositz.yaml", data: enc.encode("manifestVersion: 2\nid: BAD_CAPS\n") },
     ]);
-    await assertRejects(() => ingestBundle({ kind: "archive", bytes: tar }, store), Error);
+    await assertRejects(() => ingestBundle(archive(tar), store), Error);
   });
 });
 

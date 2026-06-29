@@ -1,11 +1,16 @@
 // Ingest a recipe bundle into the instance store (ADR-017): extract → Zod-validate
 // → mint an instanceId → create `<instancesDir>/<instanceId>/app/`. Sources are a
-// tar/tar.gz archive (UI upload) or a local directory (dev / CLI). Building the
-// image stays the separate Install step.
+// tar/tar.gz archive byte stream (UI upload / CLI file) or a local directory.
+// Building the image stays the separate Install step.
 //
-// SECURITY: archive entry paths are UNTRUSTED. Extraction rejects absolute paths,
-// `..` traversal, and symlink/hardlink/device entries — a malicious bundle must not
-// be able to write outside the staging directory or plant a link out of it.
+// The archive is extracted STREAMING (written to disk entry-by-entry), so an
+// arbitrarily large bundle never buffers in RAM — there is no size cap (the manager
+// is trusted and recipes come from the user; resource-exhaustion "bombs" are out of
+// scope per the threat model).
+//
+// SECURITY (extract safely, regardless of size): archive entry paths are UNTRUSTED.
+// Extraction rejects absolute paths, `..` traversal, and symlink/hardlink/device
+// entries — a bundle must not write outside the staging directory or plant a link.
 
 import { isAbsolute, join, normalize, resolve, SEPARATOR } from "@std/path";
 import { UntarStream } from "@std/tar";
@@ -20,16 +25,6 @@ import { APP_SUBDIR, type Instance, loadInstance, META_FILE, writeMeta } from ".
  * since it flows into filesystem paths and Docker names.
  */
 export const INSTANCE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,80}$/;
-
-// Resource caps — a recipe bundle is small (a Dockerfile + a few assets; images
-// and models are NOT in the bundle). These bound a malicious upload: a gzip bomb
-// or a huge/over-many-entry archive can't exhaust RAM or inodes.
-/** Max size of the uploaded archive itself (compressed). */
-export const MAX_BUNDLE_BYTES = 64 * 1024 * 1024;
-/** Max size of the decompressed archive stream (bounds peak RAM during extraction). */
-export const MAX_EXTRACTED_BYTES = 128 * 1024 * 1024;
-/** Max number of archive entries. */
-export const MAX_ENTRIES = 8192;
 
 const ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz";
 
@@ -46,9 +41,9 @@ export function randomInstanceId(appId: string, size = 8): string {
   return `${appId}-${suffix}`;
 }
 
-/** A recipe bundle to ingest: a packed archive, or a directory on disk. */
+/** A recipe bundle to ingest: a packed-archive byte stream, or a directory on disk. */
 export type BundleSource =
-  | { kind: "archive"; bytes: Uint8Array }
+  | { kind: "archive"; stream: ReadableStream<Uint8Array> }
   | { kind: "dir"; dir: string };
 
 /**
@@ -61,14 +56,11 @@ export async function ingestBundle(
   instancesDir: string,
   opts: { source?: string; createdAt?: string } = {},
 ): Promise<Instance> {
-  if (source.kind === "archive" && source.bytes.byteLength > MAX_BUNDLE_BYTES) {
-    throw new CompositzError(`bundle too large (> ${MAX_BUNDLE_BYTES} bytes)`);
-  }
   await Deno.mkdir(instancesDir, { recursive: true });
   const staging = await Deno.makeTempDir({ dir: instancesDir, prefix: ".ingest-" });
   try {
     if (source.kind === "archive") {
-      await extractArchiveTo(source.bytes, staging);
+      await extractArchiveTo(source.stream, staging);
     } else {
       await copyTreeTo(source.dir, staging);
     }
@@ -143,62 +135,24 @@ export async function duplicateInstance(
 const LINK_TYPEFLAGS = new Set(["1", "2"]); // hardlink, symlink — never followed
 const DEVICE_TYPEFLAGS = new Set(["3", "4", "6"]); // char, block, fifo — refused
 
-/** Input slice size — feed the archive in small chunks so decompression streams. */
-const INPUT_CHUNK = 64 * 1024;
-
 /**
- * Securely expand a tar / tar.gz archive into `destDir`. Gzip is auto-detected by
- * magic bytes. Every entry is sanitized (no absolute/`..`/escape), links and
- * devices are refused, and the decompressed stream + entry count + per-entry size
- * are capped (bounds a gzip/zip bomb). `limits` is injectable for tests; production
- * uses the `MAX_*` defaults.
- *
- * MEMORY: the input is fed in small slices so `DecompressionStream` inflates
- * INCREMENTALLY (with backpressure) instead of materializing the whole decompressed
- * archive as one in-RAM chunk; a byte limiter then errors the stream the moment the
- * inflated total exceeds the cap — so a bomb is rejected within a bounded window,
- * NOT after it has fully inflated.
+ * Securely expand a tar / tar.gz BYTE STREAM into `destDir`, writing each entry to
+ * disk as it streams (so an arbitrarily large bundle never buffers in RAM). Gzip is
+ * auto-detected by magic bytes. Entry paths are sanitized (no absolute/`..`/escape)
+ * and symlink/hardlink/device entries are refused.
  */
 export async function extractArchiveTo(
-  bytes: Uint8Array,
+  source: ReadableStream<Uint8Array>,
   destDir: string,
-  limits: { maxBytes?: number; maxEntries?: number } = {},
 ): Promise<void> {
-  const maxBytes = limits.maxBytes ?? MAX_EXTRACTED_BYTES;
-  const maxEntries = limits.maxEntries ?? MAX_ENTRIES;
-  const gzipped = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
-  let stream: ReadableStream<Uint8Array> = chunkedSource(bytes);
-  if (gzipped) {
-    // (De)CompressionStream is web-typed with BufferSource, which TS won't accept
-    // as a Uint8Array transform (WritableStream invariance) — an unavoidable cast.
-    stream = stream.pipeThrough(
-      new DecompressionStream("gzip") as unknown as TransformStream<Uint8Array, Uint8Array>,
-    );
-  }
-  // Cap the DECOMPRESSED stream (this is the real memory/throughput bound — the
-  // per-entry check below would otherwise run only after inflation).
-  stream = stream.pipeThrough(byteLimiter(maxBytes));
-
-  let totalBytes = 0;
-  let entryCount = 0;
-  for await (const entry of stream.pipeThrough(new UntarStream())) {
-    if (++entryCount > maxEntries) {
-      await entry.readable?.cancel();
-      throw new CompositzError(`bundle has too many entries (> ${maxEntries})`);
-    }
+  const tar = await decompressIfGzipped(source);
+  for await (const entry of tar.pipeThrough(new UntarStream())) {
     const typeflag = entry.header.typeflag;
     if (LINK_TYPEFLAGS.has(typeflag) || DEVICE_TYPEFLAGS.has(typeflag)) {
       await entry.readable?.cancel();
       throw new CompositzError(
         `refusing archive entry "${entry.path}": symlinks, hardlinks and devices are not allowed`,
       );
-    }
-    // ustar entries are size-prefixed, so the declared size is the data size —
-    // sum it and bail before writing once the cap is exceeded (bounds a gzip bomb).
-    totalBytes += entry.header.size ?? 0;
-    if (totalBytes > maxBytes) {
-      await entry.readable?.cancel();
-      throw new CompositzError(`bundle too large (extracted > ${maxBytes} bytes)`);
     }
     // Skip the archive root / empty-name entries (normalize("") === ".") — they
     // resolve to destDir itself, which is not a file to write.
@@ -218,6 +172,44 @@ export async function extractArchiveTo(
     if (entry.readable) await entry.readable.pipeTo(file.writable);
     else file.close();
   }
+}
+
+/** Peek the first 2 bytes; gunzip the stream when it is gzip-magic, else pass through. */
+async function decompressIfGzipped(
+  source: ReadableStream<Uint8Array>,
+): Promise<ReadableStream<Uint8Array>> {
+  const reader = source.getReader();
+  let head = new Uint8Array(0);
+  while (head.byteLength < 2) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    const merged = new Uint8Array(head.byteLength + value.byteLength);
+    merged.set(head);
+    merged.set(value, head.byteLength);
+    head = merged;
+  }
+  // Re-emit the peeked head, then the remainder of the original stream.
+  const restored = new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (head.byteLength) controller.enqueue(head);
+    },
+    async pull(controller) {
+      const { value, done } = await reader.read();
+      if (done) controller.close();
+      else controller.enqueue(value);
+    },
+    cancel(reason) {
+      reader.cancel(reason);
+    },
+  });
+  const gzipped = head.byteLength >= 2 && head[0] === 0x1f && head[1] === 0x8b;
+  // (De)CompressionStream is web-typed with BufferSource, which TS won't accept as a
+  // Uint8Array transform (WritableStream invariance) — an unavoidable cast.
+  return gzipped
+    ? restored.pipeThrough(
+      new DecompressionStream("gzip") as unknown as TransformStream<Uint8Array, Uint8Array>,
+    )
+    : restored;
 }
 
 /**
@@ -240,37 +232,6 @@ function safeJoin(destDir: string, entryPath: string): string {
 function dirOf(path: string): string {
   const i = path.lastIndexOf(SEPARATOR);
   return i <= 0 ? path : path.slice(0, i);
-}
-
-/** Emit `bytes` in small slices so a downstream decompressor streams (no giant chunk). */
-function chunkedSource(bytes: Uint8Array): ReadableStream<Uint8Array> {
-  let offset = 0;
-  return new ReadableStream({
-    pull(controller) {
-      if (offset >= bytes.length) {
-        controller.close();
-        return;
-      }
-      const end = Math.min(offset + INPUT_CHUNK, bytes.length);
-      controller.enqueue(bytes.subarray(offset, end));
-      offset = end;
-    },
-  });
-}
-
-/** Error the stream once cumulative bytes exceed `max` (bounds a decompression bomb). */
-function byteLimiter(max: number): TransformStream<Uint8Array, Uint8Array> {
-  let total = 0;
-  return new TransformStream({
-    transform(chunk, controller) {
-      total += chunk.byteLength;
-      if (total > max) {
-        controller.error(new CompositzError(`bundle too large (decompressed > ${max} bytes)`));
-        return;
-      }
-      controller.enqueue(chunk);
-    },
-  });
 }
 
 /** Recursively copy a directory tree, skipping symlinks (never follow out of tree). */
