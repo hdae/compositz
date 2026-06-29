@@ -26,8 +26,8 @@ export const INSTANCE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,80}$/;
 // or a huge/over-many-entry archive can't exhaust RAM or inodes.
 /** Max size of the uploaded archive itself (compressed). */
 export const MAX_BUNDLE_BYTES = 64 * 1024 * 1024;
-/** Max total size of the extracted files (sum of declared entry sizes). */
-export const MAX_EXTRACTED_BYTES = 256 * 1024 * 1024;
+/** Max size of the decompressed archive stream (bounds peak RAM during extraction). */
+export const MAX_EXTRACTED_BYTES = 128 * 1024 * 1024;
 /** Max number of archive entries. */
 export const MAX_ENTRIES = 8192;
 
@@ -81,20 +81,25 @@ export async function ingestBundle(
     if (await pathExists(finalDir)) {
       throw new CompositzError(`instance "${instanceId}" already exists`);
     }
-    await Deno.mkdir(finalDir);
-    // Once finalDir exists, any later failure must not leave a half-built instance
-    // (a valid app/ with no meta.json would surface as a ghost instance).
+    // Assemble the COMPLETE instance (app/ + meta.json) in a dot-prefixed publish
+    // dir, then publish with ONE atomic rename — so a concurrent listInstances
+    // never sees a half-built (meta-less ghost) instance, and a pre-publish failure
+    // leaves no orphan.
+    const pub = await Deno.makeTempDir({ dir: instancesDir, prefix: ".pub-" });
     try {
-      await Deno.rename(bundleRoot, join(finalDir, APP_SUBDIR));
-      await writeMeta(join(finalDir, META_FILE), {
+      await Deno.rename(bundleRoot, join(pub, APP_SUBDIR));
+      await writeMeta(join(pub, META_FILE), {
         source: opts.source ?? describeSource(source),
         createdAt: opts.createdAt ?? new Date().toISOString(),
       });
-      return await loadInstance(finalDir);
+      await Deno.rename(pub, finalDir); // atomic publish
     } catch (e) {
-      await Deno.remove(finalDir, { recursive: true }).catch(() => {});
+      await Deno.remove(pub, { recursive: true }).catch(() => {});
       throw e;
     }
+    // finalDir is now a complete, valid instance; a transient re-read failure here
+    // must NOT delete it (that would be irreversible data loss).
+    return await loadInstance(finalDir);
   } finally {
     await Deno.remove(staging, { recursive: true }).catch(() => {});
   }
@@ -138,12 +143,21 @@ export async function duplicateInstance(
 const LINK_TYPEFLAGS = new Set(["1", "2"]); // hardlink, symlink — never followed
 const DEVICE_TYPEFLAGS = new Set(["3", "4", "6"]); // char, block, fifo — refused
 
+/** Input slice size — feed the archive in small chunks so decompression streams. */
+const INPUT_CHUNK = 64 * 1024;
+
 /**
  * Securely expand a tar / tar.gz archive into `destDir`. Gzip is auto-detected by
  * magic bytes. Every entry is sanitized (no absolute/`..`/escape), links and
- * devices are refused, and the entry count + total declared size are capped
- * (bounds a gzip/zip bomb). `limits` is injectable for tests; production uses the
- * `MAX_*` defaults.
+ * devices are refused, and the decompressed stream + entry count + per-entry size
+ * are capped (bounds a gzip/zip bomb). `limits` is injectable for tests; production
+ * uses the `MAX_*` defaults.
+ *
+ * MEMORY: the input is fed in small slices so `DecompressionStream` inflates
+ * INCREMENTALLY (with backpressure) instead of materializing the whole decompressed
+ * archive as one in-RAM chunk; a byte limiter then errors the stream the moment the
+ * inflated total exceeds the cap — so a bomb is rejected within a bounded window,
+ * NOT after it has fully inflated.
  */
 export async function extractArchiveTo(
   bytes: Uint8Array,
@@ -153,7 +167,7 @@ export async function extractArchiveTo(
   const maxBytes = limits.maxBytes ?? MAX_EXTRACTED_BYTES;
   const maxEntries = limits.maxEntries ?? MAX_ENTRIES;
   const gzipped = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
-  let stream: ReadableStream<Uint8Array> = ReadableStream.from([bytes]);
+  let stream: ReadableStream<Uint8Array> = chunkedSource(bytes);
   if (gzipped) {
     // (De)CompressionStream is web-typed with BufferSource, which TS won't accept
     // as a Uint8Array transform (WritableStream invariance) — an unavoidable cast.
@@ -161,6 +175,9 @@ export async function extractArchiveTo(
       new DecompressionStream("gzip") as unknown as TransformStream<Uint8Array, Uint8Array>,
     );
   }
+  // Cap the DECOMPRESSED stream (this is the real memory/throughput bound — the
+  // per-entry check below would otherwise run only after inflation).
+  stream = stream.pipeThrough(byteLimiter(maxBytes));
 
   let totalBytes = 0;
   let entryCount = 0;
@@ -223,6 +240,37 @@ function safeJoin(destDir: string, entryPath: string): string {
 function dirOf(path: string): string {
   const i = path.lastIndexOf(SEPARATOR);
   return i <= 0 ? path : path.slice(0, i);
+}
+
+/** Emit `bytes` in small slices so a downstream decompressor streams (no giant chunk). */
+function chunkedSource(bytes: Uint8Array): ReadableStream<Uint8Array> {
+  let offset = 0;
+  return new ReadableStream({
+    pull(controller) {
+      if (offset >= bytes.length) {
+        controller.close();
+        return;
+      }
+      const end = Math.min(offset + INPUT_CHUNK, bytes.length);
+      controller.enqueue(bytes.subarray(offset, end));
+      offset = end;
+    },
+  });
+}
+
+/** Error the stream once cumulative bytes exceed `max` (bounds a decompression bomb). */
+function byteLimiter(max: number): TransformStream<Uint8Array, Uint8Array> {
+  let total = 0;
+  return new TransformStream({
+    transform(chunk, controller) {
+      total += chunk.byteLength;
+      if (total > max) {
+        controller.error(new CompositzError(`bundle too large (decompressed > ${max} bytes)`));
+        return;
+      }
+      controller.enqueue(chunk);
+    },
+  });
 }
 
 /** Recursively copy a directory tree, skipping symlinks (never follow out of tree). */

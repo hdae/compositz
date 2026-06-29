@@ -257,6 +257,19 @@ Deno.test("extractArchiveTo: total extracted size over the cap is rejected (bomb
   });
 });
 
+Deno.test("extractArchiveTo: a gzip whose INFLATED stream exceeds the cap is rejected", async () => {
+  await withStore(async (dir) => {
+    // The byte limiter must trip on the DECOMPRESSED stream — the path a real gzip
+    // bomb takes (a tiny compressed input inflating past the cap), which the
+    // uncompressed cap tests do not exercise.
+    const gz = await gzip(makeTar([
+      { path: "a.bin", data: new Uint8Array(2048) },
+      { path: "b.bin", data: new Uint8Array(2048) },
+    ]));
+    await assertRejects(() => extractArchiveTo(gz, dir, { maxBytes: 1024 }), Error, "decompressed");
+  });
+});
+
 Deno.test("extractArchiveTo: too many entries is rejected (bomb guard)", async () => {
   await withStore(async (dir) => {
     const tar = makeTar([
