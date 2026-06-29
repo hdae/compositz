@@ -101,8 +101,9 @@ named-pipe connect is confirmed implemented since 2.6.2 — deno#28332 closed 20
 `-A` is baked in.
 
 **Consequences:** ship CEF for now; **revisit the lightweight WebView2 backend** once the fix lands
-(Phase 4). `deno task desktop` builds CEF; `deno task desktop:webview` builds the (currently broken)
-system-webview variant for re-testing.
+(Phase 4). `deno task desktop` / `desktop:dev` build with CEF
+([ADR-016](#adr-016--desktop-app--the-fresh-ui-packaged-by-deno-desktop-framework-detection--accepted-verified));
+re-test the WebView2 backend by swapping `--backend webview` on those tasks.
 
 ---
 
@@ -333,24 +334,29 @@ consumes `_fresh/` directly" criterion.
   UI server cannot work once packaged. Recipe install/up/down now happen **inside** the Fresh UI
   (core in-process —
   [ADR-013](#adr-013--retire-packagesserver-hono-the-ui-calls-core-in-process--accepted-reversible)).
-- **Tasks live in `packages/ui`** (so `deno desktop` runs with that cwd and detects Fresh), with
-  root delegators: `deno task desktop` = `ui build` then `deno desktop … --output …AppImage`;
-  `deno task
-  desktop:dev` = `deno desktop --hmr …` (runs Fresh's Vite dev server, the webview
-  connects live). Build first — `deno desktop` does **not** run the framework build.
+- **Tasks live in `packages/ui`** (so `deno desktop` runs with that cwd) and **both build `_fresh/`
+  first**: `desktop` = `build` then `deno desktop --output …`; `desktop:dev` = `build` then
+  `deno desktop --hmr …` (runs Fresh's Vite dev server, the webview connects live). Root delegates.
+- **PITFALL — `_fresh/` MUST exist before `deno desktop`, even for `--hmr`.** Detection picks the
+  **first** matching framework: with `_fresh/` present it detects **Fresh**; without it,
+  `vite.config.ts` makes it detect the generic **Vite** SSR framework (wrong) and the build then
+  fails. `deno desktop` does NOT run the framework build, so the tasks `build` first. (This is why
+  `desktop:dev` "didn't work" until a build had run.)
 - **PITFALL — options MUST precede any positional entrypoint.**
   `deno desktop . --backend cef
   --output X` silently swallows `--backend`/`--output` as _script
   args_ (everything after `.` is `SCRIPT_ARG`), so it built a default-WebView2 bundle into
-  `packages/ui/ui/` instead of a CEF AppImage in `dist/`. Fix: **omit the entrypoint** (cwd
-  auto-detect) and pass flags only:
-  `deno desktop --backend cef --output ../../dist/compositz.AppImage -A --unstable-net`.
-- **`--output` needs a packaged-app extension** (`.AppImage` / `.deb` / `.msi` / `.app` / `.dmg`);
-  without one it falls back to an unpackaged bundle dir named after the package. Linux dev builds an
-  `.AppImage`; Windows packaging (`.msi`) + signing is Phase 4.
+  `packages/ui/ui/`. Fix: **omit the entrypoint** (cwd auto-detect) and pass flags only.
+- **`--output` extension selects the package format, and it is OS-specific.** A platform extension
+  (`.msi` Windows · `.AppImage`/`.deb` Linux · `.dmg`/`.app` macOS) produces an **installer**; a
+  no/invalid extension produces a **portable bundle directory** at that path (e.g.
+  `dist/compositz/`, runnable on the host OS). Because one task can't pick a per-OS extension,
+  `deno task desktop` outputs the **directory** (uniform on every OS — on Windows it is a folder,
+  not an `.msi`); building a signed installer per platform is Phase 4.
 
-**Verified:** `deno task desktop` on Linux detects Fresh, embeds `_fresh/`, downloads the CEF
-backend, and writes `dist/compositz.AppImage` (CEF/Chromium bundled); the source tree stays clean.
-`packages/desktop` removed from the workspace + `deno task check`; the Fresh app is type-checked by
-`ui:check`. Remaining: the live CEF **window** (can't run headless here — manual `--hmr`), Windows
-`.msi` packaging, and embedding each running app's web UI as secondary windows (multi-window).
+**Verified:** with `_fresh/` built, `deno desktop` (run from `packages/ui`, flags-first) detects
+Fresh, embeds `_fresh/`, and writes the output to `dist/` (a CEF `.AppImage` installer **or** the
+`dist/compositz/` directory bundle) with no source-tree pollution. `packages/desktop` removed from
+the workspace + `deno task check`; the Fresh app is type-checked by `ui:check`. Remaining: the live
+CEF **window** (can't run headless here — manual `--hmr`), signed per-OS installers, and embedding
+each running app's web UI as secondary windows (multi-window).

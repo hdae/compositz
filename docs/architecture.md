@@ -3,15 +3,15 @@
 ## Overview
 
 Compositz is a single Deno workspace. A TypeScript **core library** owns all Docker and recipe
-logic; thin consumers (CLI, server, desktop) sit on top.
+logic; thin consumers (CLI and the Fresh UI) sit on top.
 
 ```
-┌─────────────┐      ┌──────────────┐      ┌──────────────────┐
-│   CLI       │      │   server     │      │   desktop (CEF)  │
-│ (Linux-1st) │      │  (Hono API)  │      │  (Windows-1st)   │
-└──────┬──────┘      └──────┬───────┘      └────────┬─────────┘
-       │                    │                       │
-       └─────────────┬──────┴───────────────────────┘
+┌─────────────┐      ┌────────────────────────────┐
+│   CLI       │      │  ui (Fresh 2 / Vite)        │
+│ (Linux-1st) │      │  + desktop (deno desktop)   │
+└──────┬──────┘      └─────────────┬──────────────┘
+       │                           │  in-process core calls (route handlers)
+       └─────────────┬─────────────┘
                      ▼
            ┌───────────────────┐
            │  @compositz/core  │  Engine client · recipes · operations
@@ -22,18 +22,18 @@ logic; thin consumers (CLI, server, desktop) sit on top.
            └───────────────────┘
 ```
 
-The **CLI and desktop call core directly** (in-process). The **server** exposes the same operations
-over HTTP+SSE for a (future) web UI and a headless `compositz serve`.
+Every consumer **calls core directly, in-process**: the CLI from its commands, the UI from its Fresh
+route handlers (server-only), and the desktop is that same Fresh app packaged by `deno desktop`. A
+Hono API server was prototyped then retired ([ADR-013](decisions.md)) — a headless `compositz serve`
+could revive that surface later if needed.
 
 ## Components
 
-| Package  | Responsibility                                                                                                         |
-| -------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `core`   | Docker Engine API client, transport abstraction, recipe/manifest model, build, high-level operations (install/up/down) |
-| `cli`    | Linux-first command surface and the primary debugging tool                                                             |
-| `server` | Hono app wrapping core: REST `/api/*` + SSE (`/api/events`, install build log)                                         |
-| desktop  | _Not a package_ — the `ui` Fresh app packaged as a native CEF window by `deno desktop` ([ADR-016](decisions.md))       |
-| `ui`     | Management UI (framework TBD — see decisions.md)                                                                       |
+| Package | Responsibility                                                                                                                                                                                                 |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core`  | Docker Engine API client, transport abstraction, recipe/manifest model, build, high-level operations (install/up/down)                                                                                         |
+| `cli`   | Linux-first command surface and the primary debugging tool                                                                                                                                                     |
+| `ui`    | Management UI — **Fresh 2 (Vite)** ([ADR-008](decisions.md)); calls core in-process from route handlers (no separate API server). Packaged as the **desktop** app by `deno desktop` ([ADR-016](decisions.md)). |
 
 ## Docker transport abstraction
 
@@ -111,10 +111,10 @@ Linux. Runtime detection (nvidia vs CDI) is a Phase 3 item.
 
 - The **app** runs in its own container — that is the isolation boundary, and the whole point vs
   Pinokio.
-- The **manager** (CLI / server / desktop) is **trusted** and runs with broad permissions. On
-  Windows the `node:net` named-pipe transport in fact requires `--allow-all` (a Deno constraint);
-  this is consistent with the model — the manager legitimately needs to spawn Docker, read/write
-  files, and use the network.
+- The **manager** (the CLI and the Fresh UI / desktop) is **trusted** and runs with broad
+  permissions. On Windows the `node:net` named-pipe transport in fact requires `--allow-all` (a Deno
+  constraint); this is consistent with the model — the manager legitimately needs to spawn Docker,
+  read/write files, and use the network.
 - Per-recipe **strict isolation** (copy-mode caches, per-app volumes) is a deferred opt-out for
   troubleshooting (Phase 3).
 

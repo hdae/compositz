@@ -51,8 +51,9 @@ deno task ui                      # dev server (prints the local URL)
 
 # Desktop: the same Fresh management UI, packaged as a native window by `deno desktop`
 # (framework auto-detection — no separate entrypoint; recipe ops happen in the UI).
-deno task desktop:dev                   # run in a CEF window with HMR (dev)
-deno task desktop                       # build a native app → dist/compositz.AppImage
+deno task desktop:dev                   # build _fresh/ + run in a CEF window with HMR (dev)
+deno task desktop                       # build a native app bundle → dist/compositz/ (a folder)
+#   for a signed installer add a per-OS extension: --output …/compositz.msi (Win) / .AppImage (Linux)
 ```
 
 The manager process runs **trusted** (`-A`): isolation is enforced at the _container_ boundary, not
