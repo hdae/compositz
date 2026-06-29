@@ -50,6 +50,9 @@ export {
   extractArchiveTo,
   ingestBundle,
   INSTANCE_ID_PATTERN,
+  MAX_BUNDLE_BYTES,
+  MAX_ENTRIES,
+  MAX_EXTRACTED_BYTES,
   randomInstanceId,
 } from "./src/recipe/ingest.ts";
 export {

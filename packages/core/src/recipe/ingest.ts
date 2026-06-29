@@ -21,6 +21,16 @@ import { APP_SUBDIR, type Instance, loadInstance, META_FILE, writeMeta } from ".
  */
 export const INSTANCE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,80}$/;
 
+// Resource caps — a recipe bundle is small (a Dockerfile + a few assets; images
+// and models are NOT in the bundle). These bound a malicious upload: a gzip bomb
+// or a huge/over-many-entry archive can't exhaust RAM or inodes.
+/** Max size of the uploaded archive itself (compressed). */
+export const MAX_BUNDLE_BYTES = 64 * 1024 * 1024;
+/** Max total size of the extracted files (sum of declared entry sizes). */
+export const MAX_EXTRACTED_BYTES = 256 * 1024 * 1024;
+/** Max number of archive entries. */
+export const MAX_ENTRIES = 8192;
+
 const ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz";
 
 /**
@@ -51,6 +61,9 @@ export async function ingestBundle(
   instancesDir: string,
   opts: { source?: string; createdAt?: string } = {},
 ): Promise<Instance> {
+  if (source.kind === "archive" && source.bytes.byteLength > MAX_BUNDLE_BYTES) {
+    throw new CompositzError(`bundle too large (> ${MAX_BUNDLE_BYTES} bytes)`);
+  }
   await Deno.mkdir(instancesDir, { recursive: true });
   const staging = await Deno.makeTempDir({ dir: instancesDir, prefix: ".ingest-" });
   try {
@@ -69,12 +82,19 @@ export async function ingestBundle(
       throw new CompositzError(`instance "${instanceId}" already exists`);
     }
     await Deno.mkdir(finalDir);
-    await Deno.rename(bundleRoot, join(finalDir, APP_SUBDIR));
-    await writeMeta(join(finalDir, META_FILE), {
-      source: opts.source ?? describeSource(source),
-      createdAt: opts.createdAt ?? new Date().toISOString(),
-    });
-    return await loadInstance(finalDir);
+    // Once finalDir exists, any later failure must not leave a half-built instance
+    // (a valid app/ with no meta.json would surface as a ghost instance).
+    try {
+      await Deno.rename(bundleRoot, join(finalDir, APP_SUBDIR));
+      await writeMeta(join(finalDir, META_FILE), {
+        source: opts.source ?? describeSource(source),
+        createdAt: opts.createdAt ?? new Date().toISOString(),
+      });
+      return await loadInstance(finalDir);
+    } catch (e) {
+      await Deno.remove(finalDir, { recursive: true }).catch(() => {});
+      throw e;
+    }
   } finally {
     await Deno.remove(staging, { recursive: true }).catch(() => {});
   }
@@ -95,13 +115,22 @@ export async function duplicateInstance(
   if (await pathExists(finalDir)) {
     throw new CompositzError(`instance "${instanceId}" already exists`);
   }
-  await Deno.mkdir(finalDir, { recursive: true });
-  await copyTreeTo(srcApp, join(finalDir, APP_SUBDIR));
-  await writeMeta(join(finalDir, META_FILE), {
-    source: `duplicate:${srcInstanceId}`,
-    createdAt: new Date().toISOString(),
-  });
-  return await loadInstance(finalDir);
+  // Stage the copy, then publish with one atomic rename — so a concurrent
+  // listInstances never sees a half-copied bundle, and a failed copy leaves no
+  // orphan (same-fs staging dir, like ingestBundle).
+  const staging = await Deno.makeTempDir({ dir: instancesDir, prefix: ".dup-" });
+  try {
+    await copyTreeTo(srcApp, join(staging, APP_SUBDIR));
+    await writeMeta(join(staging, META_FILE), {
+      source: `duplicate:${srcInstanceId}`,
+      createdAt: new Date().toISOString(),
+    });
+    await Deno.rename(staging, finalDir);
+    return await loadInstance(finalDir);
+  } catch (e) {
+    await Deno.remove(staging, { recursive: true }).catch(() => {});
+    throw e;
+  }
 }
 
 // --- extraction ------------------------------------------------------------
@@ -111,10 +140,18 @@ const DEVICE_TYPEFLAGS = new Set(["3", "4", "6"]); // char, block, fifo — refu
 
 /**
  * Securely expand a tar / tar.gz archive into `destDir`. Gzip is auto-detected by
- * magic bytes. Every entry is sanitized (no absolute/`..`/escape) and links and
- * devices are refused.
+ * magic bytes. Every entry is sanitized (no absolute/`..`/escape), links and
+ * devices are refused, and the entry count + total declared size are capped
+ * (bounds a gzip/zip bomb). `limits` is injectable for tests; production uses the
+ * `MAX_*` defaults.
  */
-export async function extractArchiveTo(bytes: Uint8Array, destDir: string): Promise<void> {
+export async function extractArchiveTo(
+  bytes: Uint8Array,
+  destDir: string,
+  limits: { maxBytes?: number; maxEntries?: number } = {},
+): Promise<void> {
+  const maxBytes = limits.maxBytes ?? MAX_EXTRACTED_BYTES;
+  const maxEntries = limits.maxEntries ?? MAX_ENTRIES;
   const gzipped = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
   let stream: ReadableStream<Uint8Array> = ReadableStream.from([bytes]);
   if (gzipped) {
@@ -125,13 +162,33 @@ export async function extractArchiveTo(bytes: Uint8Array, destDir: string): Prom
     );
   }
 
+  let totalBytes = 0;
+  let entryCount = 0;
   for await (const entry of stream.pipeThrough(new UntarStream())) {
+    if (++entryCount > maxEntries) {
+      await entry.readable?.cancel();
+      throw new CompositzError(`bundle has too many entries (> ${maxEntries})`);
+    }
     const typeflag = entry.header.typeflag;
     if (LINK_TYPEFLAGS.has(typeflag) || DEVICE_TYPEFLAGS.has(typeflag)) {
       await entry.readable?.cancel();
       throw new CompositzError(
         `refusing archive entry "${entry.path}": symlinks, hardlinks and devices are not allowed`,
       );
+    }
+    // ustar entries are size-prefixed, so the declared size is the data size —
+    // sum it and bail before writing once the cap is exceeded (bounds a gzip bomb).
+    totalBytes += entry.header.size ?? 0;
+    if (totalBytes > maxBytes) {
+      await entry.readable?.cancel();
+      throw new CompositzError(`bundle too large (extracted > ${maxBytes} bytes)`);
+    }
+    // Skip the archive root / empty-name entries (normalize("") === ".") — they
+    // resolve to destDir itself, which is not a file to write.
+    const rel = normalize(entry.path.replaceAll("\\", "/"));
+    if (rel === "." || rel === "") {
+      await entry.readable?.cancel();
+      continue;
     }
     const target = safeJoin(destDir, entry.path);
     if (typeflag === "5" || entry.path.endsWith("/")) {

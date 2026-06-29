@@ -64,7 +64,7 @@ const MountSchema = z.strictObject({
   name: NAME.describe("Stable key — host subdir / volume suffix."),
   target: z.string().regex(/^\//, "must be an absolute path").describe("In-container mount path."),
   placement: z.enum(["bind", "volume"]).default("volume").describe(
-    "bind => host <data-root>/<id>/<name> (browsable, slow on Windows); volume => managed named volume.",
+    "bind => host <data-root>/<instanceId>/<name> (browsable, slow on Windows); volume => managed named volume.",
   ),
   description: z.string().optional(),
 });
@@ -84,7 +84,7 @@ const CustomCacheSchema = z.strictObject({
   name: NAME.describe("Cache key (volume suffix)."),
   env: ENV_NAME.describe("Env var the mount path is injected into."),
   scope: z.enum(["shared", "instance"]).default("shared").describe(
-    "shared => one cache across apps; instance => a per-(app,instance) subpath.",
+    "shared => one cache across apps; instance => a per-instance subpath (instanceId encodes the app).",
   ),
 });
 

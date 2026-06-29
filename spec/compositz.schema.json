@@ -120,7 +120,7 @@
           },
           "placement": {
             "default": "volume",
-            "description": "bind => host <data-root>/<id>/<name> (browsable, slow on Windows); volume => managed named volume.",
+            "description": "bind => host <data-root>/<instanceId>/<name> (browsable, slow on Windows); volume => managed named volume.",
             "type": "string",
             "enum": [
               "bind",
@@ -191,7 +191,7 @@
               },
               "scope": {
                 "default": "shared",
-                "description": "shared => one cache across apps; instance => a per-(app,instance) subpath.",
+                "description": "shared => one cache across apps; instance => a per-instance subpath (instanceId encodes the app).",
                 "type": "string",
                 "enum": [
                   "shared",
