@@ -212,27 +212,33 @@ export default function InstanceList(
       </div>
 
       {actionError
-        ? <p class="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>
+        ? (
+          <p class="mb-3 rounded bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {actionError}
+          </p>
+        )
         : null}
 
       {rows.length === 0
         ? (
-          <p class="mt-10 text-gray-500">
+          <p class="mt-10 text-muted-foreground">
             No instances yet — drop a recipe bundle anywhere, or use Import.
           </p>
         )
         : (
-          <ul class="divide-y divide-gray-200">
+          <ul class="divide-y divide-border">
             {rows.map((r) => (
               <li key={r.instanceId} class="py-4">
                 <div class="flex items-center gap-4">
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">
                       <span class="font-semibold">{r.name}</span>
-                      <span class="text-xs text-gray-400">{r.version}</span>
-                      <span class="text-xs text-gray-300 font-mono truncate">{r.instanceId}</span>
+                      <span class="text-xs text-muted-foreground">{r.version}</span>
+                      <span class="text-xs text-muted-foreground/70 font-mono truncate">
+                        {r.instanceId}
+                      </span>
                     </div>
-                    <p class="text-sm text-gray-500 truncate">{r.description}</p>
+                    <p class="text-sm text-muted-foreground truncate">{r.description}</p>
                   </div>
                   <StatusPill installed={r.installed} running={r.running} />
                   {r.web && r.running
@@ -241,7 +247,7 @@ export default function InstanceList(
                         href={r.web}
                         target="_blank"
                         rel="noopener noreferrer"
-                        class="text-sm text-blue-600 hover:underline whitespace-nowrap"
+                        class="text-sm text-blue-600 hover:underline whitespace-nowrap dark:text-blue-400"
                       >
                         Open UI
                       </a>
@@ -258,7 +264,7 @@ export default function InstanceList(
                   <Button
                     variant="ghost"
                     size="sm"
-                    class="text-red-600 hover:bg-red-50 hover:text-red-700"
+                    class="text-destructive hover:bg-destructive/10 hover:text-destructive"
                     onClick={() => setDeleting(r)}
                   >
                     Delete
@@ -274,7 +280,7 @@ export default function InstanceList(
       {dragging
         ? (
           <div class="fixed inset-0 z-30 flex items-center justify-center bg-blue-600/10 backdrop-blur-sm pointer-events-none">
-            <div class="rounded-xl border-2 border-dashed border-blue-500 bg-white/90 px-10 py-8 text-lg font-medium text-blue-700">
+            <div class="rounded-xl border-2 border-dashed border-blue-500 bg-background/90 px-10 py-8 text-lg font-medium text-blue-700 dark:border-blue-400 dark:text-blue-300">
               Drop recipe bundle to import (.tar / .tar.gz)
             </div>
           </div>
@@ -311,8 +317,14 @@ export default function InstanceList(
 }
 
 function EngineBadge({ online, error }: { online: boolean; error: string | null }) {
-  if (online) return <span class="text-sm text-green-600">● engine online</span>;
-  return <span class="text-sm text-amber-600" title={error ?? undefined}>● engine offline</span>;
+  if (online) {
+    return <span class="text-sm text-green-600 dark:text-green-400">● engine online</span>;
+  }
+  return (
+    <span class="text-sm text-amber-600 dark:text-amber-400" title={error ?? undefined}>
+      ● engine offline
+    </span>
+  );
 }
 
 function StatusPill({ installed, running }: { installed: boolean | null; running: boolean }) {
@@ -324,9 +336,9 @@ function StatusPill({ installed, running }: { installed: boolean | null; running
 
 function Pill({ tone, children }: { tone: "green" | "blue" | "gray"; children: string }) {
   const tones = {
-    green: "bg-green-100 text-green-800",
-    blue: "bg-blue-100 text-blue-800",
-    gray: "bg-gray-100 text-gray-600",
+    green: "bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400",
+    blue: "bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-400",
+    gray: "bg-muted text-muted-foreground",
   };
   return (
     <span class={`rounded-full px-2.5 py-0.5 text-xs font-medium ${tones[tone]}`}>{children}</span>

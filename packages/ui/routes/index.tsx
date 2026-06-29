@@ -70,9 +70,9 @@ export const handler = define.handlers({
 
 export default define.page<typeof handler>(function Dashboard({ data }) {
   return (
-    <div class="min-h-screen bg-gray-50 text-gray-900">
+    <div class="min-h-screen bg-background text-foreground">
       <div class="max-w-screen-lg mx-auto px-6 py-10">
-        <header class="border-b border-gray-200 pb-4">
+        <header class="border-b border-border pb-4">
           <h1 class="text-2xl font-bold">Compositz</h1>
         </header>
         <div class="mt-6">

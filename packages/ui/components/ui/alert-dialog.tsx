@@ -19,7 +19,7 @@ export function AlertDialogContent(
       <Base.Backdrop className="fixed inset-0 z-40 bg-black/50" />
       <Base.Popup
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-gray-200 bg-white p-6 shadow-xl",
+          "fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-xl",
           cls,
         )}
       >
@@ -30,11 +30,13 @@ export function AlertDialogContent(
 }
 
 export function AlertDialogTitle({ children }: { children?: ComponentChildren }) {
-  return <Base.Title className="text-base font-semibold text-gray-900">{children}</Base.Title>;
+  return <Base.Title className="text-base font-semibold">{children}</Base.Title>;
 }
 
 export function AlertDialogDescription({ children }: { children?: ComponentChildren }) {
-  return <Base.Description className="mt-2 text-sm text-gray-500">{children}</Base.Description>;
+  return (
+    <Base.Description className="mt-2 text-sm text-muted-foreground">{children}</Base.Description>
+  );
 }
 
 export function AlertDialogFooter({ children }: { children?: ComponentChildren }) {
