@@ -59,13 +59,18 @@ De-risk the two load-bearing unknowns before building.
   ports, `image`-or-`build`) + 3-tier storage + configurable host **data-root** for bind outputs +
   effective-spec derivation (manifest ⊕ launch override). Structured `HostConfig.Mounts` with
   `BindOptions.CreateMountpoint` (daemon-side bind-source creation). Breaking (unreleased);
-  consumers unchanged. Full suite green + live-verified on the real engine. See
+  consumers took only a 1-line change each (`up()` returns the resolved host ports for `webUrl`).
+  Full suite green + live-verified on the real engine. See
   [recipe-ingestion.md](recipe-ingestion.md) /
   [ADR-015](decisions.md#adr-015--manifest-v2-core-structured-mounts--createmountpoint-managed-cache-layout--accepted-verified).
 - ⏳ **Recipe ingestion + launch UI (RI-2…RI-4)**: RI-2/3 = tar/zip + GitHub sourcing into an
   app-data recipe store; RI-4 = per-install override UI (host-port remap w/ auto-suggest, env
   values, placement) + multi-web "Open UI" buttons.
-- ⏳ Desktop shell: list/launch recipes, embed each app's web UI (multi-window).
+- 🔄 **Desktop shell**: the desktop now opens the **Fresh management UI** in a CEF window (spawns
+  the UI server on a fixed port; recipe install/up/down happen in that UI via core in-process). Was
+  a PoC that launched one recipe and showed its web UI directly. Remaining: bundling the **built**
+  UI into the standalone app (Phase 4 packaging), and embedding each running app's web UI as
+  secondary windows (multi-window).
 
 ## Phase 3 — Hardening ⏳
 

@@ -44,9 +44,15 @@ auto-bumped port shows the right URL. `webUrl` = first web port; `recipeImageTag
 unchanged. **Live-verified** on engine 29.5.3 (hello-web up/down with the v2 spec; a bind+volume
 create accepted via CreateMountpoint).
 
+**Desktop now opens the Fresh management UI.** `packages/desktop/main.ts` spawns the UI server on a
+fixed port (same Deno binary) and points the CEF window at it — recipe ops happen in that UI (core
+in-process, ADR-013). Was a PoC that launched hello-web and showed its `:8090` directly. Run in
+place with `deno desktop --hmr …` (`deno task desktop` only BUILDS to dist/). `COMPOSITZ_UI_URL`
+points at an existing server. Bundling the built UI into the standalone app is Phase-4 packaging.
+
 **Next (sequenced):** **RI-2…RI-4** (recipe ingestion + override UI). RI-2/3 = tar/zip + GitHub
 sourcing into the app-data recipe store; RI-4 = per-install override UI + multi-web "Open UI"
-buttons (the schema already supports multiple `web: true`). Desktop shell after.
+buttons (the schema already supports multiple `web: true`).
 
 ## Decisions recently settled
 
