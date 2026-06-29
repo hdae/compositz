@@ -14,3 +14,21 @@ it exists); settled rationale belongs in [decisions.md](decisions.md).
   pushes container lifecycle, not image existence). RI-2 did not change it.
 - **Fix direction:** include `installedTags` in the SSE `snapshot` payload (recompute `imageExists`
   per push), or add a lightweight image-event subscription. Deferred — low impact for a local tool.
+
+## Deleting an instance leaves its named volumes (no reclaim)
+
+- **What:** `compositz rm` / the UI Delete remove the container + the instance definition but KEEP
+  the per-instance named volumes (`compositz_<instanceId>_*`) and data-root dir — a deliberately
+  safe default (never silently destroy user data). There is no command to reclaim now-orphaned
+  volumes.
+- **Fix direction (future):** a `compositz volumes prune` / "reclaim unused data" action that lists
+  volumes whose `<instanceId>` no longer exists and removes them on explicit confirmation. Needs
+  Engine **volume** endpoints (`GET/DELETE /volumes`) the `EngineClient` does not implement yet.
+  Part of Phase-3 "volumes/GC".
+
+## Large uploads show no progress / can't be cancelled
+
+- **What:** importing a very large bundle streams to disk and completes, but the UI only shows
+  "Importing…" with no progress or cancel for the duration of a long upload+extract.
+- **Fix direction (future):** stream upload progress (or a server-sent extraction progress channel)
+  and an abort control. Low priority — real recipe bundles are small.
