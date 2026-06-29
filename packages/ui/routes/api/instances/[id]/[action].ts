@@ -7,6 +7,7 @@ import {
   instanceImageTag,
   instancesDir,
   loadInstance,
+  removeInstanceDir,
   up,
   webUrl,
 } from "@compositz/core";
@@ -70,6 +71,14 @@ export const handler = define.handlers({
         case "down": {
           assertValidId(id);
           await down(client, id);
+          return Response.json({ ok: true });
+        }
+        case "delete": {
+          // Stop+remove the container, then delete the instance definition.
+          // Persisted data (named volumes + data-root) is KEPT, matching `compositz rm`.
+          assertValidId(id);
+          await down(client, id);
+          await removeInstanceDir(store, id);
           return Response.json({ ok: true });
         }
         case "install":

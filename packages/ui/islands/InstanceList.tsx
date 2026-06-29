@@ -6,11 +6,20 @@ import {
   toInstanceRows,
   withOptimisticAction,
 } from "../lib/dashboard.ts";
+import { Button } from "../components/ui/button.tsx";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog.tsx";
 
-// CLIENT island. It imports ONLY types + pure helpers from lib/dashboard.ts —
-// never `@compositz/core` (that would pull node:net into the browser bundle and
-// fail the build). Engine I/O happens server-side; this talks to it over SSE
-// (/api/events) and fetch POST (/api/instances/:id/:action, /api/instances/import).
+// CLIENT island. It imports ONLY types + pure helpers from lib/dashboard.ts and the
+// presentational components — never `@compositz/core` (that would pull node:net into
+// the browser bundle and fail the build). Engine I/O happens server-side; this talks
+// to it over SSE (/api/events) and fetch POST (/api/instances/:id/:action, import).
 
 type Initial = {
   containers: ContainerStatus[];
@@ -29,7 +38,11 @@ export default function InstanceList(
   const [pending, setPending] = useState<Record<string, boolean>>({}); // up/down in flight
   const [installing, setInstalling] = useState<Record<string, boolean>>({});
   const [logs, setLogs] = useState<Record<string, string[]>>({}); // install build log per instance
-  const [actionError, setActionError] = useState<string | null>(null); // last up/down failure
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [deleting, setDeleting] = useState<InstanceRow | null>(null); // delete-confirm target
+  const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const es = new EventSource("/api/events");
@@ -44,8 +57,45 @@ export default function InstanceList(
       setEngineOnline(false);
       setEngineError(data.error);
     });
-    // On a transport error the browser auto-reconnects; keep the last state.
     return () => es.close();
+  }, []);
+
+  // Whole-window dropzone: highlight while a file is dragged anywhere over the page.
+  useEffect(() => {
+    let depth = 0;
+    const hasFiles = (e: DragEvent) => (e.dataTransfer?.types ?? []).includes("Files");
+    const onEnter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth++;
+      setDragging(true);
+    };
+    const onOver = (e: DragEvent) => {
+      if (hasFiles(e)) e.preventDefault(); // allow drop
+    };
+    const onLeave = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setDragging(false);
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      setDragging(false);
+      const file = e.dataTransfer?.files?.[0];
+      if (file) importFile(file);
+    };
+    globalThis.addEventListener("dragenter", onEnter);
+    globalThis.addEventListener("dragover", onOver);
+    globalThis.addEventListener("dragleave", onLeave);
+    globalThis.addEventListener("drop", onDrop);
+    return () => {
+      globalThis.removeEventListener("dragenter", onEnter);
+      globalThis.removeEventListener("dragover", onOver);
+      globalThis.removeEventListener("dragleave", onLeave);
+      globalThis.removeEventListener("drop", onDrop);
+    };
   }, []);
 
   const rows = toInstanceRows(views, engineOnline ? { containers, installedTags } : null);
@@ -53,15 +103,29 @@ export default function InstanceList(
   const appendLog = (id: string, line: string) =>
     setLogs((l) => ({ ...l, [id]: [...(l[id] ?? []), line] }));
 
+  // Import a recipe bundle (drop or file-picker) → server streams it to the store →
+  // reload to show the new instance (the list is server-rendered).
+  async function importFile(file: File) {
+    setImporting(true);
+    setActionError(null);
+    try {
+      const res = await fetch("/api/instances/import", { method: "POST", body: file });
+      const body = await res.json().catch(() => ({})) as { ok?: boolean; error?: string };
+      if (res.ok && body.ok) location.reload();
+      else setActionError(`import failed: ${body.error ?? `HTTP ${res.status}`}`);
+    } catch (e) {
+      setActionError(`import failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setImporting(false);
+    }
+  }
+
   async function act(id: string, action: "up" | "down") {
     setPending((p) => ({ ...p, [id]: true }));
     setActionError(null);
     try {
       const res = await fetch(`/api/instances/${id}/${action}`, { method: "POST" });
       if (res.ok) {
-        // The POST resolves only once the op is complete server-side, but the
-        // SSE-driven `containers` lags up to one poll. Fold the result in now so
-        // the label flips straight from "…" to the new state (no flicker back).
         setContainers((cs) => withOptimisticAction(cs, id, action));
       } else {
         const body = await res.json().catch(() => ({})) as { error?: string };
@@ -71,6 +135,21 @@ export default function InstanceList(
       setActionError(`${action} ${id} failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setPending((p) => ({ ...p, [id]: false }));
+    }
+  }
+
+  async function confirmDelete(id: string) {
+    setDeleting(null);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/instances/${id}/delete`, { method: "POST" });
+      if (res.ok) location.reload();
+      else {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        setActionError(`delete ${id} failed: ${body.error ?? `HTTP ${res.status}`}`);
+      }
+    } catch (e) {
+      setActionError(`delete ${id} failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -90,7 +169,7 @@ export default function InstanceList(
         if (done) break;
         buf += value;
         const lines = buf.split("\n");
-        buf = lines.pop() ?? ""; // keep the trailing partial line for the next chunk
+        buf = lines.pop() ?? "";
         for (const raw of lines) {
           if (!raw.trim()) continue;
           const msg = JSON.parse(raw) as {
@@ -114,19 +193,40 @@ export default function InstanceList(
 
   return (
     <div>
+      {/* menu / action bar */}
       <div class="flex items-center justify-between mb-3">
-        <ImportZone />
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={importing}
+          onClick={() => fileInput.current?.click()}
+        >
+          {importing ? "Importing…" : "Import recipe…"}
+        </Button>
         <EngineBadge online={engineOnline} error={engineError} />
+        <input
+          ref={fileInput}
+          type="file"
+          accept=".tar,.gz,.tgz"
+          class="hidden"
+          onChange={(e) => {
+            const file = (e.currentTarget as HTMLInputElement).files?.[0];
+            if (file) importFile(file);
+            (e.currentTarget as HTMLInputElement).value = "";
+          }}
+        />
       </div>
+
       {actionError
+        ? <p class="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>
+        : null}
+
+      {rows.length === 0
         ? (
-          <p class="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">
-            {actionError}
+          <p class="mt-10 text-gray-500">
+            No instances yet — drop a recipe bundle anywhere, or use Import.
           </p>
         )
-        : null}
-      {rows.length === 0
-        ? <p class="mt-10 text-gray-500">No instances yet — import a recipe bundle above.</p>
         : (
           <ul class="divide-y divide-gray-200">
             {rows.map((r) => (
@@ -161,74 +261,57 @@ export default function InstanceList(
                     onDown={() => act(r.instanceId, "down")}
                     onInstall={() => install(r.instanceId)}
                   />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="text-red-600 hover:bg-red-50 hover:text-red-700"
+                    onClick={() => setDeleting(r)}
+                  >
+                    Delete
+                  </Button>
                 </div>
                 {logs[r.instanceId]?.length ? <InstallLog lines={logs[r.instanceId]} /> : null}
               </li>
             ))}
           </ul>
         )}
-    </div>
-  );
-}
 
-/** Upload a recipe bundle (tar/tar.gz) to create a new instance; reloads on success. */
-function ImportZone() {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [importing, setImporting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [drag, setDrag] = useState(false);
+      {/* whole-window drop overlay */}
+      {dragging
+        ? (
+          <div class="fixed inset-0 z-30 flex items-center justify-center bg-blue-600/10 backdrop-blur-sm pointer-events-none">
+            <div class="rounded-xl border-2 border-dashed border-blue-500 bg-white/90 px-10 py-8 text-lg font-medium text-blue-700">
+              Drop recipe bundle to import (.tar / .tar.gz)
+            </div>
+          </div>
+        )
+        : null}
 
-  async function send(file: File) {
-    setImporting(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/instances/import", { method: "POST", body: file });
-      const body = await res.json().catch(() => ({})) as { ok?: boolean; error?: string };
-      if (res.ok && body.ok) {
-        location.reload(); // the instance list is server-rendered; reload to show it
-      } else {
-        setError(body.error ?? `HTTP ${res.status}`);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setImporting(false);
-    }
-  }
-
-  return (
-    <div>
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDrag(true);
+      {/* delete confirmation */}
+      <AlertDialog
+        open={deleting !== null}
+        onOpenChange={(open: boolean) => {
+          if (!open) setDeleting(null);
         }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDrag(false);
-          const file = e.dataTransfer?.files?.[0];
-          if (file) send(file);
-        }}
-        onClick={() => inputRef.current?.click()}
-        class={`cursor-pointer rounded-md border border-dashed px-4 py-2 text-sm ${
-          drag ? "border-blue-400 bg-blue-50 text-blue-700" : "border-gray-300 text-gray-500"
-        }`}
       >
-        {importing ? "Importing…" : "Import recipe bundle (.tar / .tar.gz) — click or drop"}
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".tar,.gz,.tgz"
-          class="hidden"
-          onChange={(e) => {
-            const file = (e.currentTarget as HTMLInputElement).files?.[0];
-            if (file) send(file);
-            (e.currentTarget as HTMLInputElement).value = "";
-          }}
-        />
-      </div>
-      {error ? <p class="mt-1 text-xs text-red-600">{error}</p> : null}
+        <AlertDialogContent>
+          <AlertDialogTitle>Delete this instance?</AlertDialogTitle>
+          <AlertDialogDescription>
+            <span class="font-mono">{deleting?.instanceId}</span>{" "}
+            — the container and its definition are removed. Persisted data (named volumes) is kept.
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="outline" size="sm">Cancel</Button>} />
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => deleting && confirmDelete(deleting.instanceId)}
+            >
+              Delete
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -266,40 +349,18 @@ function ActionButton(
     onInstall: () => void;
   },
 ) {
-  if (busy) return <Btn tone="gray" disabled>…</Btn>;
-  if (row.running) return <Btn tone="red" disabled={disabled} onClick={onDown}>Stop</Btn>;
-  if (row.installed === false) {
-    return <Btn tone="blue" disabled={disabled} onClick={onInstall}>Install</Btn>;
+  if (busy) return <Button size="sm" variant="secondary" disabled class="w-20">…</Button>;
+  if (row.running) {
+    return (
+      <Button size="sm" variant="destructive" class="w-20" disabled={disabled} onClick={onDown}>
+        Stop
+      </Button>
+    );
   }
-  return <Btn tone="green" disabled={disabled} onClick={onUp}>Start</Btn>;
-}
-
-function Btn(
-  { tone, disabled, onClick, children }: {
-    tone: "green" | "red" | "blue" | "gray";
-    disabled?: boolean;
-    onClick?: () => void;
-    children: string;
-  },
-) {
-  const tones = {
-    green: "bg-green-50 text-green-700 hover:bg-green-100",
-    red: "bg-red-50 text-red-700 hover:bg-red-100",
-    blue: "bg-blue-50 text-blue-700 hover:bg-blue-100",
-    gray: "bg-gray-50 text-gray-500",
-  };
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      class={`w-16 rounded-md px-3 py-1 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
-        tones[tone]
-      }`}
-    >
-      {children}
-    </button>
-  );
+  if (row.installed === false) {
+    return <Button size="sm" class="w-20" disabled={disabled} onClick={onInstall}>Install</Button>;
+  }
+  return <Button size="sm" class="w-20" disabled={disabled} onClick={onUp}>Start</Button>;
 }
 
 function InstallLog({ lines }: { lines: string[] }) {
