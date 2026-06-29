@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { forwardRef } from "preact/compat";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../../lib/utils.ts";
 
@@ -28,13 +29,15 @@ export const buttonVariants = cva(
 );
 
 export type ButtonProps =
-  & JSX.IntrinsicElements["button"]
+  & Omit<JSX.IntrinsicElements["button"], "ref">
   & VariantProps<typeof buttonVariants>;
 
-export function Button({ class: cls, variant, size, children, ...props }: ButtonProps) {
-  return (
-    <button class={cn(buttonVariants({ variant, size }), cls as string)} {...props}>
+// forwardRef so composition wrappers (e.g. Base UI's `render={<Button/>}`) can attach
+// their ref to the underlying <button> — the canonical Shadcn Button shape.
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ class: cls, variant, size, children, ...props }, ref) => (
+    <button ref={ref} class={cn(buttonVariants({ variant, size }), cls as string)} {...props}>
       {children}
     </button>
-  );
-}
+  ),
+);

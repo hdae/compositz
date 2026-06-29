@@ -60,40 +60,34 @@ export default function InstanceList(
     return () => es.close();
   }, []);
 
-  // Whole-window dropzone: highlight while a file is dragged anywhere over the page.
+  // Whole-window dropzone: show the overlay while a file is dragged over the page.
+  // Driven by `dragover` (which fires continuously during a drag) plus a short
+  // watchdog that clears the overlay once dragover stops — robust against the abort
+  // paths (ESC-cancel, leaving the window) where a balancing `dragleave` never fires
+  // and a depth counter would get stuck.
   useEffect(() => {
-    let depth = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const hasFiles = (e: DragEvent) => (e.dataTransfer?.types ?? []).includes("Files");
-    const onEnter = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      e.preventDefault();
-      depth++;
-      setDragging(true);
-    };
     const onOver = (e: DragEvent) => {
-      if (hasFiles(e)) e.preventDefault(); // allow drop
-    };
-    const onLeave = (e: DragEvent) => {
       if (!hasFiles(e)) return;
-      depth = Math.max(0, depth - 1);
-      if (depth === 0) setDragging(false);
+      e.preventDefault(); // allow drop
+      setDragging(true);
+      if (timer !== undefined) clearTimeout(timer);
+      timer = setTimeout(() => setDragging(false), 160);
     };
     const onDrop = (e: DragEvent) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
-      depth = 0;
+      if (timer !== undefined) clearTimeout(timer);
       setDragging(false);
       const file = e.dataTransfer?.files?.[0];
       if (file) importFile(file);
     };
-    globalThis.addEventListener("dragenter", onEnter);
     globalThis.addEventListener("dragover", onOver);
-    globalThis.addEventListener("dragleave", onLeave);
     globalThis.addEventListener("drop", onDrop);
     return () => {
-      globalThis.removeEventListener("dragenter", onEnter);
+      if (timer !== undefined) clearTimeout(timer);
       globalThis.removeEventListener("dragover", onOver);
-      globalThis.removeEventListener("dragleave", onLeave);
       globalThis.removeEventListener("drop", onDrop);
     };
   }, []);
