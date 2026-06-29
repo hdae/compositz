@@ -22,7 +22,7 @@
     "ui": "deno task --cwd packages/ui dev",
     "ui:build": "deno task --cwd packages/ui build",
     "ui:check": "deno task --cwd packages/ui check",
-    "desktop": "deno task --cwd packages/ui build && deno task --cwd packages/ui desktop",
+    "desktop": "deno task --cwd packages/ui desktop",
     "desktop:dev": "deno task --cwd packages/ui desktop:dev",
     "schema": "deno run -A scripts/gen_schema.ts",
     "test": "deno test -A --unstable-net",
