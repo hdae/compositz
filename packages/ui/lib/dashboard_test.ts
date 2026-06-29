@@ -3,14 +3,19 @@ import type { ContainerSummary } from "@compositz/core";
 import {
   type ContainerStatus,
   type EngineSnapshot,
+  instanceServices,
   type InstanceView,
+  type PublishedPort,
   toContainerStatuses,
   toInstanceRows,
+  type WebPort,
   withOptimisticAction,
 } from "./dashboard.ts";
 
 const INSTANCE_LABEL = "io.compositz.instance";
 const IID = "hello-web-a1b2c3";
+
+const WEB_PORT: WebPort = { name: "web", container: 8080, protocol: "tcp", path: "/" };
 
 function view(over: Partial<InstanceView> = {}): InstanceView {
   return {
@@ -19,14 +24,14 @@ function view(over: Partial<InstanceView> = {}): InstanceView {
     name: "Hello Web",
     version: "0.1.0",
     description: "demo",
-    web: "http://localhost:8090/",
+    webPorts: [WEB_PORT],
     imageTag: "compositz/hello-web-a1b2c3:0.1.0",
     ...over,
   };
 }
 
 function status(over: Partial<ContainerStatus> = {}): ContainerStatus {
-  return { instance: IID, state: "running", ...over };
+  return { instance: IID, state: "running", ports: [], ...over };
 }
 
 function snapshot(over: Partial<EngineSnapshot> = {}): EngineSnapshot {
@@ -51,6 +56,7 @@ Deno.test("engine offline (null snapshot): instances list, installed unknown, no
   assertEquals(rows.length, 1);
   assertEquals(rows[0].installed, null);
   assertEquals(rows[0].running, false);
+  assertEquals(rows[0].services, []);
   assertEquals(rows[0].name, "Hello Web");
 });
 
@@ -84,43 +90,100 @@ Deno.test("no instances yields no rows", () => {
   assertEquals(toInstanceRows([], snapshot()), []);
 });
 
+Deno.test("instanceServices resolves a web port to the live published host port + path", () => {
+  const webPorts: WebPort[] = [{ name: "ui", container: 8080, protocol: "tcp", path: "/app" }];
+  const ports: PublishedPort[] = [{ container: 8080, public: 49153, protocol: "tcp" }];
+  assertEquals(instanceServices(webPorts, ports), [
+    { name: "ui", url: "http://localhost:49153/app", port: 49153, description: undefined },
+  ]);
+});
+
+Deno.test("instanceServices omits a web port with no live binding", () => {
+  assertEquals(instanceServices([WEB_PORT], []), []);
+  // protocol mismatch is not a binding
+  assertEquals(
+    instanceServices([WEB_PORT], [{ container: 8080, public: 5000, protocol: "udp" }]),
+    [],
+  );
+});
+
+Deno.test("instanceServices lists every matched web port (multi-web app)", () => {
+  const webPorts: WebPort[] = [
+    { name: "ui", container: 8080, protocol: "tcp", path: "/" },
+    { name: "admin", container: 9090, protocol: "tcp", path: "/admin" },
+  ];
+  const ports: PublishedPort[] = [
+    { container: 8080, public: 18080, protocol: "tcp" },
+    { container: 9090, public: 19090, protocol: "tcp" },
+  ];
+  assertEquals(instanceServices(webPorts, ports).map((s) => s.url), [
+    "http://localhost:18080/",
+    "http://localhost:19090/admin",
+  ]);
+});
+
+Deno.test("toInstanceRows resolves services from the running container's LIVE ports (auto-bumped)", () => {
+  // Declared container 8080; the running container published it on a bumped 18080.
+  const running = status({ ports: [{ container: 8080, public: 18080, protocol: "tcp" }] });
+  const rows = toInstanceRows([view()], snapshot({ containers: [running] }));
+  assertEquals(rows[0].services, [
+    { name: "web", url: "http://localhost:18080/", port: 18080, description: undefined },
+  ]);
+});
+
+Deno.test("toInstanceRows: a stopped instance has no services", () => {
+  const stopped = status({ state: "exited", ports: [] });
+  assertEquals(toInstanceRows([view()], snapshot({ containers: [stopped] }))[0].services, []);
+});
+
 Deno.test("withOptimisticAction(up) yields a running container for the instance", () => {
   const out = withOptimisticAction([], IID, "up");
-  assertEquals(out, [{ instance: IID, state: "running" }]);
+  assertEquals(out, [{ instance: IID, state: "running", ports: [] }]);
   // reflected as running by toInstanceRows
   assertEquals(toInstanceRows([view()], { containers: out, installedTags: [] })[0].running, true);
 });
 
 Deno.test("withOptimisticAction(down) drops the instance's containers", () => {
-  const before: ContainerStatus[] = [{ instance: IID, state: "running" }];
+  const before: ContainerStatus[] = [{ instance: IID, state: "running", ports: [] }];
   assertEquals(withOptimisticAction(before, IID, "down"), []);
 });
 
 Deno.test("withOptimisticAction does not touch other instances' containers", () => {
-  const before: ContainerStatus[] = [{ instance: "other-z9", state: "running" }];
+  const before: ContainerStatus[] = [{ instance: "other-z9", state: "running", ports: [] }];
   assertEquals(withOptimisticAction(before, IID, "up"), [
-    { instance: "other-z9", state: "running" },
-    { instance: IID, state: "running" },
+    { instance: "other-z9", state: "running", ports: [] },
+    { instance: IID, state: "running", ports: [] },
   ]);
   assertEquals(withOptimisticAction(before, IID, "down"), [
-    { instance: "other-z9", state: "running" },
+    { instance: "other-z9", state: "running", ports: [] },
   ]);
 });
 
 Deno.test("withOptimisticAction(up) replaces a stale entry for the same instance", () => {
-  const before: ContainerStatus[] = [{ instance: IID, state: "exited" }];
+  const before: ContainerStatus[] = [{ instance: IID, state: "exited", ports: [] }];
   assertEquals(withOptimisticAction(before, IID, "up"), [
-    { instance: IID, state: "running" },
+    { instance: IID, state: "running", ports: [] },
   ]);
 });
 
-Deno.test("toContainerStatuses maps the instance label and state, null when unlabeled", () => {
+Deno.test("toContainerStatuses maps label, state, and host-published ports (drops unpublished)", () => {
   const out = toContainerStatuses([
-    summary({ State: "running", Labels: { [INSTANCE_LABEL]: IID } }),
-    summary({ State: "exited", Labels: {} }),
+    summary({
+      State: "running",
+      Labels: { [INSTANCE_LABEL]: IID },
+      Ports: [
+        { PrivatePort: 8080, PublicPort: 18080, Type: "tcp" },
+        { PrivatePort: 9090, Type: "tcp" }, // unpublished → dropped
+      ],
+    }),
+    summary({ State: "exited", Labels: {}, Ports: [] }),
   ], INSTANCE_LABEL);
   assertEquals(out, [
-    { instance: IID, state: "running" },
-    { instance: null, state: "exited" },
+    {
+      instance: IID,
+      state: "running",
+      ports: [{ container: 8080, public: 18080, protocol: "tcp" }],
+    },
+    { instance: null, state: "exited", ports: [] },
   ]);
 });

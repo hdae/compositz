@@ -5,7 +5,6 @@ import {
   instancesDir,
   label,
   listInstances,
-  webUrl,
 } from "@compositz/core";
 import { define } from "../utils.ts";
 import { type ContainerStatus, type InstanceView, toContainerStatuses } from "../lib/dashboard.ts";
@@ -35,7 +34,13 @@ export const handler = define.handlers({
       name: i.manifest.name,
       version: i.manifest.version,
       description: i.manifest.description ?? "",
-      web: webUrl(i.manifest) ?? null,
+      webPorts: i.manifest.ports.filter((p) => p.web).map((p) => ({
+        name: p.name,
+        container: p.container,
+        protocol: p.protocol,
+        path: p.path,
+        description: p.description,
+      })),
       imageTag: instanceImageTag(i.manifest, i.instanceId),
     }));
 

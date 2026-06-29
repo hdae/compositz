@@ -3,4 +3,16 @@
 // side-effect-free, so only the icons re-exported here land in the client bundle —
 // the package's own `sideEffects: false` is not surfaced to Rollup by the Deno
 // resolver, and its `exports` map blocks per-icon deep imports.
-export { Download, ExternalLink, LoaderCircle, Play, Square, Trash2, Upload } from "lucide-preact";
+export {
+  ChevronDown,
+  Download,
+  ExternalLink,
+  Globe,
+  Hammer,
+  LoaderCircle,
+  Play,
+  ScrollText,
+  Square,
+  Trash2,
+  Upload,
+} from "lucide-preact";
