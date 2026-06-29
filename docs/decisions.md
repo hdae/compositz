@@ -436,4 +436,39 @@ running on Preact through `preact/compat`. Refines
 **Consequences:** the UI's current raw Tailwind color classes (`bg-gray-50`, `text-white`, …) should
 migrate to Shadcn **semantic tokens** (`bg-background` / `text-foreground` / `muted` /
 `destructive`) defined as CSS variables, to enable theming. **Next UI task:** dark mode with default
-**Auto** (follow `prefers-color-scheme`), a light/dark/auto **mode selector to follow**.
+**Auto** (follow `prefers-color-scheme`), a light/dark/auto **mode selector to follow**. (Done in
+[ADR-019](#adr-019--dark-mode-class-based-with-a-no-flash-boot-script-default-auto--accepted).)
+
+## ADR-019 — Dark mode: class-based with a no-flash boot script, default Auto · ✅ Accepted
+
+Implements the dark-mode consequence of
+[ADR-018](#adr-018--ui-component-library-shadcn--base-ui-via-preactcompat--accepted-spike-verified).
+The chrome migrates to Shadcn semantic tokens; the **Auto** mechanism was the one real fork.
+
+**Decisions:**
+
+- **Tokens.** Shadcn neutral palette (oklch) in `styles.css` as CSS variables: light on `:root`,
+  dark on `.dark`, mapped via `@theme inline` (`--color-*` → `var(--*)`) so a `.dark` override
+  re-themes every `bg-background` / `text-foreground` / `muted` / `destructive` / `border` / `ring`
+  utility. `color-scheme` set per mode (native controls/scrollbars follow).
+- **Auto = class + no-flash boot script (the fork: chosen over pure `@media`).**
+  `@custom-variant dark (&:where(.dark, .dark *))` binds `dark:` to the `.dark` class; an inline
+  `<head>` script in `_app.tsx` toggles `.dark` from `matchMedia("(prefers-color-scheme: dark)")`
+  before first paint, and re-applies on live OS changes. The script already honors a stored
+  `compositz-theme` (`"light"|"dark"|"system"`), so the deferred **mode selector is purely
+  additive** (UI + `localStorage`, no CSS restructure). `<html>` is outside every island ⇒ no
+  hydration mismatch.
+- **Chromatic status colors are NOT tokenized.** Meaning-bearing colors (green=running, amber=engine
+  offline, blue=link/drop-zone, red=error→`destructive`) keep explicit hues with `dark:` variants;
+  the install-log panel stays intentionally always-dark (terminal-style).
+
+**Why class+boot over pure `@media (prefers-color-scheme)`:** the selector is a confirmed follow-up,
+so the canonical Shadcn class infrastructure (built once) makes it additive, where a pure-media
+setup would have to be rebuilt (CSS structure + `dark:` strategy + the boot script anyway) when the
+selector lands. Cost now is ~one 12-line inline script.
+
+**Consequences:** `react-no-danger` is disabled file-wide in `_app.tsx` (the only
+`dangerouslySetInnerHTML` is the static-literal boot script; deno lint does not honor a per-element
+`{/* deno-lint-ignore */}` in JSX). The light/dark/auto **selector remains deferred**. Adjacent (not
+addressed here): the repo `fmt` config has no `exclude`, so `recipes/hello-web/index.html` (sample
+bundle) fails `deno fmt --check` on `main` (`<!doctype>` → `<!DOCTYPE>`).

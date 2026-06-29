@@ -85,8 +85,11 @@ UI + multi-web "Open UI" buttons).
 - **ADR-017: instance-centric storage** — no recipe store; the instance owns everything keyed by one
   `instanceId`. (RI-2; see resume point.)
 - **ADR-018: UI components = Shadcn + Base UI via `preact/compat`** — Base UI (not Radix) survives
-  the compat layer; spike-verified. Style via `className`, buttons `forwardRef`. Dark mode (default
-  Auto, selector later) is the next UI task — migrate raw Tailwind colors to semantic tokens.
+  the compat layer; spike-verified. Style via `className`, buttons `forwardRef`.
+- **ADR-019: dark mode = class-based + no-flash boot script, default Auto.** Shadcn semantic tokens
+  (`:root`/`.dark`/`@theme inline`/`@custom-variant dark`); `_app.tsx` `<head>` script toggles
+  `.dark` from `prefers-color-scheme`. Selector deferred but additive (chosen over pure `@media` so
+  it needs no rebuild). Chromatic status colors keep `dark:` variants.
 
 ## Pitfalls index
 
@@ -147,15 +150,24 @@ a header **Import** button, per-row **Delete** (Base UI AlertDialog confirm →
 `components/ui/{button(forwardRef),alert-dialog(className)}`, vite/deno `react→preact/compat`
 aliases. 108 tests green; `delete` live-verified on a real Fresh server.
 
-**NEXT — dark mode (theming).** Shadcn dark mode = `.dark` class + CSS-variable **semantic tokens**.
-Current components use raw Tailwind colors (`bg-gray-50` etc.) → migrate to tokens
-(`bg-background`/`text-foreground`/`muted`/`destructive`) in `styles.css` (Tailwind v4
-`@theme`/`@custom-variant dark`). **Default = Auto** (`prefers-color-scheme`); a light/dark/auto
-**mode selector comes later** (user's call). Then **RI-3** (GitHub ingestion → `ingestBundle`) →
-**RI-4** (override UI + multi-web buttons).
+**Dark mode (theming) — ✅ DONE (ADR-019).** Shadcn neutral semantic tokens (oklch) in `styles.css`
+(`:root` light / `.dark` dark / `@theme inline` + `@custom-variant dark`); chrome migrated to
+tokens, chromatic status colors (green/amber/blue/`destructive`) kept with `dark:` variants, install
+log intentionally always-dark. **Default = Auto** via a no-flash `<head>` boot script in `_app.tsx`
+(`matchMedia` → `.dark`, live OS-change tracking, already honors a stored `compositz-theme`). The
+light/dark/auto **mode selector is deferred** and now **purely additive** (UI + `localStorage`, no
+CSS restructure). `react-no-danger` is disabled file-wide in `_app.tsx` (sole static-literal boot
+script). 104 tests green; ui:build/ui:check/lint clean.
 
-**Deferred:** unused-volume reclaim + full data deletion (needs Engine volume endpoints the client
-lacks); large-upload progress/cancel; `installed`-badge SSE staleness — all in
-[known-issues.md](../../docs/known-issues.md). Verify Docker via
-`DOCKER_HOST=tcp://host.docker.internal:2375` ([[compositz-docker-tcp-debug]] — managed-only +
-reversible).
+**NEXT — RI-3** (GitHub ingestion: `owner/repo[@ref][/subdir]` → codeload `.tar.gz` over HTTPS →
+`ingestBundle`; no `git` binary) → **RI-4** (per-instance override UI + multi-web "Open UI"
+buttons). Small deferred UI follow-up: the light/dark/auto **mode selector** (writes
+`compositz-theme`, the boot script already applies it).
+
+**Deferred:** light/dark/auto mode selector (additive over ADR-019); unused-volume reclaim + full
+data deletion (needs Engine volume endpoints the client lacks); large-upload progress/cancel;
+`installed`-badge SSE staleness — all in [known-issues.md](../../docs/known-issues.md). **Adjacent
+(out of scope, flagged):** repo `fmt` has no `exclude`, so `recipes/hello-web/index.html` fails
+`deno fmt --check` on `main` (`<!doctype>`→`<!DOCTYPE>`) — decide exclude `recipes/` vs reformat.
+Verify Docker via `DOCKER_HOST=tcp://host.docker.internal:2375` ([[compositz-docker-tcp-debug]] —
+managed-only + reversible).
