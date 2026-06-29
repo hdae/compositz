@@ -363,48 +363,49 @@ each running app's web UI as secondary windows (multi-window).
 
 ## ADR-017 — Instance-centric storage: drop the recipe store, the instance owns everything · ✅ Accepted
 
-Reframes ADR-014's three-tier "recipe store" and ADR-015's deferred multi-instance plumbing. There is
-**no shared recipe store and no app→instances hierarchy**. The unit of everything at runtime is an
-**instance** (one deployment), keyed by a single `instanceId`; a **recipe** is merely the bundle an
-instance was created from, copied inside it. Settled in a design round with the user.
+Reframes ADR-014's three-tier "recipe store" and ADR-015's deferred multi-instance plumbing. There
+is **no shared recipe store and no app→instances hierarchy**. The unit of everything at runtime is
+an **instance** (one deployment), keyed by a single `instanceId`; a **recipe** is merely the bundle
+an instance was created from, copied inside it. Settled in a design round with the user.
 
 **Decisions:**
 
 - **The instance is self-contained and flat.** `<app-data>/instances/<instanceId>/` holds the
   extracted bundle (`app/` = manifest + Dockerfile + context) plus instance files (`meta.json`
-  provenance; `config.yaml` per-install override, RI-4). Every runtime resource keys off the **single**
-  `instanceId`: container `compositz-<instanceId>`, per-mount volume `compositz_<instanceId>_<name>`,
-  bind host path `<data-root>/<instanceId>/<name>`, venv subpath `venvs/<instanceId>`, label
-  `io.compositz.instance=<instanceId>`. No `recipeId × instanceId` nesting and no `"default"` special
-  case — both removed from RI-1's `run.ts`.
+  provenance; `config.yaml` per-install override, RI-4). Every runtime resource keys off the
+  **single** `instanceId`: container `compositz-<instanceId>`, per-mount volume
+  `compositz_<instanceId>_<name>`, bind host path `<data-root>/<instanceId>/<name>`, venv subpath
+  `venvs/<instanceId>`, label `io.compositz.instance=<instanceId>`. No `recipeId × instanceId`
+  nesting and no `"default"` special case — both removed from RI-1's `run.ts`.
 - **No recipe catalog; the source IS the catalog.** To run a second copy of an app you re-import its
   bundle, or `duplicate` an instance — which copies only `app/`, **never the persistent data**. A
   Pinokio-style local library of not-yet-installed apps would be a future, separate catalog tier.
 - **Per-instance image** `compositz/<instanceId>:<version>` for a `build` recipe. Self-contained ⇒
-  teardown removes exactly that instance's resources by exact name, **no refcount**; duplicate builds
-  hit Docker's layer/build cache, so storage barely grows. An `image`-based recipe still references its
-  prebuilt image directly (shared, external — not per-instance).
+  teardown removes exactly that instance's resources by exact name, **no refcount**; duplicate
+  builds hit Docker's layer/build cache, so storage barely grows. An `image`-based recipe still
+  references its prebuilt image directly (shared, external — not per-instance).
 - **`instanceId = <appId>-<rand>`** minted at import (a `crypto` base36 suffix — **no dependency**).
   Always suffixed ⇒ no uniqueness check needed, and `docker ps` stays legible (which app + which
   instance). The manifest **`id` survives only as a non-unique slug**: the instanceId prefix,
-  image/container readability, and the **update-detection group key**. `appId` + `version` both live in
-  each instance's manifest already; only the bundle **`source`** is extra (in `meta.json`), enabling a
-  later "is there a newer bundle for this app?" check.
+  image/container readability, and the **update-detection group key**. `appId` + `version` both live
+  in each instance's manifest already; only the bundle **`source`** is extra (in `meta.json`),
+  enabling a later "is there a newer bundle for this app?" check.
 - **Bundle stored extracted, not packed.** `app/` is a plain directory (so `loadRecipe` reads it
   unchanged); there was no benefit to keeping an `app.tar.gz`.
 
 **Why:** the `recipeId × instanceId` hierarchy turned every resource name into a conditional and
 reintroduced a `"default"` special case. Making the instance the flat, self-owning unit deletes that
-complexity, makes the import duplicate-id question **vanish** (no shared namespace to collide in), and
-yields a teardown that touches only one instance's exactly-named resources — directly serving the
-managed-only / reversible Docker-safety constraint.
+complexity, makes the import duplicate-id question **vanish** (no shared namespace to collide in),
+and yields a teardown that touches only one instance's exactly-named resources — directly serving
+the managed-only / reversible Docker-safety constraint.
 
-**Consequences:** RI-2's scope shifts from "recipe store + ingestion" to **instance store + ingestion +
-instanceId-threaded naming** (brand / run / operations / loader / storage / cli / ui).
+**Consequences:** RI-2's scope shifts from "recipe store + ingestion" to **instance store +
+ingestion + instanceId-threaded naming** (brand / run / operations / loader / storage / cli / ui).
 `toCreateSpec(m, instanceId, opts)`; `DEFAULT_INSTANCE` and `LaunchConfig.instance` are removed;
 `recipeContainerName` / `recipeImageTag` → `instanceContainerName` / `instanceImageTag`. ADR-014's
 recipe store + per-recipe `config/<id>.yaml` and ADR-015's `venvs/<id>/<instance>` are superseded by
-this flat layout. Full instance **deletion** (removing per-instance volumes + host data) needs Engine
-volume endpoints the client lacks today — deferred; `down` + removing the instance directory (keeping
-data) is the RI-2 cleanup. Tar extraction is **security-hardened** (reject absolute / `..` / symlink /
-hardlink entries). Layout reference: [recipe-ingestion.md](recipe-ingestion.md#storage--instance-centric).
+this flat layout. Full instance **deletion** (removing per-instance volumes + host data) needs
+Engine volume endpoints the client lacks today — deferred; `down` + removing the instance directory
+(keeping data) is the RI-2 cleanup. Tar extraction is **security-hardened** (reject absolute / `..`
+/ symlink / hardlink entries). Layout reference:
+[recipe-ingestion.md](recipe-ingestion.md#storage--instance-centric).

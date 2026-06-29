@@ -63,9 +63,16 @@ De-risk the two load-bearing unknowns before building.
   Full suite green + live-verified on the real engine. See
   [recipe-ingestion.md](recipe-ingestion.md) /
   [ADR-015](decisions.md#adr-015--manifest-v2-core-structured-mounts--createmountpoint-managed-cache-layout--accepted-verified).
-- ⏳ **Recipe ingestion + launch UI (RI-2…RI-4)**: RI-2/3 = tar/zip + GitHub sourcing into an
-  app-data recipe store; RI-4 = per-install override UI (host-port remap w/ auto-suggest, env
-  values, placement) + multi-web "Open UI" buttons.
+- ✅ **Instance-centric storage + ingestion (RI-2)**: no recipe store — a recipe **bundle** (tar /
+  tar.gz / dir) is ingested (security-hardened extract → Zod-validate → mint `instanceId`) to create
+  a self-contained **instance** in app-data; every Docker resource keys off `instanceId`
+  (per-instance image), and `duplicate` clones the bundle (not the data). CLI
+  `import`/`ls`/`duplicate`/ `rm`; UI instance list + drag-drop import. Full suite green +
+  live-verified (import→up→down→rm, managed-only/reversible). See [ADR-017](decisions.md) /
+  [recipe-ingestion.md](recipe-ingestion.md).
+- ⏳ **Ingestion + launch UI (RI-3…RI-4)**: RI-3 = GitHub sourcing (`owner/repo[@ref][/subdir]` →
+  codeload tarball → instance); RI-4 = per-instance override UI (host-port remap w/ auto-suggest,
+  env values, placement) + multi-web "Open UI" buttons.
 - 🔄 **Desktop shell**: the desktop **is** the Fresh management UI, packaged by `deno desktop`
   framework auto-detection (it embeds the built `_fresh/` into one native CEF binary — no separate
   package; recipe ops happen in the UI via core in-process). Was a PoC that launched one recipe and

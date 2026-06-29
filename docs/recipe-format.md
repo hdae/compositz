@@ -67,23 +67,23 @@ must be absolute (start with `/`).
 
 `{ name, target, placement?, description? }` — declaring a mount makes that data **persist**.
 
-| Key           | Req | Default  | Notes                                                                                                                                                   |
-| ------------- | --- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`        | ✅  | —        | Host subdir / volume suffix.                                                                                                                            |
-| `target`      | ✅  | —        | In-container mount path (absolute).                                                                                                                     |
-| `placement`   |     | `volume` | `bind` → host `<data-root>/<id>/<name>` (browsable, slow on Windows); `volume` → managed named volume `compositz_<id>_<name>`. Overridable per install. |
-| `description` |     | —        | Author note.                                                                                                                                            |
+| Key           | Req | Default  | Notes                                                                                                                                                                   |
+| ------------- | --- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | ✅  | —        | Host subdir / volume suffix.                                                                                                                                            |
+| `target`      | ✅  | —        | In-container mount path (absolute).                                                                                                                                     |
+| `placement`   |     | `volume` | `bind` → host `<data-root>/<instanceId>/<name>` (browsable, slow on Windows); `volume` → managed named volume `compositz_<instanceId>_<name>`. Overridable per install. |
+| `description` |     | —        | Author note.                                                                                                                                                            |
 
 ### Caches
 
 Opt-in, Compositz-managed. The **path is injected as an env var** — authors never set it. Cache
 volumes are shared across apps where it makes sense (uv/HF), giving cross-app dedup.
 
-| Entry                                 | Volume                   | In-container path         | Injects                                                                                           |
-| ------------------------------------- | ------------------------ | ------------------------- | ------------------------------------------------------------------------------------------------- |
-| `{ type: venv }`                      | `compositz_uv`           | `/compositz/uv`           | `UV_CACHE_DIR=/compositz/uv/cache`, `VIRTUAL_ENV=/compositz/uv/venvs/<id>/<instance>`             |
-| `{ type: huggingface }`               | `compositz_hf`           | `/compositz/hf`           | `HF_HOME=/compositz/hf`                                                                           |
-| `{ type: custom, name, env, scope? }` | `compositz_cache_<name>` | `/compositz/cache/<name>` | `<env>` = that path (`scope: shared`, default) or a `<id>/<instance>` subpath (`scope: instance`) |
+| Entry                                 | Volume                   | In-container path         | Injects                                                                                        |
+| ------------------------------------- | ------------------------ | ------------------------- | ---------------------------------------------------------------------------------------------- |
+| `{ type: venv }`                      | `compositz_uv`           | `/compositz/uv`           | `UV_CACHE_DIR=/compositz/uv/cache`, `VIRTUAL_ENV=/compositz/uv/venvs/<instanceId>`             |
+| `{ type: huggingface }`               | `compositz_hf`           | `/compositz/hf`           | `HF_HOME=/compositz/hf`                                                                        |
+| `{ type: custom, name, env, scope? }` | `compositz_cache_<name>` | `/compositz/cache/<name>` | `<env>` = that path (`scope: shared`, default) or a `<instanceId>` subpath (`scope: instance`) |
 
 The `venv` preset keeps the uv venv **and** the uv cache on one volume so uv's hardlink dedup works
 ([ADR-006](decisions.md#adr-006--uv-venv-hardlink-constraint--accepted)). At most one of each

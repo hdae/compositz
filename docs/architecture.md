@@ -31,7 +31,7 @@ could revive that surface later if needed.
 
 | Package | Responsibility                                                                                                                                                                                                 |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `core`  | Docker Engine API client, transport abstraction, recipe/manifest model, build, high-level operations (install/up/down)                                                                                         |
+| `core`  | Docker Engine API client, transport abstraction, recipe/manifest model, **bundle ingestion + the instance store**, build, high-level operations (install/up/down)                                              |
 | `cli`   | Linux-first command surface and the primary debugging tool                                                                                                                                                     |
 | `ui`    | Management UI — **Fresh 2 (Vite)** ([ADR-008](decisions.md)); calls core in-process from route handlers (no separate API server). Packaged as the **desktop** app by `deno desktop` ([ADR-016](decisions.md)). |
 
@@ -66,33 +66,43 @@ demuxer.
 
 ## Recipe pipeline
 
-A **recipe** is a directory: `compositz.yaml` (manifest) + `Dockerfile` + assets. See
-[recipe-format.md](recipe-format.md).
+A **recipe** is a directory bundle: `compositz.yaml` (manifest) + `Dockerfile` + assets. It is
+**ingested to create an instance** — the self-contained, deployed unit ([ADR-017](decisions.md)).
+See [recipe-format.md](recipe-format.md) / [recipe-ingestion.md](recipe-ingestion.md).
 
 ```
-compositz.yaml ──parseManifest(Zod)──▶ Manifest ──┐
-                                                   ├─▶ toCreateSpec ─▶ ContainerCreateSpec ─▶ create+start
-Dockerfile + assets ──tarContext(@std/tar)──▶ tar ─┴─▶ POST /build (classic builder) ─▶ image
+bundle (tar/tar.gz/dir) ──ingestBundle──▶ extract(secure) + parseManifest(Zod) ─▶ <instanceId>/app/
+                                                                                          │
+Manifest ⊕ instanceId ──toCreateSpec──▶ ContainerCreateSpec ─▶ create+start ◀────────────┤
+Dockerfile + assets ──tarContext(@std/tar)──▶ tar ──▶ POST /build ─▶ compositz/<instanceId> image
 ```
 
 - **Manifest** ([`recipe/manifest.ts`](../packages/core/src/recipe/manifest.ts)) is a Zod schema —
   the single source of truth for the runtime validator, the inferred TS types, and the generated
   JSON Schema (`deno task schema` → [`spec/`](../spec/compositz.schema.json)).
-- **Loader** ([`recipe/loader.ts`](../packages/core/src/recipe/loader.ts)) reads the manifest +
-  build context into memory; `listRecipes` enumerates a directory.
+- **Ingestion** ([`recipe/ingest.ts`](../packages/core/src/recipe/ingest.ts)) securely extracts a
+  bundle (rejecting absolute / `..` / symlink / hardlink entries), Zod-validates it, mints an
+  `instanceId` (`<appId>-<rand>`), and writes `<instancesDir>/<instanceId>/app/`.
+  `duplicateInstance` copies only the bundle (not the data).
+- **Instance store** ([`recipe/instance.ts`](../packages/core/src/recipe/instance.ts)) loads/lists
+  instances from app-data ([`storage.ts`](../packages/core/src/storage.ts) `instancesDir()`); a
+  **bundle loader** ([`recipe/loader.ts`](../packages/core/src/recipe/loader.ts)) reads the
+  manifest + build context of one bundle into memory.
 - **Build** ([`build.ts`](../packages/core/src/build.ts)) packs the context into a tar and
   `EngineClient.build` streams the classic `POST /build` log.
-- **Run mapping** ([`recipe/run.ts`](../packages/core/src/recipe/run.ts)) translates the manifest
-  into a container spec (ports, env, volumes, GPU, labels) and derives the image tag / container
-  name / web URL.
+- **Run mapping** ([`recipe/run.ts`](../packages/core/src/recipe/run.ts)) translates the manifest +
+  `instanceId` into a container spec (ports, env, volumes, GPU, labels) and derives the per-instance
+  image tag / container name / web URL.
 - **Operations** ([`recipe/operations.ts`](../packages/core/src/recipe/operations.ts)):
-  `installRecipe` (build), `up` (create+start, GPU tri-state), `down` (stop+remove).
+  `installInstance` (build/pull), `up` (create+start, GPU tri-state), `down` (stop+remove).
 
 ## Naming & branding
 
-All externally-visible names live in [`brand.ts`](../packages/core/src/brand.ts): image tag
-`compositz/<id>:<version>`, container `compositz-<id>`, volume `compositz_<id>_<name>`, labels
-`io.compositz.{recipe,managed,version}`. Tentative — change here only.
+All externally-visible names live in [`brand.ts`](../packages/core/src/brand.ts) and key off the
+**instance id** ([ADR-017](decisions.md)): image tag `compositz/<instanceId>:<version>` (a `build`
+recipe; `image` recipes use the referenced image), container `compositz-<instanceId>`, volume
+`compositz_<instanceId>_<name>`, labels `io.compositz.{instance,recipe,managed,version}` (`recipe`
+carries the app id). Tentative — change here only.
 
 ## GPU model
 

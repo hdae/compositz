@@ -4,9 +4,10 @@ Run each local-AI app as **one isolated Docker container** — Pinokio's one-cli
 container isolation and Dockge-style management. Windows desktop app + Linux CLI.
 
 > Status (2026-06): Phase 0 & 1 done and verified; Phase 2 (management UI) in progress —
-> **`packages/ui`** (Fresh 2 / Vite) lists recipes with live SSE status and up/down actions, calling
-> `@compositz/core` in-process (the standalone Hono server was retired). Full plan in
-> **[docs/](docs/README.md)**.
+> **`packages/ui`** (Fresh 2 / Vite) lists **instances** with live SSE status, up/down, and
+> recipe-bundle import, calling `@compositz/core` in-process (the standalone Hono server was
+> retired). Recipes are ingested into self-contained instances ([ADR-017](docs/decisions.md)). Full
+> plan in **[docs/](docs/README.md)**.
 
 ## Documentation
 
@@ -17,13 +18,17 @@ The full plan lives in [`docs/`](docs/README.md): [architecture](docs/architectu
 ## Layout
 
 ```
-packages/core/      TypeScript library: Docker Engine API client, transports, recipe model
+packages/core/      TypeScript library: Engine API client, transports, recipe model, ingestion + instance store
 packages/cli/       Linux-first CLI (also the debugging surface) — finished first
-packages/desktop/   Deno Desktop app (Windows-first), embeds container web UIs
-recipes/            Recipe definitions (Dockerfile + compositz.yaml manifest)
+packages/ui/        Fresh 2 (Vite) management UI; packaged as the desktop app by `deno desktop`
+recipes/            Sample recipe bundles (Dockerfile + compositz.yaml) to import
 spec/               Generated manifest JSON Schema
 docs/               Plan & design docs
 ```
+
+A recipe is **imported** to create a self-contained **instance** (the deployed unit, keyed by an
+`instanceId`); there is no shared recipe store ([ADR-017](docs/decisions.md)). The `recipes/` dir
+holds sample bundles you import.
 
 ## Requirements
 
@@ -39,13 +44,15 @@ deno task doctor
 # Full container round-trip: pull alpine -> run -> stream logs -> wait -> remove
 deno task hello
 
-# Recipes: build an image from recipes/<id>/ and run it.
-deno task cli install hello-web   # build compositz/hello-web:0.1.0 from the recipe
-deno task cli up hello-web        # start it; prints http://localhost:8090/
-deno task cli ps                  # list managed containers
-deno task cli down hello-web      # stop + remove
+# Instances: import a recipe bundle (dir or tar/tar.gz) → create an instance, then run it.
+deno task cli import recipes/hello-web   # → instance "hello-web-<rand>"; prints the id
+deno task cli ls                         # list instances in the store
+deno task cli up hello-web-<rand>        # build (if needed) + start; prints http://localhost:8090/
+deno task cli ps                         # list managed containers
+deno task cli down hello-web-<rand>      # stop + remove the container
+deno task cli rm   hello-web-<rand>      # remove the instance (container + definition; data kept)
 
-# Management UI: Fresh 2 (Vite) dashboard — recipe list + live status + up/down.
+# Management UI: Fresh 2 (Vite) dashboard — instance list + live status + up/down + bundle import.
 # Calls @compositz/core in-process from route handlers (no separate API server).
 deno task ui                      # dev server (prints the local URL)
 
