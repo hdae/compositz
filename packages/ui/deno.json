@@ -4,7 +4,9 @@
     "dev": "vite",
     "build": "vite build",
     "start": "deno serve -A _fresh/server.js",
-    "update": "deno run -A -r jsr:@fresh/update ."
+    "update": "deno run -A -r jsr:@fresh/update .",
+    "desktop:dev": "deno desktop --hmr --backend cef -A --unstable-net",
+    "desktop": "deno desktop --backend cef --output ../../dist/compositz.AppImage -A --unstable-net"
   },
   "lint": {
     "rules": {

@@ -3,7 +3,6 @@
   "workspace": [
     "./packages/core",
     "./packages/cli",
-    "./packages/desktop",
     "./packages/ui"
   ],
   "$comment_nodeModulesDir": "Required by the packages/ui Vite member (Fresh 2 needs a real node_modules). nodeModulesDir is a workspace-root-only setting, so it applies to every member; `auto` lets Deno auto-materialize the shared root node_modules (incl. transitive type deps like @types/node) for the pure-Deno packages without hand-listing them.",
@@ -20,14 +19,14 @@
     "doctor": "deno run -A --unstable-net packages/cli/main.ts doctor",
     "hello": "deno run -A --unstable-net packages/cli/main.ts hello",
     "cli": "deno run -A --unstable-net packages/cli/main.ts",
-    "desktop": "deno desktop --backend cef -A --unstable-net -o dist/compositz-cef packages/desktop/main.ts",
-    "desktop:webview": "deno desktop -A --unstable-net packages/desktop/main.ts",
     "ui": "deno task --cwd packages/ui dev",
     "ui:build": "deno task --cwd packages/ui build",
     "ui:check": "deno task --cwd packages/ui check",
+    "desktop": "deno task --cwd packages/ui build && deno task --cwd packages/ui desktop",
+    "desktop:dev": "deno task --cwd packages/ui desktop:dev",
     "schema": "deno run -A scripts/gen_schema.ts",
     "test": "deno test -A --unstable-net",
-    "check": "deno check packages/core/mod.ts packages/cli/main.ts packages/desktop/main.ts",
+    "check": "deno check packages/core/mod.ts packages/cli/main.ts",
     "fmt": "deno fmt",
     "lint": "deno lint"
   },
