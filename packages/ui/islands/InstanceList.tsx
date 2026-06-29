@@ -162,6 +162,34 @@ export default function InstanceList(
     }
   }
 
+  // Open a native file picker. Prefer the File System Access API so a single combined
+  // filter ("Recipe bundle" = .tar/.tar.gz/.tgz) is the default — the plain <input
+  // accept> splits into per-extension filters and defaults to ".tar" on Windows. Falls
+  // back to the hidden <input> where the API is unavailable.
+  async function pickFile() {
+    const picker = (globalThis as unknown as {
+      showOpenFilePicker?: (opts: unknown) => Promise<Array<{ getFile: () => Promise<File> }>>;
+    }).showOpenFilePicker;
+    if (!picker) {
+      fileInput.current?.click();
+      return;
+    }
+    try {
+      const [handle] = await picker({
+        types: [{
+          description: "Recipe bundle (.tar, .tar.gz, .tgz)",
+          accept: { "application/octet-stream": [".tar", ".tar.gz", ".tgz"] },
+        }],
+        excludeAcceptAllOption: false,
+        multiple: false,
+      });
+      if (handle) importFile(await handle.getFile());
+    } catch (e) {
+      // AbortError = the user cancelled; any other error → fall back to the input.
+      if ((e as Error)?.name !== "AbortError") fileInput.current?.click();
+    }
+  }
+
   // Trust = Yes: add the row and build it now (the build log streams into its panel).
   function trustInstall(view: InstanceView) {
     setTrust(null);
@@ -268,7 +296,7 @@ export default function InstanceList(
             variant="outline"
             size="sm"
             disabled={importing}
-            onClick={() => fileInput.current?.click()}
+            onClick={pickFile}
           >
             {importing ? <LoaderCircle class="size-4 animate-spin" /> : <Upload class="size-4" />}
             {importing ? "Importing…" : "Import recipe"}
@@ -413,7 +441,12 @@ export default function InstanceList(
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={() => deleting && removeInstance(deleting.instanceId)}
+                onClick={() => {
+                  if (deleting) {
+                    removeInstance(deleting.instanceId);
+                    setDeleting(null);
+                  }
+                }}
               >
                 Delete
               </Button>
@@ -670,34 +703,61 @@ function RuntimeLog({ instanceId, running }: { instanceId: string; running: bool
 function ServicesList({ services, running }: { services: Service[]; running: boolean }) {
   if (!running) return <p class="text-sm text-muted-foreground">Not running.</p>;
   if (!services.length) {
-    return <p class="text-sm text-muted-foreground">No web UI ports published.</p>;
+    return <p class="text-sm text-muted-foreground">No web UI ports declared.</p>;
   }
+  // Listed straight from the manifest; the badge reflects whether the port is published
+  // yet (the live host binding has appeared in `ps`) — `ready` once reachable, otherwise
+  // `starting…` so the row doesn't blink in/out during container startup.
   return (
     <ul class="space-y-2">
-      {services.map((s) => (
-        <li
-          key={s.name}
-          class="flex items-center justify-between gap-3 rounded border border-border px-3 py-2"
-        >
-          <div class="min-w-0">
-            <div class="flex items-center gap-2">
-              <span class="text-sm font-medium">{s.name}</span>
-              <span class="text-xs text-muted-foreground font-mono">:{s.port}</span>
-            </div>
-            {s.description
-              ? <p class="text-xs text-muted-foreground truncate">{s.description}</p>
-              : null}
-          </div>
-          <a
-            href={s.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            class={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0")}
+      {services.map((s) => {
+        const ready = s.url !== undefined;
+        return (
+          <li
+            key={s.name}
+            class="flex items-center justify-between gap-3 rounded border border-border px-3 py-2"
           >
-            <ExternalLink class="size-4" />Open
-          </a>
-        </li>
-      ))}
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-medium">{s.name}</span>
+                <span class="text-xs text-muted-foreground font-mono">
+                  {ready ? `:${s.port}` : `:${s.path}`}
+                </span>
+                {ready
+                  ? (
+                    <span class="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-500/15 dark:text-green-400">
+                      ready
+                    </span>
+                  )
+                  : (
+                    <span class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-400">
+                      starting…
+                    </span>
+                  )}
+              </div>
+              {s.description
+                ? <p class="text-xs text-muted-foreground truncate">{s.description}</p>
+                : null}
+            </div>
+            {ready
+              ? (
+                <a
+                  href={s.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0")}
+                >
+                  <ExternalLink class="size-4" />Open
+                </a>
+              )
+              : (
+                <Button variant="outline" size="sm" disabled class="shrink-0">
+                  <ExternalLink class="size-4" />Open
+                </Button>
+              )}
+          </li>
+        );
+      })}
     </ul>
   );
 }

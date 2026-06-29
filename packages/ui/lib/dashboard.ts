@@ -27,12 +27,20 @@ export type PublishedPort = {
   protocol: string;
 };
 
-/** A live, openable web endpoint: a declared web port matched to its live host port. */
+/**
+ * A declared web endpoint plus its live reachability. `url`/`port` are set once the
+ * running container publishes the port; while the container is still starting (the
+ * binding hasn't appeared in `ps` yet) they are `undefined` — the service is listed
+ * from the manifest with a "starting" state rather than vanishing from the list.
+ */
 export type Service = {
   name: string;
-  url: string;
-  port: number;
+  path: string;
   description?: string;
+  /** Live published host port, once known. */
+  port?: number;
+  /** Live openable URL, once the port is published. */
+  url?: string;
 };
 
 /** An instance reduced to the fields the dashboard renders (built by the handler). */
@@ -109,22 +117,24 @@ export function toContainerStatuses(
 }
 
 /**
- * Resolve a declared web port to a live, openable URL by matching it to a running
- * container's published ports (container port + protocol). The manifest's declared
- * host port is only a *desired* value (it can be auto-bumped on conflict), so the
- * authoritative host port is the engine's published one — never the manifest's.
- * Ports with no live binding are omitted (the service isn't reachable yet).
+ * List EVERY declared web port (so the Services list is populated straight from the
+ * manifest the moment the instance runs, with no blank window), resolving each to a
+ * live URL by matching it to a running container's published ports (container port +
+ * protocol). The manifest's declared host port is only a *desired* value (it can be
+ * auto-bumped on conflict), so the authoritative host port is the engine's published
+ * one — never the manifest's. A port not yet published has `url`/`port` undefined
+ * (the UI shows it as "starting").
  */
 export function instanceServices(webPorts: WebPort[], ports: PublishedPort[]): Service[] {
-  return webPorts.flatMap((wp) => {
+  return webPorts.map((wp) => {
     const pub = ports.find((p) => p.container === wp.container && p.protocol === wp.protocol);
-    if (!pub) return [];
-    return [{
+    return {
       name: wp.name,
-      url: `http://localhost:${pub.public}${wp.path}`,
-      port: pub.public,
+      path: wp.path,
       description: wp.description,
-    }];
+      port: pub?.public,
+      url: pub ? `http://localhost:${pub.public}${wp.path}` : undefined,
+    };
   });
 }
 

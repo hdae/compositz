@@ -94,31 +94,39 @@ Deno.test("instanceServices resolves a web port to the live published host port 
   const webPorts: WebPort[] = [{ name: "ui", container: 8080, protocol: "tcp", path: "/app" }];
   const ports: PublishedPort[] = [{ container: 8080, public: 49153, protocol: "tcp" }];
   assertEquals(instanceServices(webPorts, ports), [
-    { name: "ui", url: "http://localhost:49153/app", port: 49153, description: undefined },
+    {
+      name: "ui",
+      path: "/app",
+      description: undefined,
+      port: 49153,
+      url: "http://localhost:49153/app",
+    },
   ]);
 });
 
-Deno.test("instanceServices omits a web port with no live binding", () => {
-  assertEquals(instanceServices([WEB_PORT], []), []);
-  // protocol mismatch is not a binding
+Deno.test("instanceServices lists a web port with NO live binding as starting (url undefined)", () => {
+  assertEquals(instanceServices([WEB_PORT], []), [
+    { name: "web", path: "/", description: undefined, port: undefined, url: undefined },
+  ]);
+  // protocol mismatch is not a binding → still listed, still starting
   assertEquals(
     instanceServices([WEB_PORT], [{ container: 8080, public: 5000, protocol: "udp" }]),
-    [],
+    [{ name: "web", path: "/", description: undefined, port: undefined, url: undefined }],
   );
 });
 
-Deno.test("instanceServices lists every matched web port (multi-web app)", () => {
+Deno.test("instanceServices lists every declared web port (multi-web app)", () => {
   const webPorts: WebPort[] = [
     { name: "ui", container: 8080, protocol: "tcp", path: "/" },
     { name: "admin", container: 9090, protocol: "tcp", path: "/admin" },
   ];
   const ports: PublishedPort[] = [
     { container: 8080, public: 18080, protocol: "tcp" },
-    { container: 9090, public: 19090, protocol: "tcp" },
+    // admin (9090) not published yet → listed as starting
   ];
   assertEquals(instanceServices(webPorts, ports).map((s) => s.url), [
     "http://localhost:18080/",
-    "http://localhost:19090/admin",
+    undefined,
   ]);
 });
 
@@ -127,7 +135,16 @@ Deno.test("toInstanceRows resolves services from the running container's LIVE po
   const running = status({ ports: [{ container: 8080, public: 18080, protocol: "tcp" }] });
   const rows = toInstanceRows([view()], snapshot({ containers: [running] }));
   assertEquals(rows[0].services, [
-    { name: "web", url: "http://localhost:18080/", port: 18080, description: undefined },
+    { name: "web", path: "/", description: undefined, port: 18080, url: "http://localhost:18080/" },
+  ]);
+});
+
+Deno.test("toInstanceRows lists services-from-definition before the port is published (starting)", () => {
+  // Running, but the SSE snapshot hasn't carried the published port yet (e.g. optimistic up).
+  const startingUp = status({ ports: [] });
+  const rows = toInstanceRows([view()], snapshot({ containers: [startingUp] }));
+  assertEquals(rows[0].services, [
+    { name: "web", path: "/", description: undefined, port: undefined, url: undefined },
   ]);
 });
 

@@ -5,7 +5,8 @@ import { cn } from "../../lib/utils.ts";
 // Shadcn-style Tooltip over Base UI's primitive (preact/compat). Styling is passed via
 // `className` (Base UI's documented styling prop). Wrap the island subtree once in
 // <TooltipProvider> for shared hover-delay grouping; each trigger composes the target
-// via `render={<Button/>}`. Popup state is exposed by Base UI as data-open/data-closed.
+// via `render={<Button/>}`. Matches Shadcn's tooltip: dark `bg-primary` popup, px-3
+// py-1.5, text-xs, plus the small caret arrow (positioned per Base UI's `data-side`).
 
 export const Tooltip = Base.Root;
 export const TooltipProvider = Base.Provider;
@@ -23,11 +24,20 @@ export function TooltipContent(
       <Base.Positioner sideOffset={sideOffset}>
         <Base.Popup
           className={cn(
-            "z-50 w-fit rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground shadow-md",
+            "z-50 w-fit text-balance rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground shadow-md",
             cls,
           )}
         >
           {children}
+          <Base.Arrow
+            className={cn(
+              "z-50 h-2.5 w-2.5",
+              "data-[side=top]:-bottom-1 data-[side=bottom]:-top-1",
+              "data-[side=left]:-right-1 data-[side=right]:-left-1",
+            )}
+          >
+            <div class="size-2.5 rotate-45 rounded-[2px] bg-primary" />
+          </Base.Arrow>
         </Base.Popup>
       </Base.Positioner>
     </Base.Portal>
