@@ -200,10 +200,15 @@ green.
 is done via the Services tab). Small deferred UI follow-up: the light/dark/auto **mode selector**
 (writes `compositz-theme`, the boot script already applies it).
 
-**Deferred:** light/dark/auto mode selector (additive over ADR-019); unused-volume reclaim + full
-data deletion (needs Engine volume endpoints the client lacks); large-upload progress/cancel;
-`installed`-badge SSE staleness — all in [known-issues.md](../../docs/known-issues.md). **Adjacent
-(out of scope, flagged):** repo `fmt` has no `exclude`, so `recipes/hello-web/index.html` fails
-`deno fmt --check` on `main` (`<!doctype>`→`<!DOCTYPE>`) — decide exclude `recipes/` vs reformat.
-Verify Docker via `DOCKER_HOST=tcp://host.docker.internal:2375` ([[compositz-docker-tcp-debug]] —
-managed-only + reversible).
+**Deferred:** **Shadcn components → vendor verbatim from upstream** (`shadcn-ui/ui`
+`apps/v4/registry/bases/base/ui/`) instead of the current hand-adapted ones — a migration (dep
+`@base-ui-components/react@1.0.0-rc.0` → `@base-ui/react@1.6` + vendor a shadcn v4 style-theme CSS
+for the `cn-*` classes + island adjustments). User chose 現状維持 for now; rule + mechanism in
+memory [[shadcn-vendor-from-upstream]]. Also: light/dark/auto mode selector (additive over ADR-019);
+unused-volume reclaim + full data deletion (needs Engine volume endpoints the client lacks);
+large-upload progress/cancel; `installed`-badge SSE staleness — all in
+[known-issues.md](../../docs/known-issues.md). **Adjacent (out of scope, flagged):** repo `fmt` has
+no `exclude`, so `recipes/hello-web/index.html` fails `deno fmt --check` on `main`
+(`<!doctype>`→`<!DOCTYPE>`) — decide exclude `recipes/` vs reformat. Verify Docker via
+`DOCKER_HOST=tcp://host.docker.internal:2375` ([[compositz-docker-tcp-debug]] — managed-only +
+reversible).
