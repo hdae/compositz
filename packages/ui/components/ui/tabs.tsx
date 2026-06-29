@@ -2,11 +2,12 @@ import type { ComponentChildren } from "preact";
 import { Tabs as Base } from "@base-ui-components/react/tabs";
 import { cn } from "../../lib/utils.ts";
 
-// Shadcn-style Tabs over Base UI's primitive (preact/compat). `Tabs` is the Root
-// (controlled via value/defaultValue/onValueChange); a Tab and its Panel are paired by
-// a shared `value`. Styling via `className`; the active tab is keyed off Base UI's
-// `aria-selected` attribute. Inactive panels are unmounted by default (no keepMounted),
-// which lets a Panel own a subscription (e.g. a log EventSource) tied to its visibility.
+// The canonical Shadcn Tabs, re-backed on Base UI's primitive (house standard, not Radix;
+// ADR-018; preact/compat). `Tabs` is the Root (controlled via value/defaultValue/
+// onValueChange); a Tab and its Panel are paired by a shared `value`. Styling via
+// `className`; the active tab is keyed off Base UI's `aria-selected` attribute. Inactive
+// panels are unmounted by default (no keepMounted), which lets a Panel own a subscription
+// (e.g. a log EventSource) tied to its visibility.
 
 export const Tabs = Base.Root;
 

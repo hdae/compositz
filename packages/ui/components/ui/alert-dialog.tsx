@@ -2,10 +2,11 @@ import type { ComponentChildren } from "preact";
 import { AlertDialog as Base } from "@base-ui-components/react/alert-dialog";
 import { cn } from "../../lib/utils.ts";
 
-// Shadcn-style AlertDialog over Base UI's primitive (portal + focus-trap, runs under
-// preact/compat). Styling is passed via `className` — Base UI's documented styling
-// prop, which it merges into each part's own element (the robust path; `class` only
-// happened to work by being spread to the DOM).
+// The canonical Shadcn AlertDialog, re-backed on Base UI's primitive (the house standard
+// is Base UI, not Radix; the upstream Shadcn version imports `radix-ui`, which breaks under
+// preact/compat — ADR-018). Portal + focus-trap. Styling is passed via `className` — Base
+// UI's documented styling prop, which it merges into each part's own element (the robust
+// path; `class` only happened to work by being spread to the DOM).
 
 export const AlertDialog = Base.Root;
 export const AlertDialogTrigger = Base.Trigger;

@@ -3,8 +3,8 @@ import { forwardRef } from "preact/compat";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../../lib/utils.ts";
 
-// Shadcn-style Button (cva variants). This base button needs no React primitive —
-// it is plain Preact + Tailwind, so it works without the preact/compat layer.
+// The canonical Shadcn Button (cva variants), Preact-adapted (`class`). This base button
+// needs no React primitive — plain Preact + Tailwind — so it works without preact/compat.
 export const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
   {

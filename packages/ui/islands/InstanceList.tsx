@@ -720,9 +720,9 @@ function ServicesList({ services, running }: { services: Service[]; running: boo
             <div class="min-w-0">
               <div class="flex items-center gap-2">
                 <span class="text-sm font-medium">{s.name}</span>
-                <span class="text-xs text-muted-foreground font-mono">
-                  {ready ? `:${s.port}` : `:${s.path}`}
-                </span>
+                {ready
+                  ? <span class="text-xs text-muted-foreground font-mono">:{s.port}</span>
+                  : null}
                 {ready
                   ? (
                     <span class="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-500/15 dark:text-green-400">
