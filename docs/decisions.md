@@ -472,3 +472,44 @@ selector lands. Cost now is ~one 12-line inline script.
 `{/* deno-lint-ignore */}` in JSX). The light/dark/auto **selector remains deferred**. Adjacent (not
 addressed here): the repo `fmt` config has no `exclude`, so `recipes/hello-web/index.html` (sample
 bundle) fails `deno fmt --check` on `main` (`<!doctype>` → `<!DOCTYPE>`).
+
+## ADR-020 — Trust-gated import + per-instance image cleanup on delete · ✅ Accepted
+
+A UX increment over the instance-centric flow (ADR-017): a recipe is built only after an explicit
+trust decision, and deleting an instance now reclaims its built image. Settled with the user.
+
+**Decisions:**
+
+- **Trust gate at import.** Importing a bundle ingests it to the store (the instance exists on disk)
+  and then opens a **non-dismissable** "Trust the source and install?" dialog. **Yes** adds the row
+  and builds immediately (the build log streams into the row's panel); **No** deletes the instance
+  entirely (nothing was built). The dialog can't be dismissed (Esc/outside-click ignored) so the
+  decision is deliberate. A build **failure** keeps the instance with its build log + an Install
+  (retry) button — `installed` stays false (the user chose "残して再試行可"). So the Install button
+  only appears on the failure/dismiss path, not the happy path.
+- **"Provider" = recipe identity + filename.** A local file import has no real provider, so the
+  dialog shows the recipe's name/version/appId and records `meta.source = upload:<filename>` (the
+  client sends `?filename=`). A meaningful provider (`github:owner/repo`) lands with RI-3.
+- **Delete reclaims the per-instance image.** `removeInstanceImage` removes ONLY the per-instance
+  build tag `compositz/<instanceId>:<version>` and is a **no-op for an `image`-based recipe** (its
+  image is shared/external — never removed). The new build-on-import flow makes "build then delete"
+  common, so leaking a unique per-instance image each time was unacceptable. Volumes/data-root are
+  still kept (the safe default). Honors the Docker-safety constraint: managed-only, exact-tag,
+  reversible-by-reimport.
+- **Open UI → Services tab.** The single "Open UI" button is replaced by a tabbed per-row panel
+  (Build log / Runtime log / Services). Services lists **all** `web: true` ports, resolving each URL
+  against the **running container's live published port** (`ps` `PublicPort`), not the manifest's
+  declared port — the declared host port can be auto-bumped on conflict, so only the live binding is
+  authoritative. Runtime logs stream from a new `/api/instances/:id/logs` SSE route over the
+  existing `EngineClient.logs()`.
+
+**Why:** building arbitrary recipe Dockerfiles is the privileged step; gating it behind an explicit
+trust choice (rather than a separate, easy-to-miss Install click) makes the security boundary
+legible. Image cleanup closes the storage leak the gate's "build immediately" behavior introduces.
+
+**Consequences:** the dashboard view-model gains `webPorts[]` (replacing the single `web` string)
+and `ContainerStatus.ports[]`; the join (declared web port × live published port) is a pure helper
+in `lib/dashboard.ts`. `EngineClient` gains `removeImage` and a `logs({ signal })` follow-abort hook
+(the latter also fixes an abort-during-`#open()` socket leak shared with `events()`). Tooltip/Tabs
+join the Base-UI component set (ADR-018); icon-button tooltips wrap the control in a `<span>` so
+they still show while the button is disabled.

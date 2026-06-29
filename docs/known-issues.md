@@ -17,14 +17,25 @@ it exists); settled rationale belongs in [decisions.md](decisions.md).
 
 ## Deleting an instance leaves its named volumes (no reclaim)
 
-- **What:** `compositz rm` / the UI Delete remove the container + the instance definition but KEEP
-  the per-instance named volumes (`compositz_<instanceId>_*`) and data-root dir — a deliberately
-  safe default (never silently destroy user data). There is no command to reclaim now-orphaned
-  volumes.
+- **What:** the UI Delete now removes the container **and the per-instance built image**
+  (`compositz/<instanceId>:<version>`, via `removeInstanceImage`), but still KEEPS the per-instance
+  named volumes (`compositz_<instanceId>_*`) and data-root dir — a deliberately safe default (never
+  silently destroy user data). `compositz rm` (CLI) does not yet remove the image. There is no
+  command to reclaim now-orphaned volumes.
 - **Fix direction (future):** a `compositz volumes prune` / "reclaim unused data" action that lists
   volumes whose `<instanceId>` no longer exists and removes them on explicit confirmation. Needs
   Engine **volume** endpoints (`GET/DELETE /volumes`) the `EngineClient` does not implement yet.
   Part of Phase-3 "volumes/GC".
+
+## Runtime-log tab can duplicate lines after an unexpected reconnect
+
+- **What:** the Runtime-log tab streams `/api/instances/:id/logs` (SSE) with a `tail=500` backfill.
+  On a **clean** end (container stops → `end`/`logerror`) the client closes the EventSource, so no
+  reconnect. But on an unexpected mid-stream drop, the browser's EventSource auto-reconnects and the
+  route re-sends the `tail=500` backfill, so the last lines appear twice in the panel.
+- **Scope:** rare on a local engine (no network in between); cosmetic (no data loss).
+- **Fix direction:** server-side `Last-Event-ID` support so a reconnect resumes via `since=` instead
+  of re-backfilling, or have the client reset the buffer on the native `error` (reconnect) event.
 
 ## Large uploads show no progress / can't be cancelled
 

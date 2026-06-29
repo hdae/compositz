@@ -90,6 +90,10 @@ UI + multi-web "Open UI" buttons).
   (`:root`/`.dark`/`@theme inline`/`@custom-variant dark`); `_app.tsx` `<head>` script toggles
   `.dark` from `prefers-color-scheme`. Selector deferred but additive (chosen over pure `@media` so
   it needs no rebuild). Chromatic status colors keep `dark:` variants.
+- **ADR-020: trust-gated import + delete reclaims the per-instance image.** Import → non-dismissable
+  "install?" dialog (Yes builds / No deletes / fail keeps + retry); delete removes
+  `compositz/<id>:<ver>` (no-op for shared `image` recipes). "Open UI" → tabbed panel (build/runtime
+  log + Services, the latter joined to the container's live `PublicPort`). Tooltip/Tabs added.
 
 ## Pitfalls index
 
@@ -126,6 +130,13 @@ UI + multi-web "Open UI" buttons).
   missing host source; the daemon returns `400 bind source path does not exist`. Set
   `BindOptions.CreateMountpoint:true` so the **daemon** creates it (the source is on the daemon
   host, unreachable from core over a remote `DOCKER_HOST`). See `run.ts` / ADR-015.
+- **An abort listener registered AFTER an `await` can miss a one-shot abort.** In the streaming
+  engine methods (`logs()`, `events()`) the pattern is
+  `const conn = await this.#open(); signal?.addEventListener("abort", () => conn.close())`. If the
+  signal aborts DURING `#open()`, the (one-shot) `abort` has already fired, so the listener never
+  runs and the follow socket leaks. Both methods re-check
+  `if (signal?.aborted) { conn.close(); return; }` right after registering. Replicate that guard in
+  any new streaming method.
 - **`lucide-preact` does NOT tree-shake by default in this build.** The Deno resolver doesn't
   surface its `sideEffects:false` to Rollup, so any barrel import pulls all ~1700 icons (+460 kB
   into the client island), and its `exports` map blocks per-icon deep imports. The fix is a tiny
@@ -172,10 +183,22 @@ light/dark/auto **mode selector is deferred** and now **purely additive** (UI + 
 CSS restructure). `react-no-danger` is disabled file-wide in `_app.tsx` (sole static-literal boot
 script). 104 tests green; ui:build/ui:check/lint clean.
 
+**Trust import + tabbed panel (ADR-020) — ✅ DONE.** Import opens a **non-dismissable** trust
+("install?") dialog: Yes builds now (log streams to the panel), No deletes the instance entirely; a
+build failure keeps it with an Install (retry) button. `views` is now island state (optimistic
+add/remove, no reload); `meta.source = upload:<filename>`. Delete reclaims the per-instance image
+(`removeInstanceImage`, no-op for `image` recipes; volumes kept). The single "Open UI" button became
+a per-row **tabbed panel** (Build log / Runtime log / Services); **Services** lists every `web` port
+resolved against the running container's **live** `PublicPort` (`lib/dashboard.ts` join). Runtime
+log streams `/api/instances/:id/logs` (SSE). **Tooltip + Tabs** added to the Base-UI set; icon
+tooltips wrap the control in a `<span>` so they show while disabled. Multi-lens review (9 findings;
+2 med = abort-during-`#open()` socket leak + disabled-trigger tooltip, fixed) folded in. 109 tests
+green.
+
 **NEXT — RI-3** (GitHub ingestion: `owner/repo[@ref][/subdir]` → codeload `.tar.gz` over HTTPS →
-`ingestBundle`; no `git` binary) → **RI-4** (per-instance override UI + multi-web "Open UI"
-buttons). Small deferred UI follow-up: the light/dark/auto **mode selector** (writes
-`compositz-theme`, the boot script already applies it).
+`ingestBundle`; no `git` binary) → **RI-4** (per-instance override UI; the multi-web "Open UI" half
+is done via the Services tab). Small deferred UI follow-up: the light/dark/auto **mode selector**
+(writes `compositz-theme`, the boot script already applies it).
 
 **Deferred:** light/dark/auto mode selector (additive over ADR-019); unused-volume reclaim + full
 data deletion (needs Engine volume endpoints the client lacks); large-upload progress/cancel;
