@@ -21,6 +21,7 @@ _manager_ is trusted; the _apps_ are sandboxed.
 | [decisions.md](decisions.md)               | Decision log (ADR-style) with rationale and evidence                                                   |
 | [recipe-format.md](recipe-format.md)       | The `compositz.yaml` manifest spec + authoring guide                                                   |
 | [recipe-ingestion.md](recipe-ingestion.md) | Recipe sourcing (tar/GitHub), instance-centric storage, launch config + increment plan                 |
+| [known-issues.md](known-issues.md)         | Open / being-worked problems                                                                           |
 
 ## Status at a glance (2026-06-29)
 
