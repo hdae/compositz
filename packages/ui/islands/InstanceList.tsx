@@ -1,12 +1,22 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import {
+  Download,
+  ExternalLink,
+  LoaderCircle,
+  Play,
+  Square,
+  Trash2,
+  Upload,
+} from "../lib/icons.ts";
+import {
   type ContainerStatus,
   type InstanceRow,
   type InstanceView,
   toInstanceRows,
   withOptimisticAction,
 } from "../lib/dashboard.ts";
-import { Button } from "../components/ui/button.tsx";
+import { Button, buttonVariants } from "../components/ui/button.tsx";
+import { Card } from "../components/ui/card.tsx";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -195,7 +205,8 @@ export default function InstanceList(
           disabled={importing}
           onClick={() => fileInput.current?.click()}
         >
-          {importing ? "Importing…" : "Import recipe…"}
+          {importing ? <LoaderCircle class="size-4 animate-spin" /> : <Upload class="size-4" />}
+          {importing ? "Importing…" : "Import recipe"}
         </Button>
         <EngineBadge online={engineOnline} error={engineError} />
         <input
@@ -226,51 +237,62 @@ export default function InstanceList(
           </p>
         )
         : (
-          <ul class="divide-y divide-border">
+          <ul class="space-y-3">
             {rows.map((r) => (
-              <li key={r.instanceId} class="py-4">
-                <div class="flex items-center gap-4">
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2">
-                      <span class="font-semibold">{r.name}</span>
-                      <span class="text-xs text-muted-foreground">{r.version}</span>
-                      <span class="text-xs text-muted-foreground/70 font-mono truncate">
-                        {r.instanceId}
-                      </span>
+              <li key={r.instanceId}>
+                <Card class="gap-3 p-4">
+                  <div class="flex items-center gap-2">
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2">
+                        <span class="font-semibold">{r.name}</span>
+                        <span class="text-xs text-muted-foreground">{r.version}</span>
+                        <span class="text-xs text-muted-foreground/70 font-mono truncate">
+                          {r.instanceId}
+                        </span>
+                      </div>
+                      <p class="text-sm text-muted-foreground truncate">{r.description}</p>
                     </div>
-                    <p class="text-sm text-muted-foreground truncate">{r.description}</p>
+                    <StatusPill installed={r.installed} running={r.running} />
+                    {r.web && r.running
+                      ? (
+                        <a
+                          href={r.web}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class={buttonVariants({ variant: "ghost", size: "icon" })}
+                          aria-label="Open UI"
+                          title="Open UI"
+                        >
+                          <ExternalLink class="size-4" />
+                        </a>
+                      )
+                      : null}
+                    <ActionButton
+                      row={r}
+                      busy={!!pending[r.instanceId] || !!installing[r.instanceId]}
+                      busyLabel={installing[r.instanceId]
+                        ? "Installing…"
+                        : r.running
+                        ? "Stopping…"
+                        : "Starting…"}
+                      disabled={!engineOnline}
+                      onUp={() => act(r.instanceId, "up")}
+                      onDown={() => act(r.instanceId, "down")}
+                      onInstall={() => install(r.instanceId)}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => setDeleting(r)}
+                      aria-label="Delete"
+                      title="Delete"
+                    >
+                      <Trash2 class="size-4" />
+                    </Button>
                   </div>
-                  <StatusPill installed={r.installed} running={r.running} />
-                  {r.web && r.running
-                    ? (
-                      <a
-                        href={r.web}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="text-sm text-blue-600 hover:underline whitespace-nowrap dark:text-blue-400"
-                      >
-                        Open UI
-                      </a>
-                    )
-                    : null}
-                  <ActionButton
-                    row={r}
-                    busy={!!pending[r.instanceId] || !!installing[r.instanceId]}
-                    disabled={!engineOnline}
-                    onUp={() => act(r.instanceId, "up")}
-                    onDown={() => act(r.instanceId, "down")}
-                    onInstall={() => install(r.instanceId)}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => setDeleting(r)}
-                  >
-                    Delete
-                  </Button>
-                </div>
-                {logs[r.instanceId]?.length ? <InstallLog lines={logs[r.instanceId]} /> : null}
+                  {logs[r.instanceId]?.length ? <InstallLog lines={logs[r.instanceId]} /> : null}
+                </Card>
               </li>
             ))}
           </ul>
@@ -346,27 +368,63 @@ function Pill({ tone, children }: { tone: "green" | "blue" | "gray"; children: s
 }
 
 function ActionButton(
-  { row, busy, disabled, onUp, onDown, onInstall }: {
+  { row, busy, busyLabel, disabled, onUp, onDown, onInstall }: {
     row: InstanceRow;
     busy: boolean;
+    busyLabel: string;
     disabled: boolean;
     onUp: () => void;
     onDown: () => void;
     onInstall: () => void;
   },
 ) {
-  if (busy) return <Button size="sm" variant="secondary" disabled class="w-20">…</Button>;
+  if (busy) {
+    return (
+      <Button size="icon" variant="ghost" disabled aria-label={busyLabel} title={busyLabel}>
+        <LoaderCircle class="size-4 animate-spin" />
+      </Button>
+    );
+  }
   if (row.running) {
     return (
-      <Button size="sm" variant="destructive" class="w-20" disabled={disabled} onClick={onDown}>
-        Stop
+      <Button
+        size="icon"
+        variant="ghost"
+        disabled={disabled}
+        onClick={onDown}
+        aria-label="Stop"
+        title="Stop"
+      >
+        <Square class="size-4" />
       </Button>
     );
   }
   if (row.installed === false) {
-    return <Button size="sm" class="w-20" disabled={disabled} onClick={onInstall}>Install</Button>;
+    return (
+      <Button
+        size="icon"
+        variant="ghost"
+        disabled={disabled}
+        onClick={onInstall}
+        aria-label="Install"
+        title="Install"
+      >
+        <Download class="size-4" />
+      </Button>
+    );
   }
-  return <Button size="sm" class="w-20" disabled={disabled} onClick={onUp}>Start</Button>;
+  return (
+    <Button
+      size="icon"
+      variant="ghost"
+      disabled={disabled}
+      onClick={onUp}
+      aria-label="Start"
+      title="Start"
+    >
+      <Play class="size-4" />
+    </Button>
+  );
 }
 
 function InstallLog({ lines }: { lines: string[] }) {
@@ -377,7 +435,7 @@ function InstallLog({ lines }: { lines: string[] }) {
   return (
     <pre
       ref={ref}
-      class="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-gray-900 p-3 text-xs text-gray-100"
+      class="max-h-48 overflow-auto whitespace-pre-wrap rounded bg-gray-900 p-3 text-xs text-gray-100"
     >{lines.join("")}</pre>
   );
 }

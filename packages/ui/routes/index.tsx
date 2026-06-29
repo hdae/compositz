@@ -71,14 +71,14 @@ export const handler = define.handlers({
 export default define.page<typeof handler>(function Dashboard({ data }) {
   return (
     <div class="min-h-screen bg-background text-foreground">
-      <div class="max-w-screen-lg mx-auto px-6 py-10">
-        <header class="border-b border-border pb-4">
-          <h1 class="text-2xl font-bold">Compositz</h1>
-        </header>
-        <div class="mt-6">
-          <InstanceList views={data.views} initial={data.initial} />
-        </div>
-      </div>
+      <main class="max-w-screen-lg mx-auto px-6 py-10">
+        {
+          /* The visible app title lives in the window/tab bar; keep a screen-reader-only
+            heading so the page still has an H1 and a main landmark for AT/outline nav. */
+        }
+        <h1 class="sr-only">Compositz</h1>
+        <InstanceList views={data.views} initial={data.initial} />
+      </main>
     </div>
   );
 });
