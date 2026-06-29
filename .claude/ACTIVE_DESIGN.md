@@ -126,6 +126,12 @@ UI + multi-web "Open UI" buttons).
   missing host source; the daemon returns `400 bind source path does not exist`. Set
   `BindOptions.CreateMountpoint:true` so the **daemon** creates it (the source is on the daemon
   host, unreachable from core over a remote `DOCKER_HOST`). See `run.ts` / ADR-015.
+- **`lucide-preact` does NOT tree-shake by default in this build.** The Deno resolver doesn't
+  surface its `sideEffects:false` to Rollup, so any barrel import pulls all ~1700 icons (+460 kB
+  into the client island), and its `exports` map blocks per-icon deep imports. The fix is a tiny
+  Vite plugin in `vite.config.ts` marking only `/lucide-preact/` modules side-effect-free. Add icons
+  via `lib/icons.ts` (barrel re-export — fine with the plugin); **don't remove the plugin** or
+  import the barrel elsewhere. Re-check the island chunk size on lucide upgrades.
 
 ## Resume point
 
@@ -147,8 +153,15 @@ a header **Import** button, per-row **Delete** (Base UI AlertDialog confirm →
 `POST
 /api/instances/:id/delete`, data volumes kept). **UI library = Shadcn + Base UI via
 `preact/compat` (ADR-018)** — spike + manual click-test confirmed; foundation `lib/utils.ts`(`cn`),
-`components/ui/{button(forwardRef),alert-dialog(className)}`, vite/deno `react→preact/compat`
+`components/ui/{button(forwardRef),alert-dialog(className),card}`, vite/deno `react→preact/compat`
 aliases. 108 tests green; `delete` live-verified on a real Fresh server.
+
+**UI tidy (cards + Lucide icon buttons) — ✅ DONE.** Each row is a Shadcn `Card`; actions are
+**Lucide icon buttons** (`lucide-preact`, via `lib/icons.ts`): Open UI=ExternalLink, Start=Play,
+Stop=Square, Install=Download, Delete=Trash2, busy=LoaderCircle, Import=Upload+text — all with
+`aria-label`+`title`. The visible page title was removed (app name shows in the window bar); an
+`sr-only` `<h1>` + `<main>` landmark stay for AT. Multi-lens adversarial review (10 findings, all
+low) folded in. See the lucide tree-shake pitfall below.
 
 **Dark mode (theming) — ✅ DONE (ADR-019).** Shadcn neutral semantic tokens (oklch) in `styles.css`
 (`:root` light / `.dark` dark / `@theme inline` + `@custom-variant dark`); chrome migrated to
