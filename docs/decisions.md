@@ -409,3 +409,31 @@ Engine volume endpoints the client lacks today — deferred; `down` + removing t
 (keeping data) is the RI-2 cleanup. Tar extraction is **security-hardened** (reject absolute / `..`
 / symlink / hardlink entries). Layout reference:
 [recipe-ingestion.md](recipe-ingestion.md#storage--instance-centric).
+
+## ADR-018 — UI component library: Shadcn + Base UI via preact/compat · ✅ Accepted (spike-verified)
+
+The Fresh UI adopts the house standard — Shadcn UI on the **Base UI** primitive layer (not Radix) —
+running on Preact through `preact/compat`. Refines
+[ADR-008](#adr-008--ui-framework-fresh-2-vite--accepted).
+
+- **Why it works on Preact:** Radix reaches into React internals and breaks under `preact/compat`;
+  **Base UI** (by MUI) uses only public React APIs, so it survives the compat layer, and Shadcn
+  added a Base UI backend in 2025. Verified by an in-project spike (Fresh 2 / Preact 10.29 /
+  Tailwind v4): a cva `Button` + a Base UI `AlertDialog` (portal + focus-trap) compile, type-check,
+  bundle, and run (manual click-test: open / focus-trap / Esc / Cancel) with no type errors.
+- **Setup:** alias `react`/`react-dom` → `preact/compat` and `react/jsx-runtime` →
+  `preact/jsx-runtime` in **both** the Vite `resolve.alias` and the deno import map. Deps:
+  `@base-ui-components/react`, `class-variance-authority`, `clsx`, `tailwind-merge`. Foundation:
+  `lib/utils.ts` (`cn`) + `components/ui/` — own the component source (house rule: extend by
+  wrapping, never hand-write a primitive).
+- **Conventions:** style Base UI parts via **`className`** (its documented styling prop, merged into
+  each part); make buttons **`forwardRef`** so Base UI's `render={<Button/>}` composition can attach
+  refs. The server-only boundary holds — Base UI is a client lib and islands never import
+  `@compositz/core` as a value (type-only import in `lib/dashboard.ts`).
+- **Build note:** Rollup emits benign warnings — `"use client"` directives ignored, and a
+  `__require` (use-sync-external-store CJS shim) export warning — both verified harmless at runtime.
+
+**Consequences:** the UI's current raw Tailwind color classes (`bg-gray-50`, `text-white`, …) should
+migrate to Shadcn **semantic tokens** (`bg-background` / `text-foreground` / `muted` /
+`destructive`) defined as CSS variables, to enable theming. **Next UI task:** dark mode with default
+**Auto** (follow `prefers-color-scheme`), a light/dark/auto **mode selector to follow**.

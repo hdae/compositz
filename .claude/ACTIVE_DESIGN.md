@@ -82,6 +82,11 @@ UI + multi-web "Open UI" buttons).
 - **ADR-013: `packages/server` (Hono) retired** — the UI calls core in-process, desktop already did,
   nothing imported the server. Reversible ("一旦"): revive a thin headless `compositz serve` later
   if needed. Live status / build logs now stream from **Fresh route handlers** (Increment 2).
+- **ADR-017: instance-centric storage** — no recipe store; the instance owns everything keyed by one
+  `instanceId`. (RI-2; see resume point.)
+- **ADR-018: UI components = Shadcn + Base UI via `preact/compat`** — Base UI (not Radix) survives
+  the compat layer; spike-verified. Style via `className`, buttons `forwardRef`. Dark mode (default
+  Auto, selector later) is the next UI task — migrate raw Tailwind colors to semantic tokens.
 
 ## Pitfalls index
 
@@ -121,23 +126,36 @@ UI + multi-web "Open UI" buttons).
 
 ## Resume point
 
-**RI-2 (instance-centric store + ingestion) — ✅ DONE, hardened & verified.** core
-(`storage.instancesDir` + `recipe/instance.ts` + `recipe/ingest.ts` secure extract + `duplicate`) +
-instanceId-threaded naming (`brand`/`run`/`operations`); UI (instance list + drag-drop import +
-`/api/instances/*`); CLI (`import`/`ls`/`duplicate`/`rm` + adapted `up`/`down`/`install`/`ps`). The
-shipped `recipes/hello-web` is now a **sample to `compositz import`**. Two adversarial-review rounds
-hardened it: **secure tar extraction** (reject absolute/`..`/symlink/hardlink/device);
-**bounded-memory extraction** — input fed in 64 KiB slices so `DecompressionStream` streams + a byte
-limiter caps the inflated stream (a gzip bomb is rejected within a bounded RAM window — empirically
-RSS scales with the cap, not the bomb; `MAX_EXTRACTED_BYTES`=128 MiB); **atomic publish** (assemble
-in a `.pub-` dir → single rename; never delete a published instance on a transient re-read). Import
-is single-in-flight. 108 tests green; live import→up→down→rm verified (managed-only/reversible).
+**RI-2 (instance-centric store + ingestion) — ✅ DONE & verified.** core (`storage.instancesDir` +
+`recipe/instance.ts` + `recipe/ingest.ts` + `duplicate`) + instanceId-threaded naming
+(`brand`/`run`/`operations`); CLI (`import`/`ls`/`duplicate`/`rm <id...>` + adapted
+`up`/`down`/`install`/`ps`). The shipped `recipes/hello-web` is now a **sample to
+`compositz import`**.
 
-**Next: RI-3** — GitHub ingestion (`owner/repo[@ref][/subdir]` → codeload `.tar.gz` over HTTPS →
-`ingestBundle`; no `git` binary). The ingest pipeline + caps already handle the tarball; RI-3 adds
-the fetch + ref/subdir resolution. Then **RI-4** (per-instance override UI + multi-web buttons).
-**Deferred:** full instance **deletion** of volumes + host data (needs Engine volume endpoints the
-client lacks — `rm` currently keeps data); the `installed`-badge SSE staleness
-([known-issues.md](../../docs/known-issues.md)). Verify Docker via
+**Ingestion is STREAMING, no size caps (DECIDED, threat-model).** The earlier gzip-bomb/cap
+machinery (byteLimiter, MAX_*, single-in-flight) was **removed** — the manager is trusted and
+recipes are the user's (ADR-003), so resource-exhaustion is out of scope.
+`extractArchiveTo(ReadableStream)` streams the upload straight to disk (any size, no RAM blow-up;
+fixed the 14 GB "Importing…" hang). **Kept:** secure extraction (reject
+absolute/`..`/symlink/hardlink/device) + atomic `.pub-`-dir publish.
+
+**Phase-3 UI — ✅ DONE.** Full-window drag-drop import (dragover + watchdog, robust to ESC-cancel),
+a header **Import** button, per-row **Delete** (Base UI AlertDialog confirm →
+`POST
+/api/instances/:id/delete`, data volumes kept). **UI library = Shadcn + Base UI via
+`preact/compat` (ADR-018)** — spike + manual click-test confirmed; foundation `lib/utils.ts`(`cn`),
+`components/ui/{button(forwardRef),alert-dialog(className)}`, vite/deno `react→preact/compat`
+aliases. 108 tests green; `delete` live-verified on a real Fresh server.
+
+**NEXT — dark mode (theming).** Shadcn dark mode = `.dark` class + CSS-variable **semantic tokens**.
+Current components use raw Tailwind colors (`bg-gray-50` etc.) → migrate to tokens
+(`bg-background`/`text-foreground`/`muted`/`destructive`) in `styles.css` (Tailwind v4
+`@theme`/`@custom-variant dark`). **Default = Auto** (`prefers-color-scheme`); a light/dark/auto
+**mode selector comes later** (user's call). Then **RI-3** (GitHub ingestion → `ingestBundle`) →
+**RI-4** (override UI + multi-web buttons).
+
+**Deferred:** unused-volume reclaim + full data deletion (needs Engine volume endpoints the client
+lacks); large-upload progress/cancel; `installed`-badge SSE staleness — all in
+[known-issues.md](../../docs/known-issues.md). Verify Docker via
 `DOCKER_HOST=tcp://host.docker.internal:2375` ([[compositz-docker-tcp-debug]] — managed-only +
 reversible).
