@@ -29,6 +29,7 @@ export default function InstanceList(
   const [pending, setPending] = useState<Record<string, boolean>>({}); // up/down in flight
   const [installing, setInstalling] = useState<Record<string, boolean>>({});
   const [logs, setLogs] = useState<Record<string, string[]>>({}); // install build log per instance
+  const [actionError, setActionError] = useState<string | null>(null); // last up/down failure
 
   useEffect(() => {
     const es = new EventSource("/api/events");
@@ -54,6 +55,7 @@ export default function InstanceList(
 
   async function act(id: string, action: "up" | "down") {
     setPending((p) => ({ ...p, [id]: true }));
+    setActionError(null);
     try {
       const res = await fetch(`/api/instances/${id}/${action}`, { method: "POST" });
       if (res.ok) {
@@ -63,8 +65,10 @@ export default function InstanceList(
         setContainers((cs) => withOptimisticAction(cs, id, action));
       } else {
         const body = await res.json().catch(() => ({})) as { error?: string };
-        console.error(`${action} ${id} failed:`, body.error ?? res.status);
+        setActionError(`${action} ${id} failed: ${body.error ?? `HTTP ${res.status}`}`);
       }
+    } catch (e) {
+      setActionError(`${action} ${id} failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setPending((p) => ({ ...p, [id]: false }));
     }
@@ -114,6 +118,13 @@ export default function InstanceList(
         <ImportZone />
         <EngineBadge online={engineOnline} error={engineError} />
       </div>
+      {actionError
+        ? (
+          <p class="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">
+            {actionError}
+          </p>
+        )
+        : null}
       {rows.length === 0
         ? <p class="mt-10 text-gray-500">No instances yet — import a recipe bundle above.</p>
         : (
