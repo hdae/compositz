@@ -3,10 +3,12 @@ import {
   EngineClient,
   installRecipe,
   loadRecipe,
+  RECIPE_ID_PATTERN,
   recipeImageTag,
   up,
   webUrl,
 } from "@compositz/core";
+import type { Recipe } from "@compositz/core";
 import { define } from "../../../../utils.ts";
 
 // SERVER-ONLY: imports @compositz/core (→ node:net). POST actions for a recipe:
@@ -20,21 +22,33 @@ import { define } from "../../../../utils.ts";
 const recipesDir = Deno.env.get("COMPOSITZ_RECIPES_DIR") ?? "../../recipes";
 const client = new EngineClient();
 
-// Recipe ids flow into a filesystem path and container operations — keep them to
-// a safe charset (no path traversal), even though the manager runs trusted.
-const SAFE_ID = /^[a-zA-Z0-9._-]+$/;
+/**
+ * Load the recipe for a URL id, reusing core's id charset (the single source of
+ * truth) and reconciling the loaded manifest id with the URL id — so a path-shaped
+ * id can neither traverse out of recipesDir nor load an unintended recipe.
+ */
+async function loadById(id: string): Promise<Recipe> {
+  if (!RECIPE_ID_PATTERN.test(id)) throw new CompositzBadRequest(`invalid recipe id: ${id}`);
+  const recipe = await loadRecipe(`${recipesDir}/${id}`);
+  if (recipe.manifest.id !== id) {
+    throw new CompositzBadRequest(
+      `recipe id mismatch: url "${id}" vs manifest "${recipe.manifest.id}"`,
+    );
+  }
+  return recipe;
+}
+
+/** A 400-worthy bad request (distinct from a 500 engine error). */
+class CompositzBadRequest extends Error {}
 
 export const handler = define.handlers({
   async POST(ctx) {
     const { id, action } = ctx.params;
-    if (!SAFE_ID.test(id)) {
-      return Response.json({ ok: false, error: `invalid recipe id: ${id}` }, { status: 400 });
-    }
 
     try {
       switch (action) {
         case "up": {
-          const recipe = await loadRecipe(`${recipesDir}/${id}`);
+          const recipe = await loadById(id);
           if (!(await client.imageExists(recipeImageTag(recipe.manifest)))) {
             for await (const _ of installRecipe(client, recipe)) { /* drain build stream */ }
           }
@@ -47,17 +61,24 @@ export const handler = define.handlers({
           });
         }
         case "down": {
+          if (!RECIPE_ID_PATTERN.test(id)) {
+            throw new CompositzBadRequest(`invalid recipe id: ${id}`);
+          }
           await down(client, id);
           return Response.json({ ok: true });
         }
         case "install":
+          if (!RECIPE_ID_PATTERN.test(id)) {
+            throw new CompositzBadRequest(`invalid recipe id: ${id}`);
+          }
           return installStream(id);
         default:
           return Response.json({ ok: false, error: `unknown action: ${action}` }, { status: 400 });
       }
     } catch (e) {
+      const status = e instanceof CompositzBadRequest ? 400 : 500;
       return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, {
-        status: 500,
+        status,
       });
     }
   },
@@ -77,7 +98,7 @@ function installStream(id: string): Response {
         }
       };
       try {
-        const recipe = await loadRecipe(`${recipesDir}/${id}`);
+        const recipe = await loadById(id);
         const tag = recipeImageTag(recipe.manifest);
         for await (const progress of installRecipe(client, recipe)) {
           if (progress.stream && !send({ type: "log", line: progress.stream })) return;

@@ -27,6 +27,7 @@ export {
   type MountMapping,
   parseManifest,
   type PortMapping,
+  RECIPE_ID_PATTERN,
 } from "./src/recipe/manifest.ts";
 export { listRecipes, loadRecipe, type Recipe } from "./src/recipe/loader.ts";
 export {

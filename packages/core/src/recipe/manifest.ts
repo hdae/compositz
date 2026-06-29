@@ -15,6 +15,13 @@ import { CompositzError } from "../errors.ts";
 
 export const MANIFEST_VERSION = 2;
 
+/**
+ * The recipe `id` charset — the single source of truth. It keys the image,
+ * container, data dirs, and labels, and flows into filesystem paths, so callers
+ * that accept an id from outside (e.g. a UI route) MUST validate against this.
+ */
+export const RECIPE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
 const PORT = z.number().int().min(1).max(65535);
 
 // Names flow into host paths (<data-root>/<id>/<name>), volume names, and override
@@ -97,7 +104,7 @@ const EnvSchema = z.strictObject({
 const ManifestObject = z.strictObject({
   manifestVersion: z.literal(MANIFEST_VERSION),
   id: z.string().regex(
-    /^[a-z0-9][a-z0-9-]{0,62}$/,
+    RECIPE_ID_PATTERN,
     "must be lowercase alphanumeric/hyphen, 1-63 chars, starting alphanumeric",
   ).describe("Key for image/container/data/labels."),
   name: z.string().regex(/\S/, "must not be blank"),

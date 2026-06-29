@@ -1,5 +1,14 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import { type Manifest, parseManifest } from "./manifest.ts";
+import { type Manifest, parseManifest, RECIPE_ID_PATTERN } from "./manifest.ts";
+
+Deno.test("RECIPE_ID_PATTERN: accepts valid ids, rejects path-shaped / uppercase / blank", () => {
+  for (const ok of ["comfyui", "hello-web", "a", "x0-9"]) {
+    assertEquals(RECIPE_ID_PATTERN.test(ok), true, ok);
+  }
+  for (const bad of ["", "..", "../x", "a/b", "Abc", "_x", "x.y", "-x"]) {
+    assertEquals(RECIPE_ID_PATTERN.test(bad), false, bad);
+  }
+});
 
 const FULL = `
 manifestVersion: 2
