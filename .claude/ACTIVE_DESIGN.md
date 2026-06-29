@@ -192,8 +192,14 @@ a per-row **tabbed panel** (Build log / Runtime log / Services); **Services** li
 resolved against the running container's **live** `PublicPort` (`lib/dashboard.ts` join). Runtime
 log streams `/api/instances/:id/logs` (SSE). **Tooltip + Tabs** added to the Base-UI set; icon
 tooltips wrap the control in a `<span>` so they show while disabled. Multi-lens review (9 findings;
-2 med = abort-during-`#open()` socket leak + disabled-trigger tooltip, fixed) folded in. 109 tests
-green.
+2 med = abort-during-`#open()` socket leak + disabled-trigger tooltip, fixed) folded in. **Follow-up
+fixes (user feedback):** Services now lists **from the manifest definition** with a reachability
+**badge** (`ready`/`starting…`, no blank window post-start); Tooltip aligned to upstream Shadcn
+tokens (`bg-foreground text-background`); the trust `<input accept>` picker → File System Access API
+(single combined filter, was tar-only); delete is now **optimistic** (row removed on confirm,
+rollback on failure) so a running row's `starting…` panel doesn't linger. NOTE: the user **dislikes
+optimistic UI** ([[feedback-avoid-optimistic-ui]]) — accepted for now; prefer server-confirmed for
+new actions. 110 tests green.
 
 **NEXT — RI-3** (GitHub ingestion: `owner/repo[@ref][/subdir]` → codeload `.tar.gz` over HTTPS →
 `ingestBundle`; no `git` binary) → **RI-4** (per-instance override UI; the multi-web "Open UI" half
