@@ -13,7 +13,7 @@ const RECONNECT_MS = 2_000; // retry the events stream after it ends/errors
 
 const client = new EngineClient();
 const managed = `${label("managed")}=true`;
-const recipeLabelKey = label("recipe");
+const instanceLabelKey = label("instance");
 const psFilters = { label: [managed] };
 // Container lifecycle actions that change `ps` output (engine-side filtered).
 const eventFilters = {
@@ -74,7 +74,7 @@ export const handler = define.handlers({
         const pushSnapshot = async (): Promise<boolean> => {
           try {
             const list = await client.ps({ all: true, filters: psFilters });
-            return send("snapshot", { containers: toContainerStatuses(list, recipeLabelKey) });
+            return send("snapshot", { containers: toContainerStatuses(list, instanceLabelKey) });
           } catch (e) {
             return send("offline", { error: e instanceof Error ? e.message : String(e) });
           }

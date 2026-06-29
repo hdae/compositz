@@ -1,12 +1,19 @@
 import { page } from "fresh";
-import { EngineClient, label, listRecipes, recipeImageTag, webUrl } from "@compositz/core";
+import {
+  EngineClient,
+  instanceImageTag,
+  instancesDir,
+  label,
+  listInstances,
+  webUrl,
+} from "@compositz/core";
 import { define } from "../utils.ts";
-import { type ContainerStatus, type RecipeView, toContainerStatuses } from "../lib/dashboard.ts";
-import RecipeList from "../islands/RecipeList.tsx";
+import { type ContainerStatus, type InstanceView, toContainerStatuses } from "../lib/dashboard.ts";
+import InstanceList from "../islands/InstanceList.tsx";
 
-// Where recipe definitions live, relative to the UI server's cwd (packages/ui).
-// `deno task ui` / `ui:build` run from here, so the repo-root recipes/ is two up.
-const recipesDir = Deno.env.get("COMPOSITZ_RECIPES_DIR") ?? "../../recipes";
+// The instance store (app-data; COMPOSITZ_INSTANCES_DIR overrides) — absolute,
+// independent of the UI server's cwd.
+const store = instancesDir();
 
 type Initial = {
   containers: ContainerStatus[];
@@ -16,19 +23,20 @@ type Initial = {
 };
 
 // SERVER-ONLY: this route module imports @compositz/core (→ node:net). It loads
-// the initial dashboard snapshot server-side and hands it to the RecipeList
+// the initial dashboard snapshot server-side and hands it to the InstanceList
 // island, which then live-updates via SSE. Engine code stays in routes, never
 // islands (the `fresh:check-imports` build guard enforces this).
 export const handler = define.handlers({
   async GET(_ctx) {
-    const recipes = await listRecipes(recipesDir);
-    const views: RecipeView[] = recipes.map((r) => ({
-      id: r.id,
-      name: r.manifest.name,
-      version: r.manifest.version,
-      description: r.manifest.description ?? "",
-      web: webUrl(r.manifest) ?? null,
-      imageTag: recipeImageTag(r.manifest),
+    const instances = await listInstances(store);
+    const views: InstanceView[] = instances.map((i) => ({
+      instanceId: i.instanceId,
+      appId: i.appId,
+      name: i.manifest.name,
+      version: i.manifest.version,
+      description: i.manifest.description ?? "",
+      web: webUrl(i.manifest) ?? null,
+      imageTag: instanceImageTag(i.manifest, i.instanceId),
     }));
 
     // Best-effort engine read: the UI must still render when Docker is down.
@@ -42,7 +50,7 @@ export const handler = define.handlers({
         if (await client.imageExists(v.imageTag)) installedTags.push(v.imageTag);
       }));
       initial = {
-        containers: toContainerStatuses(list, label("recipe")),
+        containers: toContainerStatuses(list, label("instance")),
         installedTags,
         engineOnline: true,
         engineError: null,
@@ -68,7 +76,7 @@ export default define.page<typeof handler>(function Dashboard({ data }) {
           <h1 class="text-2xl font-bold">Compositz</h1>
         </header>
         <div class="mt-6">
-          <RecipeList views={data.views} initial={data.initial} />
+          <InstanceList views={data.views} initial={data.initial} />
         </div>
       </div>
     </div>

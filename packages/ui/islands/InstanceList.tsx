@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import {
   type ContainerStatus,
-  type RecipeRow,
-  type RecipeView,
-  toRecipeRows,
+  type InstanceRow,
+  type InstanceView,
+  toInstanceRows,
   withOptimisticAction,
 } from "../lib/dashboard.ts";
 
 // CLIENT island. It imports ONLY types + pure helpers from lib/dashboard.ts —
 // never `@compositz/core` (that would pull node:net into the browser bundle and
 // fail the build). Engine I/O happens server-side; this talks to it over SSE
-// (/api/events) and fetch POST (/api/recipes/:id/:action).
+// (/api/events) and fetch POST (/api/instances/:id/:action, /api/instances/import).
 
 type Initial = {
   containers: ContainerStatus[];
@@ -19,14 +19,16 @@ type Initial = {
   engineError: string | null;
 };
 
-export default function RecipeList({ views, initial }: { views: RecipeView[]; initial: Initial }) {
+export default function InstanceList(
+  { views, initial }: { views: InstanceView[]; initial: Initial },
+) {
   const [containers, setContainers] = useState<ContainerStatus[]>(initial.containers);
   const [installedTags, setInstalledTags] = useState<string[]>(initial.installedTags);
   const [engineOnline, setEngineOnline] = useState<boolean>(initial.engineOnline);
   const [engineError, setEngineError] = useState<string | null>(initial.engineError);
   const [pending, setPending] = useState<Record<string, boolean>>({}); // up/down in flight
   const [installing, setInstalling] = useState<Record<string, boolean>>({});
-  const [logs, setLogs] = useState<Record<string, string[]>>({}); // install build log per recipe
+  const [logs, setLogs] = useState<Record<string, string[]>>({}); // install build log per instance
 
   useEffect(() => {
     const es = new EventSource("/api/events");
@@ -45,7 +47,7 @@ export default function RecipeList({ views, initial }: { views: RecipeView[]; in
     return () => es.close();
   }, []);
 
-  const rows = toRecipeRows(views, engineOnline ? { containers, installedTags } : null);
+  const rows = toInstanceRows(views, engineOnline ? { containers, installedTags } : null);
 
   const appendLog = (id: string, line: string) =>
     setLogs((l) => ({ ...l, [id]: [...(l[id] ?? []), line] }));
@@ -53,7 +55,7 @@ export default function RecipeList({ views, initial }: { views: RecipeView[]; in
   async function act(id: string, action: "up" | "down") {
     setPending((p) => ({ ...p, [id]: true }));
     try {
-      const res = await fetch(`/api/recipes/${id}/${action}`, { method: "POST" });
+      const res = await fetch(`/api/instances/${id}/${action}`, { method: "POST" });
       if (res.ok) {
         // The POST resolves only once the op is complete server-side, but the
         // SSE-driven `containers` lags up to one poll. Fold the result in now so
@@ -72,7 +74,7 @@ export default function RecipeList({ views, initial }: { views: RecipeView[]; in
     setInstalling((s) => ({ ...s, [id]: true }));
     setLogs((l) => ({ ...l, [id]: [] }));
     try {
-      const res = await fetch(`/api/recipes/${id}/install`, { method: "POST" });
+      const res = await fetch(`/api/instances/${id}/install`, { method: "POST" });
       if (!res.ok || !res.body) {
         appendLog(id, `ERROR: HTTP ${res.status}`);
         return;
@@ -108,20 +110,22 @@ export default function RecipeList({ views, initial }: { views: RecipeView[]; in
 
   return (
     <div>
-      <div class="flex justify-end mb-2">
+      <div class="flex items-center justify-between mb-3">
+        <ImportZone />
         <EngineBadge online={engineOnline} error={engineError} />
       </div>
       {rows.length === 0
-        ? <p class="mt-10 text-gray-500">No recipes found.</p>
+        ? <p class="mt-10 text-gray-500">No instances yet — import a recipe bundle above.</p>
         : (
           <ul class="divide-y divide-gray-200">
             {rows.map((r) => (
-              <li key={r.id} class="py-4">
+              <li key={r.instanceId} class="py-4">
                 <div class="flex items-center gap-4">
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">
                       <span class="font-semibold">{r.name}</span>
                       <span class="text-xs text-gray-400">{r.version}</span>
+                      <span class="text-xs text-gray-300 font-mono truncate">{r.instanceId}</span>
                     </div>
                     <p class="text-sm text-gray-500 truncate">{r.description}</p>
                   </div>
@@ -140,18 +144,80 @@ export default function RecipeList({ views, initial }: { views: RecipeView[]; in
                     : null}
                   <ActionButton
                     row={r}
-                    busy={!!pending[r.id] || !!installing[r.id]}
+                    busy={!!pending[r.instanceId] || !!installing[r.instanceId]}
                     disabled={!engineOnline}
-                    onUp={() => act(r.id, "up")}
-                    onDown={() => act(r.id, "down")}
-                    onInstall={() => install(r.id)}
+                    onUp={() => act(r.instanceId, "up")}
+                    onDown={() => act(r.instanceId, "down")}
+                    onInstall={() => install(r.instanceId)}
                   />
                 </div>
-                {logs[r.id]?.length ? <InstallLog lines={logs[r.id]} /> : null}
+                {logs[r.instanceId]?.length ? <InstallLog lines={logs[r.instanceId]} /> : null}
               </li>
             ))}
           </ul>
         )}
+    </div>
+  );
+}
+
+/** Upload a recipe bundle (tar/tar.gz) to create a new instance; reloads on success. */
+function ImportZone() {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [drag, setDrag] = useState(false);
+
+  async function send(file: File) {
+    setImporting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/instances/import", { method: "POST", body: file });
+      const body = await res.json().catch(() => ({})) as { ok?: boolean; error?: string };
+      if (res.ok && body.ok) {
+        location.reload(); // the instance list is server-rendered; reload to show it
+      } else {
+        setError(body.error ?? `HTTP ${res.status}`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <div>
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDrag(true);
+        }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDrag(false);
+          const file = e.dataTransfer?.files?.[0];
+          if (file) send(file);
+        }}
+        onClick={() => inputRef.current?.click()}
+        class={`cursor-pointer rounded-md border border-dashed px-4 py-2 text-sm ${
+          drag ? "border-blue-400 bg-blue-50 text-blue-700" : "border-gray-300 text-gray-500"
+        }`}
+      >
+        {importing ? "Importing…" : "Import recipe bundle (.tar / .tar.gz) — click or drop"}
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".tar,.gz,.tgz"
+          class="hidden"
+          onChange={(e) => {
+            const file = (e.currentTarget as HTMLInputElement).files?.[0];
+            if (file) send(file);
+            (e.currentTarget as HTMLInputElement).value = "";
+          }}
+        />
+      </div>
+      {error ? <p class="mt-1 text-xs text-red-600">{error}</p> : null}
     </div>
   );
 }
@@ -181,7 +247,7 @@ function Pill({ tone, children }: { tone: "green" | "blue" | "gray"; children: s
 
 function ActionButton(
   { row, busy, disabled, onUp, onDown, onInstall }: {
-    row: RecipeRow;
+    row: InstanceRow;
     busy: boolean;
     disabled: boolean;
     onUp: () => void;

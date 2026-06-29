@@ -1,4 +1,4 @@
-// Pure view-model derivation for the recipe dashboard — shared by the server
+// Pure view-model derivation for the instance dashboard — shared by the server
 // (initial render) and the client island (live SSE updates).
 //
 // Deliberately free of any runtime `@compositz/core` value import (only the
@@ -8,25 +8,28 @@
 
 import type { ContainerSummary } from "@compositz/core";
 
-/** A recipe reduced to the fields the dashboard renders (built by the handler). */
-export type RecipeView = {
-  id: string;
+/** An instance reduced to the fields the dashboard renders (built by the handler). */
+export type InstanceView = {
+  /** The runtime key — actions and status match on this. */
+  instanceId: string;
+  /** The app (manifest id) this instance runs — a slug, for display/grouping. */
+  appId: string;
   name: string;
   version: string;
   description: string;
-  /** Local web UI URL, if the recipe publishes one. */
+  /** Local web UI URL, if the instance publishes one. */
   web: string | null;
-  /** The image tag this recipe builds to (e.g. compositz/hello-web:0.1.0). */
+  /** The image tag this instance builds to (e.g. compositz/hello-a1b2c3:0.1.0). */
   imageTag: string;
 };
 
 /**
  * A managed container reduced to what the dashboard needs — slim enough to push
- * over SSE as JSON. `recipe` is the recipe id carried by the container label
+ * over SSE as JSON. `instance` is the instance id carried by the container label
  * (null if absent); `state` is Docker's container state ("running", "exited", …).
  */
 export type ContainerStatus = {
-  recipe: string | null;
+  instance: string | null;
   state: string;
 };
 
@@ -37,16 +40,17 @@ export type EngineSnapshot = {
   installedTags: string[];
 };
 
-/** One rendered dashboard row: a recipe plus its derived runtime status. */
-export type RecipeRow = {
-  id: string;
+/** One rendered dashboard row: an instance plus its derived runtime status. */
+export type InstanceRow = {
+  instanceId: string;
+  appId: string;
   name: string;
   version: string;
   description: string;
   web: string | null;
   /** Image built locally? `null` when the engine is unreachable (unknown). */
   installed: boolean | null;
-  /** A managed container for this recipe is in the "running" state. */
+  /** A managed container for this instance is in the "running" state. */
   running: boolean;
 };
 
@@ -54,44 +58,45 @@ export type RecipeRow = {
  * Map raw engine container summaries to the slim {@link ContainerStatus} shape.
  * Server-only in practice (the input comes from `EngineClient.ps`), but pure.
  *
- * @param recipeLabelKey the container label that carries a recipe id
- *   (e.g. `io.compositz.recipe`).
+ * @param instanceLabelKey the container label that carries an instance id
+ *   (e.g. `io.compositz.instance`).
  */
 export function toContainerStatuses(
   summaries: ContainerSummary[],
-  recipeLabelKey: string,
+  instanceLabelKey: string,
 ): ContainerStatus[] {
   return summaries.map((c) => ({
-    recipe: c.Labels[recipeLabelKey] ?? null,
+    instance: c.Labels[instanceLabelKey] ?? null,
     state: c.State,
   }));
 }
 
 /**
- * Derive dashboard rows from recipes and an optional engine snapshot.
+ * Derive dashboard rows from instances and an optional engine snapshot.
  *
  * When `snapshot` is `null` the engine was unreachable: installed status is
- * unknown (`null`) and nothing is reported running, but recipes still list.
+ * unknown (`null`) and nothing is reported running, but instances still list.
  */
-export function toRecipeRows(
-  recipes: RecipeView[],
+export function toInstanceRows(
+  views: InstanceView[],
   snapshot: EngineSnapshot | null,
-): RecipeRow[] {
-  return recipes.map((r) => {
+): InstanceRow[] {
+  return views.map((v) => {
     const base = {
-      id: r.id,
-      name: r.name,
-      version: r.version,
-      description: r.description,
-      web: r.web,
+      instanceId: v.instanceId,
+      appId: v.appId,
+      name: v.name,
+      version: v.version,
+      description: v.description,
+      web: v.web,
     };
     if (snapshot === null) {
       return { ...base, installed: null, running: false };
     }
     const running = snapshot.containers.some(
-      (c) => c.recipe === r.id && c.state === "running",
+      (c) => c.instance === v.instanceId && c.state === "running",
     );
-    return { ...base, installed: snapshot.installedTags.includes(r.imageTag), running };
+    return { ...base, installed: snapshot.installedTags.includes(v.imageTag), running };
   });
 }
 
@@ -101,14 +106,14 @@ export function toRecipeRows(
  * server-side) instead of waiting up to one SSE poll — which otherwise flickers
  * the button back to its old label. The next real snapshot reconciles.
  *
- * `up` ⇒ exactly one running container for the recipe; `down` ⇒ none. Other
- * recipes' containers are untouched.
+ * `up` ⇒ exactly one running container for the instance; `down` ⇒ none. Other
+ * instances' containers are untouched.
  */
 export function withOptimisticAction(
   containers: ContainerStatus[],
-  recipeId: string,
+  instanceId: string,
   action: "up" | "down",
 ): ContainerStatus[] {
-  const others = containers.filter((c) => c.recipe !== recipeId);
-  return action === "up" ? [...others, { recipe: recipeId, state: "running" }] : others;
+  const others = containers.filter((c) => c.instance !== instanceId);
+  return action === "up" ? [...others, { instance: instanceId, state: "running" }] : others;
 }
