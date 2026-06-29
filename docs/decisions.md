@@ -426,6 +426,15 @@ running on Preact through `preact/compat`. Refines
   `@base-ui-components/react`, `class-variance-authority`, `clsx`, `tailwind-merge`. Foundation:
   `lib/utils.ts` (`cn`) + `components/ui/` — own the component source (house rule: extend by
   wrapping, never hand-write a primitive).
+- **Why not the `shadcn` CLI (verified, CLI 4.12.0):** its default `@shadcn` registry serves
+  **Radix**-backed components (`@shadcn/tooltip` → `radix-ui` + `"use client"` + React) that break
+  under preact/compat; there is **no built-in Base UI registry** (`@base-ui` is unknown; presets
+  only cover theme/font), and the CLI targets React projects (components.json + framework
+  detection), not Deno/Fresh/Preact. So components are **vendored from the canonical source**:
+  `button`/`card` are byte-identical to upstream; `alert-dialog`/`tooltip`/`tabs` are upstream's
+  structure re-backed on Base UI. (A custom Base-UI registry URL could later be wired into a
+  `components.json` to drive `shadcn add` — but the default registry is unusable here.) This is the
+  Shadcn "you own the code" model, not a lookalike.
 - **Conventions:** style Base UI parts via **`className`** (its documented styling prop, merged into
   each part); make buttons **`forwardRef`** so Base UI's `render={<Button/>}` composition can attach
   refs. The server-only boundary holds — Base UI is a client lib and islands never import
