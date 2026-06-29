@@ -1,22 +1,15 @@
-// Compositz desktop — Phase 2: launch a recipe and embed its web UI in a native
-// window. Builds the image if needed, brings the container up via @compositz/core,
-// navigates the CEF webview to the recipe's web UI, and tears the container down
-// when the window closes.
+// Compositz desktop — a native window onto the Fresh management UI. It starts the
+// UI server (packages/ui) and points a CEF webview at it; recipe install/up/down
+// all happen inside that UI (which calls @compositz/core in-process — ADR-013).
 //
-// Run it:   deno task desktop   then   dist\compositz-cef\compositz-cef.bat
-//   COMPOSITZ_RECIPE_DIR=<path>   choose the recipe (default: recipes/hello-web)
-//   COMPOSITZ_SMOKE=1            navigate, verify the page <title>, then tear down
-//   COMPOSITZ_LOG=<file>        capture a step trace (GUI stdout is invisible)
+// Run it (dev):  deno desktop --hmr --backend cef -A --unstable-net packages/desktop/main.ts
+//   (`deno task desktop` BUILDS the app to dist/; add --hmr to run it in place.)
+//   COMPOSITZ_UI_URL=<url>   navigate to an already-running UI instead of spawning one
+//   COMPOSITZ_UI_PORT=<n>    port for the spawned UI dev server (default 8765)
+//   COMPOSITZ_SMOKE=1        navigate, verify the page <title>, then exit
+//   COMPOSITZ_LOG=<file>     capture a step trace (GUI stdout is invisible)
 
-import {
-  down,
-  EngineClient,
-  installRecipe,
-  loadRecipe,
-  recipeImageTag,
-  up,
-  webUrl,
-} from "@compositz/core";
+import { fromFileUrl } from "@std/path";
 
 // --- Minimal Deno Desktop typings (cast, so `deno check` passes without the desktop lib) ---
 interface BrowserWindow {
@@ -35,7 +28,8 @@ type BrowserWindowCtor = new (opts?: BrowserWindowOptions) => BrowserWindow;
 
 const BrowserWindow = (Deno as unknown as { BrowserWindow?: BrowserWindowCtor }).BrowserWindow;
 
-const RECIPE_DIR = safeEnv("COMPOSITZ_RECIPE_DIR") ?? "recipes/hello-web";
+const UI_PORT = Number(safeEnv("COMPOSITZ_UI_PORT") ?? "8765");
+const UI_URL = safeEnv("COMPOSITZ_UI_URL");
 const LOG_PATH = safeEnv("COMPOSITZ_LOG");
 
 async function logStep(msg: string): Promise<void> {
@@ -51,7 +45,37 @@ async function logStep(msg: string): Promise<void> {
   }
 }
 
-async function waitForHttp(url: string, timeoutMs = 20_000): Promise<void> {
+interface UiServer {
+  url: string;
+  stop: () => void;
+}
+
+/**
+ * Make the management UI reachable. With COMPOSITZ_UI_URL set we just point at an
+ * already-running server; otherwise we spawn the Fresh dev server (same Deno binary)
+ * on a fixed port. Packaging the built UI into the standalone app is future work
+ * (Phase 4) — this drives the dev/`--hmr` experience.
+ */
+function startUi(): UiServer {
+  if (UI_URL) return { url: UI_URL, stop: () => {} };
+  const root = fromFileUrl(new URL("../../", import.meta.url)); // packages/desktop/ → repo root
+  const child = new Deno.Command(Deno.execPath(), {
+    args: ["task", "--cwd", "packages/ui", "dev", "--port", String(UI_PORT), "--strictPort"],
+    cwd: root,
+    stdout: "inherit",
+    stderr: "inherit",
+  }).spawn();
+  return {
+    url: `http://localhost:${UI_PORT}/`,
+    stop: () => {
+      try {
+        child.kill();
+      } catch { /* already exited */ }
+    },
+  };
+}
+
+async function waitForHttp(url: string, timeoutMs = 60_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
@@ -72,42 +96,26 @@ async function main(): Promise<void> {
     Deno.exit(1);
   }
 
-  const client = new EngineClient();
-  const recipe = await loadRecipe(RECIPE_DIR);
-  await logStep(`recipe ${recipe.manifest.name} (${recipe.id})`);
-
-  if (!(await client.imageExists(recipeImageTag(recipe.manifest)))) {
-    await logStep("building image…");
-    for await (const _ of installRecipe(client, recipe)) { /* drain build stream */ }
-  }
-
-  const { id, usedGpu, hostPorts } = await up(client, recipe);
-  await logStep(`container ${id.slice(0, 12)} up (gpu=${usedGpu ? "on" : "off"})`);
-
-  const url = webUrl(recipe.manifest, { hostPorts });
-  if (!url) {
-    await logStep("ERROR: recipe has no web UI (no `web:` block).");
-    await down(client, recipe.id);
+  const ui = startUi();
+  await logStep(`management UI at ${ui.url}${UI_URL ? " (external)" : " (spawned)"}`);
+  try {
+    await waitForHttp(ui.url);
+  } catch (e) {
+    await logStep(`ERROR: UI did not come up: ${e instanceof Error ? e.message : String(e)}`);
+    ui.stop();
     Deno.exit(1);
   }
-  await waitForHttp(url);
-  await logStep(`serving at ${url}`);
-
-  const cleanup = () => down(client, recipe.id).catch(() => {});
+  await logStep(`UI ready at ${ui.url}`);
 
   await logStep("create BrowserWindow");
-  const win = new BrowserWindow({
-    title: `Compositz — ${recipe.manifest.name}`,
-    width: 1000,
-    height: 720,
-  });
-  await logStep(`navigate ${url}`);
-  win.navigate(url);
+  const win = new BrowserWindow({ title: "Compositz", width: 1200, height: 800 });
+  await logStep(`navigate ${ui.url}`);
+  win.navigate(ui.url);
 
   if (safeEnv("COMPOSITZ_SMOKE") === "1") {
     const title = await readPageTitle(win);
     await logStep(`SMOKE: WebView loaded page title = ${JSON.stringify(title)}`);
-    await cleanup(); // tear down before close(): the CEF backend may abort the process on close()
+    ui.stop();
     try {
       win.close();
     } catch { /* backend may already be tearing down */ }
@@ -115,8 +123,8 @@ async function main(): Promise<void> {
   }
 
   win.addEventListener("close", async () => {
-    await logStep("window closed; tearing down");
-    await cleanup();
+    await logStep("window closed; stopping UI");
+    ui.stop();
     Deno.exit(0);
   });
 }
