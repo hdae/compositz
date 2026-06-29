@@ -130,6 +130,16 @@ export class EngineClient {
     }
   }
 
+  /**
+   * DELETE /images/{ref} — remove an image by tag/id. A 404 (already gone) is tolerated;
+   * a 409 (still referenced by a container) surfaces as an EngineHttpError so the caller
+   * decides. The path mirrors `imageExists` (ref passed unencoded, slashes are significant).
+   */
+  async removeImage(ref: string, opts: { force?: boolean } = {}): Promise<void> {
+    const q = opts.force ? "?force=1" : "";
+    await this.#call("DELETE", `/images/${ref}${q}`, { ok: [404] });
+  }
+
   /** GET /containers/json — list containers, optionally filtered (e.g. by label). */
   async ps(opts: { all?: boolean; filters?: Record<string, string[]> } = {}): Promise<
     ContainerSummary[]
@@ -150,6 +160,14 @@ export class EngineClient {
     if (opts.tail != null) q.set("tail", String(opts.tail));
     if (opts.since != null) q.set("since", String(opts.since));
     const conn = await this.#open();
+    const onAbort = () => conn.close();
+    opts.signal?.addEventListener("abort", onAbort, { once: true });
+    // If the signal aborted DURING #open(), the listener above never fires (abort is
+    // one-shot and already dispatched), so close here or the follow socket leaks.
+    if (opts.signal?.aborted) {
+      conn.close();
+      return;
+    }
     try {
       await writeRequest(conn, { method: "GET", path: this.#path(`/containers/${id}/logs?${q}`) });
       const res = await readResponse(conn);
@@ -162,7 +180,12 @@ export class EngineClient {
       } else {
         yield* demuxLog(res.body);
       }
+    } catch (e) {
+      // Aborting closes the conn, which surfaces here as a read error — expected.
+      if (opts.signal?.aborted) return;
+      throw e;
     } finally {
+      opts.signal?.removeEventListener("abort", onAbort);
       conn.close();
     }
   }
@@ -218,6 +241,12 @@ export class EngineClient {
     const conn = await this.#open();
     const onAbort = () => conn.close();
     opts.signal?.addEventListener("abort", onAbort, { once: true });
+    // Aborted during #open()? The one-shot listener won't fire — close here so the
+    // long-lived events socket can't leak.
+    if (opts.signal?.aborted) {
+      conn.close();
+      return;
+    }
     try {
       await writeRequest(conn, { method: "GET", path: this.#path(`/events?${q}`) });
       const res = await readResponse(conn);

@@ -115,6 +115,12 @@ export interface LogsOptions {
    * Content-Type (GET /logs may not set one).
    */
   tty?: boolean;
+  /**
+   * Abort signal for a `follow` stream. The generator parks on the socket waiting
+   * for the next line, so abort it (e.g. on consumer disconnect) to close the
+   * connection promptly instead of leaking it until the container stops.
+   */
+  signal?: AbortSignal;
 }
 
 export interface LogFrame {

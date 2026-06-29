@@ -63,7 +63,13 @@ export {
   webEndpoints,
   webUrl,
 } from "./src/recipe/run.ts";
-export { down, installInstance, up, type UpResult } from "./src/recipe/operations.ts";
+export {
+  down,
+  installInstance,
+  removeInstanceImage,
+  up,
+  type UpResult,
+} from "./src/recipe/operations.ts";
 
 export {
   connect,

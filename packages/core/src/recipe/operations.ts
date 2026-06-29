@@ -3,7 +3,7 @@
 // up (GPU tri-state + host-port auto-increment), and tear it down. Everything keys
 // off the instance id (ADR-017).
 
-import { containerName } from "../brand.ts";
+import { containerName, imageTag } from "../brand.ts";
 import { tarContext } from "../build.ts";
 import type { EngineClient } from "../engine/client.ts";
 import type { BuildProgress } from "../engine/types.ts";
@@ -126,4 +126,24 @@ export async function down(
   const name = containerName(instanceId);
   await client.stop(name, opts.stopTimeout).catch(() => {});
   await client.remove(name, { force: true }).catch(() => {});
+}
+
+/**
+ * Remove the per-instance built image (`compositz/<instanceId>:<version>`) on delete.
+ * No-op for an `image`-based recipe — its image is shared/external and MUST never be
+ * removed. Best-effort: a missing image (already gone) is fine, and an unforced delete
+ * leaves the image intact if a container still references it (call `down` first).
+ * Keeps deletion managed-only and reversible-by-reimport (the Docker-safety constraint).
+ */
+export async function removeInstanceImage(
+  client: EngineClient,
+  instance: Instance,
+): Promise<void> {
+  if (instance.manifest.image) return; // shared external image — never remove
+  // MUST use the brand `imageTag` (the per-instance build tag `compositz/<id>:<ver>`),
+  // NOT `instanceImageTag` — the latter returns `m.image` for an image-based recipe,
+  // i.e. the shared external tag we just guarded against. The guard above and this tag
+  // are two halves of one invariant; keep them together.
+  const tag = imageTag(instance.instanceId, instance.manifest.version);
+  await client.removeImage(tag).catch(() => {});
 }

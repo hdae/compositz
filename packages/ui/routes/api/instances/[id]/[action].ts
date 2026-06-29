@@ -8,6 +8,7 @@ import {
   instancesDir,
   loadInstance,
   removeInstanceDir,
+  removeInstanceImage,
   up,
   webUrl,
 } from "@compositz/core";
@@ -74,10 +75,14 @@ export const handler = define.handlers({
           return Response.json({ ok: true });
         }
         case "delete": {
-          // Stop+remove the container, then delete the instance definition.
-          // Persisted data (named volumes + data-root) is KEPT, matching `compositz rm`.
+          // Stop+remove the container, remove the per-instance built image, then delete
+          // the instance definition. Persisted data (named volumes + data-root) is KEPT,
+          // matching `compositz rm`. Load (best-effort) before removal to know the image
+          // tag; a missing/corrupt instance still gets its dir removed.
           assertValidId(id);
+          const instance = await loadInstance(join(store, id)).catch(() => undefined);
           await down(client, id);
+          if (instance) await removeInstanceImage(client, instance);
           await removeInstanceDir(store, id);
           return Response.json({ ok: true });
         }
