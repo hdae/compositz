@@ -1,40 +1,42 @@
-// High-level recipe operations shared by the CLI and the desktop app: install the
-// image (build, or pull for an `image`-based recipe), bring a container up
-// (honoring the GPU tri-state + host-port auto-increment), and tear it down.
+// High-level instance operations shared by the CLI and the UI: install the image
+// (build per-instance, or pull for an `image`-based recipe), bring the container
+// up (GPU tri-state + host-port auto-increment), and tear it down. Everything keys
+// off the instance id (ADR-017).
 
 import { containerName } from "../brand.ts";
 import { tarContext } from "../build.ts";
 import type { EngineClient } from "../engine/client.ts";
 import type { BuildProgress } from "../engine/types.ts";
 import { defaultDataRoot } from "../storage.ts";
-import type { Recipe } from "./loader.ts";
+import type { Instance } from "./instance.ts";
 import {
+  instanceContainerName,
+  instanceImageTag,
   type LaunchConfig,
-  recipeContainerName,
-  recipeImageTag,
   resolveHostPorts,
   toCreateSpec,
 } from "./run.ts";
 
 /**
- * Make the recipe's image available, streaming progress. A `build`-based recipe
- * builds from its context; an `image`-based recipe pulls the reference. Pull
- * layer-progress is coarse for now (a start/done line) — live layers land later.
+ * Make the instance's image available, streaming progress. A `build`-based recipe
+ * builds its context to the per-instance tag `compositz/<instanceId>`; an
+ * `image`-based recipe pulls the referenced (shared) image. Pull layer-progress is
+ * coarse for now (a start/done line) — live layers land later.
  */
-export async function* installRecipe(
+export async function* installInstance(
   client: EngineClient,
-  recipe: Recipe,
+  instance: Instance,
 ): AsyncGenerator<BuildProgress> {
-  const m = recipe.manifest;
+  const m = instance.manifest;
   if (m.image) {
     yield { stream: `pulling ${m.image}…\n` };
     await client.pull(m.image);
     yield { stream: `pulled ${m.image}\n` };
     return;
   }
-  const tar = await tarContext(recipe.context);
+  const tar = await tarContext(instance.context);
   yield* client.build(tar, {
-    tag: recipeImageTag(m),
+    tag: instanceImageTag(m, instance.instanceId),
     dockerfile: m.build!.dockerfile,
     buildArgs: m.build!.args,
   });
@@ -48,20 +50,20 @@ export interface UpResult {
 }
 
 /**
- * Create + start a container from the recipe, replacing any prior instance.
- * Host ports that collide with already-published ports are auto-bumped to a free
- * port. GPU tri-state: `required` insists on GPU, `none` never attaches it, and
- * `preferred` tries with GPU and transparently falls back to CPU on failure.
+ * Create + start the instance's container, replacing any prior container for this
+ * instance. Host ports that collide with already-published ports are auto-bumped to
+ * a free port. GPU tri-state: `required` insists on GPU, `none` never attaches it,
+ * and `preferred` tries with GPU and transparently falls back to CPU on failure.
  */
 export async function up(
   client: EngineClient,
-  recipe: Recipe,
+  instance: Instance,
   launch: LaunchConfig = {},
 ): Promise<UpResult> {
-  const m = recipe.manifest;
-  const name = recipeContainerName(m);
+  const m = instance.manifest;
+  const name = instanceContainerName(instance.instanceId);
 
-  // Remove the prior instance first so its own host ports free up before we
+  // Remove the prior container first so its own host ports free up before we
   // pick ports for the new one.
   await client.remove(name, { force: true }).catch(() => {});
 
@@ -71,7 +73,8 @@ export async function up(
   const effective: LaunchConfig = { dataRoot: defaultDataRoot(), ...launch, hostPorts };
 
   const startWith = async (withGpu: boolean): Promise<string> => {
-    const { Id } = await client.create(toCreateSpec(m, { ...effective, withGpu }), name);
+    const spec = toCreateSpec(m, instance.instanceId, { ...effective, withGpu });
+    const { Id } = await client.create(spec, name);
     await client.start(Id);
     return Id;
   };
@@ -95,7 +98,7 @@ export async function up(
  */
 async function resolvePorts(
   client: EngineClient,
-  m: Recipe["manifest"],
+  m: Instance["manifest"],
   launch: LaunchConfig,
 ): Promise<Record<string, number>> {
   if (m.ports.length === 0) return {};
@@ -114,13 +117,13 @@ async function resolvePorts(
   return resolveHostPorts(desired, taken);
 }
 
-/** Stop and remove a recipe's container (no-op if absent). Persisted mounts survive. */
+/** Stop and remove an instance's container (no-op if absent). Persisted mounts survive. */
 export async function down(
   client: EngineClient,
-  recipeId: string,
+  instanceId: string,
   opts: { stopTimeout?: number } = {},
 ): Promise<void> {
-  const name = containerName(recipeId);
+  const name = containerName(instanceId);
   await client.stop(name, opts.stopTimeout).catch(() => {});
   await client.remove(name, { force: true }).catch(() => {});
 }

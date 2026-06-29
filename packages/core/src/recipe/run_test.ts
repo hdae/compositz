@@ -1,13 +1,15 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { parseManifest } from "./manifest.ts";
 import {
-  recipeContainerName,
-  recipeImageTag,
+  instanceContainerName,
+  instanceImageTag,
   resolveHostPorts,
   toCreateSpec,
   webEndpoints,
   webUrl,
 } from "./run.ts";
+
+const INST = "comfyui-a1b2c3"; // an instance id (= <appId>-<rand>)
 
 const m = parseManifest(`
 manifestVersion: 2
@@ -38,16 +40,16 @@ env:
 gpu: preferred
 `);
 
-Deno.test("recipe naming derives from brand + manifest", () => {
-  assertEquals(recipeImageTag(m), "compositz/comfyui:0.2.0");
-  assertEquals(recipeContainerName(m), "compositz-comfyui");
+Deno.test("naming derives from brand + the instance id (per-instance image)", () => {
+  assertEquals(instanceImageTag(m, INST), "compositz/comfyui-a1b2c3:0.2.0");
+  assertEquals(instanceContainerName(INST), "compositz-comfyui-a1b2c3");
 });
 
-Deno.test("image-based recipe runs the referenced image, not a built tag", () => {
+Deno.test("image-based recipe runs the referenced image, not a per-instance tag", () => {
   const img = parseManifest(
     'manifestVersion: 2\nid: ollama\nname: Ollama\nversion: "0.6.0"\nimage: ollama/ollama:0.6.0',
   );
-  assertEquals(recipeImageTag(img), "ollama/ollama:0.6.0");
+  assertEquals(instanceImageTag(img, "ollama-z9"), "ollama/ollama:0.6.0");
 });
 
 Deno.test("webEndpoints lists each web port; webUrl is the first", () => {
@@ -79,22 +81,22 @@ Deno.test("webUrl honors a launch host-port remap", () => {
   assertEquals(webUrl(m, { hostPorts: { ui: 7000 } }), "http://localhost:7000/");
 });
 
-Deno.test("toCreateSpec maps ports, mounts, caches, env, gpu", () => {
-  const spec = toCreateSpec(m, { dataRoot: "/root" });
-  assertEquals(spec.Image, "compositz/comfyui:0.2.0");
+Deno.test("toCreateSpec maps ports, mounts, caches, env, gpu — all keyed by instance id", () => {
+  const spec = toCreateSpec(m, INST, { dataRoot: "/root" });
+  assertEquals(spec.Image, "compositz/comfyui-a1b2c3:0.2.0");
   assertEquals(spec.ExposedPorts, { "8188/tcp": {}, "9000/udp": {} });
   assertEquals(spec.HostConfig?.PortBindings?.["8188/tcp"], [{ HostPort: "7860" }]);
   assertEquals(spec.HostConfig?.PortBindings?.["9000/udp"], [{ HostPort: "9000" }]);
 
-  // bind => host path under data-root; volume => managed named volume; caches appended.
+  // bind => host path under data-root/<instanceId>; volume => per-instance named volume.
   assertEquals(spec.HostConfig?.Mounts, [
     {
       Type: "bind",
-      Source: "/root/comfyui/output",
+      Source: "/root/comfyui-a1b2c3/output",
       Target: "/out",
       BindOptions: { CreateMountpoint: true },
     },
-    { Type: "volume", Source: "compositz_comfyui_models", Target: "/data" },
+    { Type: "volume", Source: "compositz_comfyui-a1b2c3_models", Target: "/data" },
     { Type: "volume", Source: "compositz_uv", Target: "/compositz/uv" },
     { Type: "volume", Source: "compositz_hf", Target: "/compositz/hf" },
   ]);
@@ -103,39 +105,39 @@ Deno.test("toCreateSpec maps ports, mounts, caches, env, gpu", () => {
   assertEquals(spec.Env, [
     "FOO=bar",
     "UV_CACHE_DIR=/compositz/uv/cache",
-    "VIRTUAL_ENV=/compositz/uv/venvs/comfyui/default",
+    "VIRTUAL_ENV=/compositz/uv/venvs/comfyui-a1b2c3",
     "HF_HOME=/compositz/hf",
-    "COMPOSITZ_INSTANCE=default",
+    "COMPOSITZ_INSTANCE=comfyui-a1b2c3",
   ]);
 
   assertEquals(spec.HostConfig?.DeviceRequests?.[0].Capabilities, [["gpu"]]);
-  assertEquals(spec.Labels?.["io.compositz.recipe"], "comfyui");
-  assertEquals(spec.Labels?.["io.compositz.instance"], "default");
+  assertEquals(spec.Labels?.["io.compositz.recipe"], "comfyui"); // app id (provenance)
+  assertEquals(spec.Labels?.["io.compositz.instance"], "comfyui-a1b2c3"); // runtime key
 });
 
-Deno.test("toCreateSpec: launch overrides env value and instance", () => {
-  const spec = toCreateSpec(m, { dataRoot: "/root", instance: "alt", env: { FOO: "baz" } });
+Deno.test("toCreateSpec: a different instance id isolates venv, label and env marker", () => {
+  const spec = toCreateSpec(m, "comfyui-x7y8z9", { dataRoot: "/root", env: { FOO: "baz" } });
   assertEquals(spec.Env?.includes("FOO=baz"), true);
-  assertEquals(spec.Env?.includes("VIRTUAL_ENV=/compositz/uv/venvs/comfyui/alt"), true);
-  assertEquals(spec.Env?.includes("COMPOSITZ_INSTANCE=alt"), true);
-  assertEquals(spec.Labels?.["io.compositz.instance"], "alt");
+  assertEquals(spec.Env?.includes("VIRTUAL_ENV=/compositz/uv/venvs/comfyui-x7y8z9"), true);
+  assertEquals(spec.Env?.includes("COMPOSITZ_INSTANCE=comfyui-x7y8z9"), true);
+  assertEquals(spec.Labels?.["io.compositz.instance"], "comfyui-x7y8z9");
 });
 
 Deno.test("toCreateSpec: a placement override flips bind<->volume", () => {
-  const spec = toCreateSpec(m, { placement: { output: "volume" } });
+  const spec = toCreateSpec(m, INST, { placement: { output: "volume" } });
   assertEquals(
     spec.HostConfig?.Mounts?.find((x) => x.Target === "/out"),
-    { Type: "volume", Source: "compositz_comfyui_output", Target: "/out" },
+    { Type: "volume", Source: "compositz_comfyui-a1b2c3_output", Target: "/out" },
   );
 });
 
 Deno.test("toCreateSpec: a bind mount without a dataRoot throws", () => {
-  assertThrows(() => toCreateSpec(m), Error, "bind mount but no dataRoot");
+  assertThrows(() => toCreateSpec(m, INST), Error, "bind mount but no dataRoot");
 });
 
 Deno.test("toCreateSpec withGpu:false omits DeviceRequests", () => {
   assertEquals(
-    toCreateSpec(m, { dataRoot: "/root", withGpu: false }).HostConfig?.DeviceRequests,
+    toCreateSpec(m, INST, { dataRoot: "/root", withGpu: false }).HostConfig?.DeviceRequests,
     undefined,
   );
 });
@@ -144,7 +146,7 @@ Deno.test("gpu:none manifest attaches no GPU", () => {
   const none = parseManifest(
     "manifestVersion: 2\nid: x\nname: X\nversion: '1'\nbuild: {}\ngpu: none",
   );
-  assertEquals(toCreateSpec(none).HostConfig?.DeviceRequests, undefined);
+  assertEquals(toCreateSpec(none, "x-1").HostConfig?.DeviceRequests, undefined);
 });
 
 Deno.test("toCreateSpec: a volume-only recipe needs no dataRoot", () => {
@@ -158,8 +160,8 @@ mounts:
   - name: data
     target: /data
 `);
-  assertEquals(toCreateSpec(vol).HostConfig?.Mounts, [
-    { Type: "volume", Source: "compositz_x_data", Target: "/data" },
+  assertEquals(toCreateSpec(vol, "x-1").HostConfig?.Mounts, [
+    { Type: "volume", Source: "compositz_x-1_data", Target: "/data" },
   ]);
 });
 
@@ -178,7 +180,7 @@ ports:
     container: 80
     host: 8081
 `);
-  assertEquals(toCreateSpec(dual).HostConfig?.PortBindings?.["80/tcp"], [
+  assertEquals(toCreateSpec(dual, "x-1").HostConfig?.PortBindings?.["80/tcp"], [
     { HostPort: "8080" },
     { HostPort: "8081" },
   ]);
@@ -198,7 +200,7 @@ env:
     default: /wrong
 `);
   // The user's HF_HOME=/wrong must not survive — the cache owns that path.
-  const env = toCreateSpec(clash).Env ?? [];
+  const env = toCreateSpec(clash, "x-1").Env ?? [];
   assertEquals(env.filter((e) => e.startsWith("HF_HOME=")), ["HF_HOME=/compositz/hf"]);
 });
 
@@ -235,7 +237,7 @@ mounts:
 cache:
   - type: huggingface
 `);
-  assertThrows(() => toCreateSpec(clash), Error, "duplicate mount target");
+  assertThrows(() => toCreateSpec(clash, "x-1"), Error, "duplicate mount target");
 });
 
 Deno.test("resolveHostPorts avoids self-collision among the recipe's own ports", () => {

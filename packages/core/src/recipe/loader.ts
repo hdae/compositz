@@ -1,5 +1,8 @@
-// Load a recipe from a directory: parse + validate its manifest and read the
-// build context (Dockerfile + assets) into memory. Recipes are small.
+// Load a recipe BUNDLE from a directory: parse + validate its manifest and read
+// the build context (Dockerfile + assets) into memory. Recipes are small. A bundle
+// is what an instance is created from (it lives at `<instance>/app/`); the deployed
+// unit is an Instance (see instance.ts). Used by ingestion to validate, and by
+// instance loading to read the embedded bundle.
 
 import { BRAND } from "../brand.ts";
 import { CompositzError } from "../errors.ts";
@@ -42,25 +45,6 @@ export async function loadRecipe(dir: string): Promise<Recipe> {
     );
   }
   return { id: manifest.id, dir: root, manifest, context };
-}
-
-/** Load every valid recipe under a directory (skips invalid ones). Sorted by name. */
-export async function listRecipes(dir: string): Promise<Recipe[]> {
-  const out: Recipe[] = [];
-  try {
-    for await (const entry of Deno.readDir(dir)) {
-      if (!entry.isDirectory) continue;
-      try {
-        out.push(await loadRecipe(`${dir}/${entry.name}`));
-      } catch {
-        // skip directories without a valid manifest
-      }
-    }
-  } catch {
-    // recipes dir missing
-  }
-  out.sort((a, b) => a.manifest.name.localeCompare(b.manifest.name));
-  return out;
 }
 
 async function* walk(

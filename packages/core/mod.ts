@@ -13,7 +13,13 @@ export {
   volumeName,
 } from "./src/brand.ts";
 
-export { appDataDir, bindHostPath, defaultDataRoot, type Platform } from "./src/storage.ts";
+export {
+  appDataDir,
+  bindHostPath,
+  defaultDataRoot,
+  instancesDir,
+  type Platform,
+} from "./src/storage.ts";
 
 export {
   type BuildSpec,
@@ -29,12 +35,27 @@ export {
   type PortMapping,
   RECIPE_ID_PATTERN,
 } from "./src/recipe/manifest.ts";
-export { listRecipes, loadRecipe, type Recipe } from "./src/recipe/loader.ts";
+export { loadRecipe, type Recipe } from "./src/recipe/loader.ts";
 export {
-  DEFAULT_INSTANCE,
+  APP_SUBDIR,
+  type Instance,
+  type InstanceMeta,
+  listInstances,
+  loadInstance,
+  removeInstanceDir,
+} from "./src/recipe/instance.ts";
+export {
+  type BundleSource,
+  duplicateInstance,
+  extractArchiveTo,
+  ingestBundle,
+  INSTANCE_ID_PATTERN,
+  randomInstanceId,
+} from "./src/recipe/ingest.ts";
+export {
+  instanceContainerName,
+  instanceImageTag,
   type LaunchConfig,
-  recipeContainerName,
-  recipeImageTag,
   resolveHostPorts,
   toCreateSpec,
   type ToSpecOptions,
@@ -42,7 +63,7 @@ export {
   webEndpoints,
   webUrl,
 } from "./src/recipe/run.ts";
-export { down, installRecipe, up, type UpResult } from "./src/recipe/operations.ts";
+export { down, installInstance, up, type UpResult } from "./src/recipe/operations.ts";
 
 export {
   connect,

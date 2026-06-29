@@ -1,21 +1,14 @@
 import { down, EngineClient } from "@compositz/core";
 import { green, red } from "@std/fmt/colors";
-import { resolveRecipe } from "../lib.ts";
 
-/** Stop and remove a recipe's container. Accepts a recipe id or directory. */
+/** Stop and remove an instance's container (by instance id). */
 export async function downCmd(args: string[]): Promise<number> {
-  if (!args[0]) {
-    console.error(red("usage: compositz down <recipe>"));
+  const instanceId = args[0];
+  if (!instanceId) {
+    console.error(red("usage: compositz down <instanceId>"));
     return 1;
   }
-  // Prefer the manifest id; fall back to treating the arg as an id directly.
-  let id = args[0];
-  try {
-    id = (await resolveRecipe(args[0])).id;
-  } catch {
-    // arg is already an id
-  }
-  await down(new EngineClient(), id);
-  console.log(green(`OK — ${id} stopped & removed`));
+  await down(new EngineClient(), instanceId);
+  console.log(green(`OK — ${instanceId} stopped & removed`));
   return 0;
 }

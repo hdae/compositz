@@ -1,8 +1,8 @@
 // Where Compositz keeps host-side state, and how host paths are derived.
 //
-// Three tiers (see docs/recipe-ingestion.md):
-//   - app-data:  recipe store, per-install overrides, settings.
-//   - data-root: per-app host-VISIBLE data (bind mounts); user-configurable.
+// Instance-centric (ADR-017):
+//   - app-data:  the instance store (`instances/<instanceId>/`) + settings.
+//   - data-root: per-instance host-VISIBLE data (bind mounts); user-configurable.
 //   - volumes:   Docker-managed named volumes (everything else; named via brand.ts).
 //
 // Path DERIVATION is pure (`bindHostPath` takes the data-root as input). The
@@ -24,17 +24,27 @@ const HOST: Platform = {
 };
 
 /**
- * Host directory for a bind mount: `<data-root>/<id>/<name>`. Host-browsable, so
- * the layout is derived from the recipe id + mount name (never an author-written
- * absolute path). NOTE: the path is on the Docker daemon's host — correct for a
- * local daemon; a remote `DOCKER_HOST` would resolve it on that host.
+ * Host directory for a bind mount: `<data-root>/<instanceId>/<name>`.
+ * Host-browsable, so the layout is derived from the instance id + mount name
+ * (never an author-written absolute path). NOTE: the path is on the Docker
+ * daemon's host — correct for a local daemon; a remote `DOCKER_HOST` would
+ * resolve it on that host.
  */
-export function bindHostPath(dataRoot: string, recipeId: string, mountName: string): string {
-  return join(dataRoot, recipeId, mountName);
+export function bindHostPath(dataRoot: string, instanceId: string, mountName: string): string {
+  return join(dataRoot, instanceId, mountName);
 }
 
 /**
- * App-data directory (recipe store / overrides / settings):
+ * The instance store: `<app-data>/instances`. Holds one self-contained directory
+ * per instance (`<instanceId>/app/` bundle + meta + config). Overridable via
+ * `COMPOSITZ_INSTANCES_DIR` (tests / dev). Absolute — independent of the cwd.
+ */
+export function instancesDir(p: Platform = HOST): string {
+  return p.env("COMPOSITZ_INSTANCES_DIR") ?? join(appDataDir(p), "instances");
+}
+
+/**
+ * App-data directory (instance store / settings):
  * `%APPDATA%\compositz` on Windows, else `$XDG_DATA_HOME/compositz` or
  * `$HOME/.local/share/compositz`.
  */

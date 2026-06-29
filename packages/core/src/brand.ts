@@ -8,32 +8,35 @@
 export const BRAND = {
   /** Project name. Used for container names and managed-volume prefixes. */
   name: "compositz",
-  /** Manifest filename expected in each recipe directory. */
+  /** Manifest filename expected in each recipe bundle. */
   manifestFile: "compositz.yaml",
-  /** Docker label namespace, e.g. "io.compositz.recipe". */
+  /** Docker label namespace, e.g. "io.compositz.instance". */
   labelPrefix: "io.compositz",
-  /** Image repository namespace, e.g. "compositz/<recipe>". */
+  /** Image repository namespace, e.g. "compositz/<instanceId>". */
   imageNamespace: "compositz",
 } as const;
 
-/** A namespaced Docker label key, e.g. label("recipe") => "io.compositz.recipe". */
+/** A namespaced Docker label key, e.g. label("instance") => "io.compositz.instance". */
 export function label(suffix: string): string {
   return `${BRAND.labelPrefix}.${suffix}`;
 }
 
-/** Image tag for a recipe, e.g. imageTag("comfyui", "0.1.0") => "compositz/comfyui:0.1.0". */
-export function imageTag(recipeId: string, version = "latest"): string {
-  return `${BRAND.imageNamespace}/${recipeId}:${version}`;
+// Every runtime resource keys off the instance id (ADR-017): one flat namespace,
+// no recipe×instance nesting. A `build` recipe's image is per-instance.
+
+/** Per-instance image tag, e.g. imageTag("comfyui-a1b2c3", "0.1.0") => "compositz/comfyui-a1b2c3:0.1.0". */
+export function imageTag(instanceId: string, version = "latest"): string {
+  return `${BRAND.imageNamespace}/${instanceId}:${version}`;
 }
 
-/** Container name for a recipe instance, e.g. "compositz-comfyui". */
-export function containerName(recipeId: string): string {
-  return `${BRAND.name}-${recipeId}`;
+/** Container name for an instance, e.g. "compositz-comfyui-a1b2c3". */
+export function containerName(instanceId: string): string {
+  return `${BRAND.name}-${instanceId}`;
 }
 
-/** Managed named-volume for a recipe mount, e.g. "compositz_comfyui_models". */
-export function volumeName(recipeId: string, name: string): string {
-  return `${BRAND.name}_${recipeId}_${name}`;
+/** Managed named-volume for an instance mount, e.g. "compositz_comfyui-a1b2c3_models". */
+export function volumeName(instanceId: string, name: string): string {
+  return `${BRAND.name}_${instanceId}_${name}`;
 }
 
 /**

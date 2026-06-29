@@ -8,18 +8,26 @@
 import { red } from "@std/fmt/colors";
 import { doctor } from "./commands/doctor.ts";
 import { hello } from "./commands/hello.ts";
+import { importCmd } from "./commands/import.ts";
+import { ls } from "./commands/ls.ts";
+import { duplicateCmd } from "./commands/duplicate.ts";
 import { install } from "./commands/install.ts";
 import { upCmd } from "./commands/up.ts";
 import { downCmd } from "./commands/down.ts";
+import { rm } from "./commands/rm.ts";
 import { ps } from "./commands/ps.ts";
 
 type Command = (args: string[]) => Promise<number>;
 
 const COMMANDS: Record<string, { run: Command; help: string }> = {
   doctor: { run: doctor, help: "Check that the Docker engine is reachable" },
-  install: { run: install, help: "Build a recipe's image" },
-  up: { run: upCmd, help: "Build (if needed) and start a recipe" },
-  down: { run: downCmd, help: "Stop and remove a recipe's container" },
+  import: { run: importCmd, help: "Import a recipe bundle (tar/tar.gz/dir) → create an instance" },
+  ls: { run: ls, help: "List instances in the store" },
+  duplicate: { run: duplicateCmd, help: "Derive a fresh instance from an existing one" },
+  install: { run: install, help: "Build an instance's image" },
+  up: { run: upCmd, help: "Build (if needed) and start an instance" },
+  down: { run: downCmd, help: "Stop and remove an instance's container" },
+  rm: { run: rm, help: "Remove an instance (container + definition; data kept)" },
   ps: { run: ps, help: "List Compositz-managed containers" },
   hello: { run: hello, help: "Run a full container round-trip against the engine" },
 };

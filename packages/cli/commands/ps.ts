@@ -9,7 +9,7 @@ export async function ps(_args: string[]): Promise<number> {
     console.log(dim("no compositz-managed containers"));
     return 0;
   }
-  console.log(dim("NAME".padEnd(24) + "STATE".padEnd(10) + "RECIPE".padEnd(16) + "PORTS"));
+  console.log(dim("NAME".padEnd(28) + "STATE".padEnd(10) + "APP".padEnd(16) + "PORTS"));
   for (const c of list) {
     const name = c.Names[0]?.replace(/^\//, "") ?? c.Id.slice(0, 12);
     // Docker reports IPv4 + IPv6 bindings separately; collapse to unique mappings.
@@ -20,8 +20,8 @@ export async function ps(_args: string[]): Promise<number> {
         ),
       ),
     ].join(", ");
-    const recipe = c.Labels[label("recipe")] ?? "?";
-    console.log(`${green(name.padEnd(24))}${c.State.padEnd(10)}${recipe.padEnd(16)}${cyan(ports)}`);
+    const app = c.Labels[label("recipe")] ?? "?";
+    console.log(`${green(name.padEnd(28))}${c.State.padEnd(10)}${app.padEnd(16)}${cyan(ports)}`);
   }
   return 0;
 }

@@ -1,6 +1,12 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { join } from "@std/path";
-import { appDataDir, bindHostPath, defaultDataRoot, type Platform } from "./storage.ts";
+import {
+  appDataDir,
+  bindHostPath,
+  defaultDataRoot,
+  instancesDir,
+  type Platform,
+} from "./storage.ts";
 
 // Build a fake host environment. The path helpers join with the RUNTIME separator,
 // so expectations are built with the same `join` rather than hardcoded slashes.
@@ -9,11 +15,21 @@ const platform = (os: string, vars: Record<string, string>): Platform => ({
   env: (k) => vars[k],
 });
 
-Deno.test("bindHostPath nests <data-root>/<id>/<name>", () => {
+Deno.test("bindHostPath nests <data-root>/<instanceId>/<name>", () => {
   assertEquals(
-    bindHostPath("/srv/data", "comfyui", "output"),
-    join("/srv/data", "comfyui", "output"),
+    bindHostPath("/srv/data", "comfyui-a1b2c3", "output"),
+    join("/srv/data", "comfyui-a1b2c3", "output"),
   );
+});
+
+Deno.test("instancesDir defaults to <app-data>/instances", () => {
+  const p = platform("linux", { HOME: "/home/u" });
+  assertEquals(instancesDir(p), join("/home/u", ".local", "share", "compositz", "instances"));
+});
+
+Deno.test("instancesDir honors COMPOSITZ_INSTANCES_DIR", () => {
+  const p = platform("linux", { HOME: "/home/u", COMPOSITZ_INSTANCES_DIR: "/custom/store" });
+  assertEquals(instancesDir(p), "/custom/store");
 });
 
 Deno.test("appDataDir: Linux prefers XDG_DATA_HOME", () => {

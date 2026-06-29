@@ -1,6 +1,8 @@
 // Derive a Docker container spec (the "effective spec") from a validated manifest
-// plus an optional per-install launch override: manifest ⊕ launch → ContainerCreateSpec.
-// Also the small derived values callers need (image tag, container name, web URLs).
+// plus the instance id and an optional per-install launch override:
+// manifest ⊕ instanceId ⊕ launch → ContainerCreateSpec. Every runtime resource
+// (image / container / volume / bind / venv / labels) keys off the instance id —
+// one flat namespace, no recipe×instance nesting (ADR-017).
 
 import {
   cacheVolumeName,
@@ -17,17 +19,12 @@ import type { ContainerCreateSpec, HostConfig, Mount, PortBinding } from "../eng
 import { bindHostPath } from "../storage.ts";
 import type { CacheSpec, Manifest } from "./manifest.ts";
 
-/** Default instance name. Multi-instance is deferred but the schema/labels are ready. */
-export const DEFAULT_INSTANCE = "default";
-
 /**
  * The user's per-install customizations, layered over the manifest's author
  * defaults. Carries only VALUES — the manifest is never mutated. Persisted form
  * lands with the override UI (RI-4); here it is an in-memory overlay.
  */
 export type LaunchConfig = {
-  /** Instance name (default "default"). */
-  instance?: string;
   /** Host data-root for bind mounts (required only when a bind mount is effective). */
   dataRoot?: string;
   /** Host-port remap, keyed by port `name`. */
@@ -43,13 +40,16 @@ export type ToSpecOptions = LaunchConfig & {
   withGpu?: boolean;
 };
 
-/** The image this recipe runs: a prebuilt `image`, or the tag we build it to. */
-export function recipeImageTag(m: Manifest): string {
-  return m.image ?? imageTag(m.id, m.version);
+/**
+ * The image an instance runs: a prebuilt `image` (shared, external), or the
+ * per-instance tag we build it to (`compositz/<instanceId>:<version>`).
+ */
+export function instanceImageTag(m: Manifest, instanceId: string): string {
+  return m.image ?? imageTag(instanceId, m.version);
 }
 
-export function recipeContainerName(m: Manifest): string {
-  return containerName(m.id);
+export function instanceContainerName(instanceId: string): string {
+  return containerName(instanceId);
 }
 
 /** Effective host port for a named port: launch remap ▷ manifest host ▷ container. */
@@ -96,9 +96,11 @@ export function resolveHostPorts(
   return out;
 }
 
-export function toCreateSpec(m: Manifest, opts: ToSpecOptions = {}): ContainerCreateSpec {
-  const instance = opts.instance ?? DEFAULT_INSTANCE;
-
+export function toCreateSpec(
+  m: Manifest,
+  instanceId: string,
+  opts: ToSpecOptions = {},
+): ContainerCreateSpec {
   // --- ports ---------------------------------------------------------------
   // Keyed by container/proto; APPEND host bindings so two ports on the same
   // container port publish to both host ports instead of one silently winning.
@@ -124,12 +126,12 @@ export function toCreateSpec(m: Manifest, opts: ToSpecOptions = {}): ContainerCr
       // `Mounts` bind does not auto-create it (unlike legacy `Binds`).
       mounts.push({
         Type: "bind",
-        Source: bindHostPath(opts.dataRoot, m.id, mt.name),
+        Source: bindHostPath(opts.dataRoot, instanceId, mt.name),
         Target: mt.target,
         BindOptions: { CreateMountpoint: true },
       });
     } else {
-      mounts.push({ Type: "volume", Source: volumeName(m.id, mt.name), Target: mt.target });
+      mounts.push({ Type: "volume", Source: volumeName(instanceId, mt.name), Target: mt.target });
     }
   }
 
@@ -138,14 +140,14 @@ export function toCreateSpec(m: Manifest, opts: ToSpecOptions = {}): ContainerCr
   const envMap = new Map<string, string>();
   for (const ev of m.env) envMap.set(ev.name, opts.env?.[ev.name] ?? ev.default ?? "");
   for (const c of m.cache) {
-    const { mount, vars } = cacheProvision(c, m.id, instance);
+    const { mount, vars } = cacheProvision(c, instanceId);
     // Shared cache volumes (venv/hf) mount once even if referenced repeatedly.
     if (!mounts.some((x) => x.Source === mount.Source && x.Target === mount.Target)) {
       mounts.push(mount);
     }
     for (const [k, v] of vars) envMap.set(k, v);
   }
-  envMap.set(envVar("INSTANCE"), instance);
+  envMap.set(envVar("INSTANCE"), instanceId);
   const env = [...envMap].map(([k, v]) => `${k}=${v}`);
 
   // Two mounts (or a mount and a managed cache) on one in-container target is a
@@ -167,15 +169,17 @@ export function toCreateSpec(m: Manifest, opts: ToSpecOptions = {}): ContainerCr
   if (opts.withGpu ?? (m.gpu !== "none")) hostConfig.DeviceRequests = [GPU_ALL_NVIDIA];
 
   return {
-    Image: recipeImageTag(m),
+    Image: instanceImageTag(m, instanceId),
     Env: env.length > 0 ? env : undefined,
     ExposedPorts: Object.keys(exposed).length > 0 ? exposed : undefined,
     Tty: false,
     Labels: {
+      // `recipe` carries the app id (provenance / "which app is this"); `instance`
+      // is the unique runtime key.
       [label("recipe")]: m.id,
       [label("managed")]: "true",
       [label("version")]: m.version,
-      [label("instance")]: instance,
+      [label("instance")]: instanceId,
     },
     HostConfig: hostConfig,
   };
@@ -184,17 +188,17 @@ export function toCreateSpec(m: Manifest, opts: ToSpecOptions = {}): ContainerCr
 /** A managed cache: one mount plus the env var(s) carrying its in-container path. */
 type CacheMount = { mount: Mount; vars: Array<[string, string]> };
 
-function cacheProvision(c: CacheSpec, recipeId: string, instance: string): CacheMount {
+function cacheProvision(c: CacheSpec, instanceId: string): CacheMount {
   switch (c.type) {
     case "venv": {
       // venv + uv cache co-located on ONE volume so uv's hardlink dedup works
-      // (ADR-006). Shared across apps; per-(app,instance) venv subpath.
+      // (ADR-006). Shared across instances; per-instance venv subpath.
       const target = `${MANAGED_MOUNT_ROOT}/uv`;
       return {
         mount: { Type: "volume", Source: cacheVolumeName("uv"), Target: target },
         vars: [
           ["UV_CACHE_DIR", `${target}/cache`],
-          ["VIRTUAL_ENV", `${target}/venvs/${recipeId}/${instance}`],
+          ["VIRTUAL_ENV", `${target}/venvs/${instanceId}`],
         ],
       };
     }
@@ -207,7 +211,7 @@ function cacheProvision(c: CacheSpec, recipeId: string, instance: string): Cache
     }
     case "custom": {
       const target = `${MANAGED_MOUNT_ROOT}/cache/${c.name}`;
-      const path = c.scope === "instance" ? `${target}/${recipeId}/${instance}` : target;
+      const path = c.scope === "instance" ? `${target}/${instanceId}` : target;
       return {
         mount: { Type: "volume", Source: cacheVolumeName(`cache_${c.name}`), Target: target },
         vars: [[c.env, path]],

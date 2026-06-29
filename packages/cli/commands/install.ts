@@ -1,22 +1,22 @@
-import { EngineClient, installRecipe, recipeImageTag } from "@compositz/core";
+import { EngineClient, installInstance, instanceImageTag } from "@compositz/core";
 import { bold, dim, green, red } from "@std/fmt/colors";
-import { resolveRecipe } from "../lib.ts";
+import { resolveInstance } from "../lib.ts";
 
-/** Build a recipe's image from its Dockerfile + context. */
+/** Build an instance's image from its Dockerfile + context. */
 export async function install(args: string[]): Promise<number> {
   if (!args[0]) {
-    console.error(red("usage: compositz install <recipe>"));
+    console.error(red("usage: compositz install <instanceId>"));
     return 1;
   }
-  const recipe = await resolveRecipe(args[0]);
+  const instance = await resolveInstance(args[0]);
   const client = new EngineClient();
   const enc = new TextEncoder();
 
-  console.log(bold(`installing ${recipe.manifest.name}`) + dim(` (${recipe.id})`));
-  for await (const p of installRecipe(client, recipe)) {
+  console.log(bold(`installing ${instance.manifest.name}`) + dim(` (${instance.instanceId})`));
+  for await (const p of installInstance(client, instance)) {
     if (p.stream) await Deno.stdout.write(enc.encode(p.stream));
     if (p.aux?.ID) console.log(dim(`  image ${p.aux.ID.slice(0, 19)}…`));
   }
-  console.log(green(`OK — built ${recipeImageTag(recipe.manifest)}`));
+  console.log(green(`OK — built ${instanceImageTag(instance.manifest, instance.instanceId)}`));
   return 0;
 }

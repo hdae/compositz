@@ -1,18 +1,18 @@
-import { loadRecipe, type Recipe } from "@compositz/core";
+import { type Instance, instancesDir, loadInstance } from "@compositz/core";
+import { join } from "@std/path";
 
-/** Resolve a recipe arg: an explicit directory path, or an id under ./recipes/<id>. */
-export async function resolveRecipe(arg: string): Promise<Recipe> {
-  const candidates = looksLikePath(arg) ? [arg] : [`recipes/${arg}`, arg];
-  for (const dir of candidates) {
-    try {
-      if ((await Deno.stat(dir)).isDirectory) return await loadRecipe(dir);
-    } catch {
-      // try next candidate
-    }
-  }
-  throw new Error(`recipe not found: "${arg}" (looked in: ${candidates.join(", ")})`);
+/** The instance store this CLI reads/writes (app-data; COMPOSITZ_INSTANCES_DIR overrides). */
+export function storeDir(): string {
+  return instancesDir();
 }
 
-function looksLikePath(s: string): boolean {
-  return s.includes("/") || s.includes("\\") || s === "." || s.startsWith("..");
+/** Resolve an instance by its id, from the instance store. */
+export async function resolveInstance(instanceId: string): Promise<Instance> {
+  try {
+    return await loadInstance(join(storeDir(), instanceId));
+  } catch {
+    throw new Error(
+      `instance not found: "${instanceId}" (in ${storeDir()}). Run \`compositz ls\`.`,
+    );
+  }
 }
