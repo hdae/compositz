@@ -565,7 +565,10 @@ drift).
 `ingestGithub`); `BundleSource` archive gains an optional `subdir`; `locateBundleRoot` gains a
 subdir descent (behavior-preserving when absent). `meta.source = github:owner/repo[/subdir][@ref]`
 round-trips through the parser. Verified: 17 hermetic unit tests + 2 opt-in live-codeload
-integration tests (`COMPOSITZ_NET_TESTS=1`). **Next increment:** the UI entry (a GitHub-spec input +
-the trust dialog showing `github:owner/repo` as a real provider). **Deferred** (see
+integration tests (`COMPOSITZ_NET_TESTS=1`). The **UI entry** is also done: a "From GitHub" modal
+(spec input) → the existing **trust gate** opens with `github:owner/repo` as the provider — the same
+**server-confirmed** ingest-then-trust flow as a file upload (no new optimistic UI). The view-model
+mapping `toInstanceView` was extracted to one shared server-only module so the file-import route,
+GitHub route, and initial render can't drift. **Deferred** (see
 [recipe-ingestion.md](recipe-ingestion.md#open-details)): private-repo auth, full-URL paste
 (`https://github.com/owner/repo/...`), and `@` inside a subdir.

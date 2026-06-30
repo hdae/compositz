@@ -65,8 +65,8 @@ removed. Second copy = re-import or `duplicate` (copies `app/` only, not data). 
 security- and memory-hardened (see Resume point). Layout:
 [recipe-ingestion.md](../../docs/recipe-ingestion.md#storage--instance-centric).
 
-**Next (sequenced):** **RI-3 UI entry** (GitHub-spec input + route over the done `ingestGithub`;
-core+CLI shipped — ADR-021) → **RI-4** (per-instance override UI + multi-web "Open UI" buttons).
+**Next (sequenced):** **RI-4** (per-instance override UI + multi-web "Open UI" buttons). RI-3
+(GitHub sourcing) is complete — core + CLI + UI "From GitHub" modal (ADR-021).
 
 ## Decisions recently settled
 
@@ -94,11 +94,11 @@ core+CLI shipped — ADR-021) → **RI-4** (per-instance override UI + multi-web
   "install?" dialog (Yes builds / No deletes / fail keeps + retry); delete removes
   `compositz/<id>:<ver>` (no-op for shared `image` recipes). "Open UI" → tabbed panel (build/runtime
   log + Services, the latter joined to the container's live `PublicPort`). Tooltip/Tabs added.
-- **ADR-021: GitHub ingestion (RI-3, core+CLI).** Grammar **amended** to `owner/repo[/subdir][@ref]`
+- **ADR-021: GitHub ingestion (RI-3).** Grammar **amended** to `owner/repo[/subdir][@ref]`
   (subdir-before-ref disambiguates slashed refs). Codeload tarball over HTTPS (no `git`/API,
   public-only, `HEAD`=default branch); reuses `ingestBundle` via a new `subdir?` on the archive
   source + a subdir descent in `locateBundleRoot`. One shared `ingestGithub`; CLI `import github:…`;
-  UI entry is the next increment.
+  UI "From GitHub" modal → existing trust gate (server-confirmed). Complete (core+CLI+UI).
 
 ## Pitfalls index
 
@@ -215,7 +215,7 @@ rollback on failure) so a running row's `starting…` panel doesn't linger. NOTE
 optimistic UI** ([[feedback-avoid-optimistic-ui]]) — accepted for now; prefer server-confirmed for
 new actions. 110 tests green.
 
-**RI-3 GitHub ingestion (core+CLI) — ✅ DONE (ADR-021).** Spec grammar **amended** to
+**RI-3 GitHub ingestion — ✅ DONE (core + CLI + UI; ADR-021).** Spec grammar **amended** to
 `owner/repo[/subdir][@ref]` (subdir BEFORE ref, so a slashed branch like `@releases/v1` and a subdir
 coexist unambiguously; optional `github:` prefix; `.git` tolerated). New `recipe/github.ts`
 (`parseGithubSpec` / `githubTarballUrl` / `githubSource` / `ingestGithub`): `fetch` the codeload
@@ -223,15 +223,20 @@ tarball `codeload.github.com/<o>/<r>/tar.gz/<ref|HEAD>` → pipe `res.body` into
 `ingestBundle({kind:"archive", stream, subdir})`. `BundleSource` archive gained `subdir?`;
 `locateBundleRoot` gained a subdir descent (behavior-preserving when absent). CLI `import github:…`.
 `meta.source = github:owner/repo[/subdir][@ref]` (round-trips). No `git`, no GitHub API,
-public-only. **Verified:** 17 hermetic unit tests + 2 opt-in live-codeload integration tests
-(`COMPOSITZ_NET_TESTS=1`, run green here); CLI smoke (usage / parse error / 404 propagate / dir
-regression / no store residue). 128 tests green; check/lint/fmt clean.
+public-only. **UI:** a "From GitHub" action-bar button opens a **dismissable** modal (existing
+`AlertDialog` reused as the frame + a native `<input>` — no new Shadcn component) for the spec;
+submit → `POST /api/instances/import-github` → `ingestGithub` → the existing **trust gate** opens
+with `github:owner/repo` as the provider. **Server-confirmed** (ingest before trust) — no new
+optimistic UI ([[feedback-avoid-optimistic-ui]]). The view mapping `toInstanceView` was extracted to
+one **server-only** `lib/instance-view.ts` shared by the file-import route, the GitHub route, and
+the index render (was duplicated). **Verified:** 17 core unit + 2 opt-in live-codeload tests + 5
+`toInstanceView` tests; 133 tests green; ui:check / lint / fmt / **ui:build** (client-bundle guard:
+`instance-view.ts` stays server-only) clean. NOTE: runtime UI behavior (modal submit / Enter-to-
+submit / trust hand-off) not machine-verifiable here — see manual steps in the report.
 
-**NEXT — RI-3 UI entry**: a GitHub-spec input in the import area + a route reusing `ingestGithub`,
-with the trust dialog (ADR-020) showing `github:owner/repo` as a **real provider** (the meaningful
-provider RI-3 was meant to land). Then **RI-4** (per-instance override UI; the multi-web "Open UI"
-half is done via the Services tab). Small deferred UI follow-up: the light/dark/auto **mode
-selector** (writes `compositz-theme`, the boot script already applies it).
+**NEXT — RI-4** (per-instance override UI; the multi-web "Open UI" half is done via the Services
+tab). Small deferred UI follow-up: the light/dark/auto **mode selector** (writes `compositz-theme`,
+the boot script already applies it).
 
 **Deferred:** **Shadcn components → vendor verbatim from upstream** (`shadcn-ui/ui`
 `apps/v4/registry/bases/base/ui/`) instead of the current hand-adapted ones — a migration (dep
