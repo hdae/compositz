@@ -1,13 +1,8 @@
 import { page } from "fresh";
-import {
-  EngineClient,
-  instanceImageTag,
-  instancesDir,
-  label,
-  listInstances,
-} from "@compositz/core";
+import { EngineClient, instancesDir, label, listInstances } from "@compositz/core";
 import { define } from "../utils.ts";
 import { type ContainerStatus, type InstanceView, toContainerStatuses } from "../lib/dashboard.ts";
+import { toInstanceView } from "../lib/instance-view.ts";
 import InstanceList from "../islands/InstanceList.tsx";
 
 // The instance store (app-data; COMPOSITZ_INSTANCES_DIR overrides) — absolute,
@@ -28,21 +23,7 @@ type Initial = {
 export const handler = define.handlers({
   async GET(_ctx) {
     const instances = await listInstances(store);
-    const views: InstanceView[] = instances.map((i) => ({
-      instanceId: i.instanceId,
-      appId: i.appId,
-      name: i.manifest.name,
-      version: i.manifest.version,
-      description: i.manifest.description ?? "",
-      webPorts: i.manifest.ports.filter((p) => p.web).map((p) => ({
-        name: p.name,
-        container: p.container,
-        protocol: p.protocol,
-        path: p.path,
-        description: p.description,
-      })),
-      imageTag: instanceImageTag(i.manifest, i.instanceId),
-    }));
+    const views: InstanceView[] = instances.map(toInstanceView);
 
     // Best-effort engine read: the UI must still render when Docker is down.
     let initial: Initial;

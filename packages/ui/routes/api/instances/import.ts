@@ -1,13 +1,6 @@
-import {
-  CompositzError,
-  EngineHttpError,
-  ingestBundle,
-  type Instance,
-  instanceImageTag,
-  instancesDir,
-} from "@compositz/core";
+import { CompositzError, EngineHttpError, ingestBundle, instancesDir } from "@compositz/core";
 import { define } from "../../../utils.ts";
-import type { InstanceView } from "../../../lib/dashboard.ts";
+import { toInstanceView } from "../../../lib/instance-view.ts";
 
 // SERVER-ONLY: imports @compositz/core (→ node:net + filesystem). Accepts a recipe
 // bundle as the raw request body (a tar / tar.gz archive) and creates a new instance
@@ -18,26 +11,6 @@ import type { InstanceView } from "../../../lib/dashboard.ts";
 // optimistically + the source to show in the trust ("install?") prompt.
 
 const store = instancesDir();
-
-/** Build the dashboard view from a freshly-ingested instance (mirrors routes/index.tsx). */
-function toView(instance: Instance): InstanceView {
-  const m = instance.manifest;
-  return {
-    instanceId: instance.instanceId,
-    appId: instance.appId,
-    name: m.name,
-    version: m.version,
-    description: m.description ?? "",
-    webPorts: m.ports.filter((p) => p.web).map((p) => ({
-      name: p.name,
-      container: p.container,
-      protocol: p.protocol,
-      path: p.path,
-      description: p.description,
-    })),
-    imageTag: instanceImageTag(m, instance.instanceId),
-  };
-}
 
 /** Reduce a user-supplied filename to a short, printable label for `meta.source`. */
 function sanitizeFilename(name: string): string {
@@ -60,7 +33,7 @@ export const handler = define.handlers({
       const instance = await ingestBundle({ kind: "archive", stream: body }, store, { source });
       return Response.json({
         ok: true,
-        view: toView(instance),
+        view: toInstanceView(instance),
         source: instance.meta.source ?? source,
       });
     } catch (e) {
