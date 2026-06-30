@@ -178,8 +178,22 @@ gpu: none
 
 The manifest is the author's **defaults**; the user's customizations live in a separate per-instance
 **override** (`<app-data>/instances/<instanceId>/config.yaml`) carrying only **values**: host-port
-remaps, env values, per-mount `placement` (bind/volume) and bind host-path, and the data-root. At
-`up` the effective spec is **derived** from _manifest ⊕ override_ — the manifest is never mutated.
+remaps, env values, and per-mount `placement` (bind/volume). At `up` the effective spec is
+**derived** from _manifest ⊕ override_ — the manifest is never mutated (`up` loads `config.yaml` and
+merges it, so the CLI and UI both honor it without wiring; see [ADR-022](decisions.md)).
+
+The override schema is a strict **subset** of the in-memory `LaunchConfig`:
+`{ hostPorts, env,
+placement }`, each keyed by the manifest `name`, Zod-validated. **`dataRoot` is
+intentionally not persisted** here — it is an install-wide concern (one data-root), deferred to a
+future `settings.yaml`; `up` supplies the default. Bind host-paths stay **derived** from the mount
+name (`<data-root>/<instanceId>/<name>`) — placement is the only mount override (no arbitrary host
+path).
+
+**UI (RI-4):** a **Settings** tab on each instance edits these three; it loads on open, suggests a
+free host port when the default is in use, requires `required` env values before Save, and **PUTs
+only the values that differ** from the defaults (a minimal `config.yaml`). Saving is
+**server-confirmed**; the override applies on the **next start**.
 
 ## Increment plan
 
@@ -189,7 +203,7 @@ remaps, env values, per-mount `placement` (bind/volume) and bind host-path, and 
 | **RI-1** | ✅ **Manifest v2** (Zod + recipe-format) + storage layout + data-root + bind/volume mounts (structured `Mounts` + `CreateMountpoint`) + cache provisioning & env injection + effective-spec derivation (manifest ⊕ launch override) in core. Done & live-verified. |
 | **RI-2** | **Instance store + ingestion** (tar/tar.gz/dir → extract → validate → mint `instanceId` → create instance) + instanceId-threaded naming + `duplicate`. See [ADR-017](decisions.md).                                                                                |
 | **RI-3** | ✅ **GitHub ingestion** (`owner/repo[/subdir][@ref]` → codeload tarball → create instance; no `git`/API, public-only) — core + CLI + UI ("From GitHub" modal → trust gate). See [ADR-021](decisions.md).                                                           |
-| **RI-4** | Per-instance **override UI** (host-port remap w/ auto-suggest, env values, placement) + multi-web "Open UI" buttons.                                                                                                                                               |
+| **RI-4** | ✅ Per-instance **override** persistence (`config.yaml`, applied at `up`) + **Settings tab** UI (host-port remap w/ free-port suggest, env values, placement). Multi-web "Open UI" done via Services tab. See [ADR-022](decisions.md). dataRoot deferred.          |
 
 ## Open details
 
@@ -201,7 +215,13 @@ data-root + app-data dir, and bind-source creation (daemon-side `CreateMountpoin
 Still open for later increments:
 
 - **Windows bind on Docker Desktop**: `CreateMountpoint` handles source creation, but Docker Desktop
-  file-sharing for the data-root drive still needs first-run handling (RI-4 / packaging).
+  file-sharing for the data-root drive still needs first-run handling (packaging).
+- **RI-4 override — by-design first-cut limits** (ADR-022): **`dataRoot` is not editable** (deferred
+  to a global `settings.yaml`); bind mounts toggle placement only (host path stays derived, no
+  arbitrary directory); **`required` env is enforced only in the Settings UI** (Save is blocked
+  until filled) — `up` itself does not yet hard-block a launch when a required env is unset (it
+  would launch with an empty value, the pre-RI-4 behavior). A "Save & restart" convenience is
+  deferred.
 - **Live cache exercise**: no shipped recipe uses `venv`/`huggingface` yet, so those volumes/env are
   unit-tested but not yet machine-run end-to-end.
 - **Authoring helper**: a **reference entrypoint** (uv-sync boilerplate using `$VIRTUAL_ENV` /

@@ -572,3 +572,48 @@ mapping `toInstanceView` was extracted to one shared server-only module so the f
 GitHub route, and initial render can't drift. **Deferred** (see
 [recipe-ingestion.md](recipe-ingestion.md#open-details)): private-repo auth, full-URL paste
 (`https://github.com/owner/repo/...`), and `@` inside a subdir.
+
+## ADR-022 — Per-instance launch override (RI-4): config.yaml persistence + Settings UI · ✅ Accepted
+
+Implements RI-4 over RI-1's effective-spec derivation (manifest ⊕ launch override). RI-1 already had
+the in-memory merge (`toCreateSpec` / `resolveHostPorts` / `LaunchConfig`); RI-4 adds the
+**persistence** and the **editor**. Settled with the user (candidates ①3-fields / ②Settings-tab /
+③explicit-Save-server-confirmed / ④on-demand-fetch).
+
+**Decisions:**
+
+- **Persisted override = a strict subset of `LaunchConfig`: `{ hostPorts, env, placement }`** (Zod
+  `OverrideSchema`), keyed by manifest `name`, stored at `instances/<instanceId>/config.yaml`.
+  **`dataRoot` is intentionally excluded** — it is an install-wide concern (one data-root), deferred
+  to a future `settings.yaml`; `up` supplies the default. Bind mounts toggle **placement only**; the
+  host path stays derived (`<data-root>/<instanceId>/<name>`), never an arbitrary directory.
+- **`up` loads `config.yaml` and merges it under the in-memory `launch` arg** (`mergeLaunch`, a pure
+  per-sub-key overlay where the arg wins; `dataRoot` is only set when supplied so an absent value
+  never clobbers the default). Loading in `up` (which has `instance.dir`) means the **CLI and UI
+  both honor the saved override with no caller wiring** — one shared path, not two that could
+  diverge. The override is **derived each launch, never written back** to the manifest.
+- **Settings tab, not a modal.** The editor is a 4th tab on the existing per-instance DetailPanel
+  (Build log / Runtime log / Services / **Settings**), so per-instance detail stays in one place and
+  the form can grow without modal stacking. It **fetches on tab-open**
+  (`GET /api/instances/:id/config` → manifest ⊕ override view-model + a free-port suggestion); Base
+  UI unmounts inactive panels, so each open is fresh.
+- **Server-confirmed Save, delta-only.** Save **PUTs only the values that differ** from the manifest
+  defaults (a minimal `config.yaml`); the route Zod-validates and **cross-checks keys against
+  manifest names** (an unknown port/env/mount key ⇒ 400). No optimistic UI ([feedback]: the user
+  dislikes it) — the form reflects the saved state, and the override **applies on the next start**.
+  `required` env is enforced in the UI (Save blocked until filled).
+
+**Why:** RI-1's merge already produced the effective spec, so RI-4 is deliberately a thin
+persistence layer — putting the load in `up` keeps a single application path for CLI + UI; the
+subset schema matches what is genuinely per-instance (dataRoot is not); delta-only persistence keeps
+`config.yaml` legible (only what the user changed); server-confirmed save fits the user's stated
+preference and the "derived each launch" model.
+
+**Consequences:** new `recipe/config.ts` (`OverrideSchema` / `parseOverride` / `serializeOverride`);
+`instance.ts` gains `CONFIG_FILE` + `loadInstanceConfig` / `saveInstanceConfig`; `run.ts` gains the
+pure `mergeLaunch`; `up` loads + merges. UI: `GET`/`PUT /api/instances/:id/config`, a Settings tab +
+form, and the Settings view-model types in `lib/dashboard.ts`. Verified: core unit tests
+(parse/serialize/load/save/merge) + a real-engine smoke (a saved `config.yaml` host-port remap is
+published by `up`) + the route data-path on a real instance. **Deferred** (see
+[recipe-ingestion.md](recipe-ingestion.md#open-details)): editable `dataRoot`, arbitrary bind host
+paths, hard-blocking `up` on an unset required env, and a "Save & restart" convenience.

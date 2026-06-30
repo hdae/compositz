@@ -65,8 +65,10 @@ removed. Second copy = re-import or `duplicate` (copies `app/` only, not data). 
 security- and memory-hardened (see Resume point). Layout:
 [recipe-ingestion.md](../../docs/recipe-ingestion.md#storage--instance-centric).
 
-**Next (sequenced):** **RI-4** (per-instance override UI + multi-web "Open UI" buttons). RI-3
-(GitHub sourcing) is complete — core + CLI + UI "From GitHub" modal (ADR-021).
+**Next (sequenced):** the **RI-1..4 ingestion/override arc is complete** (RI-4 = `config.yaml` +
+Settings tab, ADR-022). Remaining UI polish: the light/dark/auto **mode selector** (additive). Then
+**Phase 3 — Hardening** (shared-cache live exercise, volumes/GC + full data deletion, GPU detection,
+versioning).
 
 ## Decisions recently settled
 
@@ -99,6 +101,12 @@ security- and memory-hardened (see Resume point). Layout:
   public-only, `HEAD`=default branch); reuses `ingestBundle` via a new `subdir?` on the archive
   source + a subdir descent in `locateBundleRoot`. One shared `ingestGithub`; CLI `import github:…`;
   UI "From GitHub" modal → existing trust gate (server-confirmed). Complete (core+CLI+UI).
+- **ADR-022: per-instance override (RI-4).** Persisted `{ hostPorts, env, placement }`
+  (`config.yaml`, strict subset of `LaunchConfig`, **no dataRoot** — deferred to global
+  settings.yaml). `up` loads + merges it (`mergeLaunch`) so CLI+UI honor it with no caller wiring.
+  UI = a **Settings tab** (4th DetailPanel tab): fetch-on-open `GET /config`, free-port suggest,
+  required-env enforced, **delta-only PUT** with manifest-name key validation, server-confirmed,
+  applies next start. Complete (core+UI).
 
 ## Pitfalls index
 
@@ -234,9 +242,27 @@ the index render (was duplicated). **Verified:** 17 core unit + 2 opt-in live-co
 `instance-view.ts` stays server-only) clean. NOTE: runtime UI behavior (modal submit / Enter-to-
 submit / trust hand-off) not machine-verifiable here — see manual steps in the report.
 
-**NEXT — RI-4** (per-instance override UI; the multi-web "Open UI" half is done via the Services
-tab). Small deferred UI follow-up: the light/dark/auto **mode selector** (writes `compositz-theme`,
-the boot script already applies it).
+**RI-4 per-instance override — ✅ DONE (core + UI; ADR-022).** Persisted override
+`{ hostPorts, env,
+placement }` (`config.yaml`, strict subset of `LaunchConfig`; **dataRoot
+excluded** — deferred global settings.yaml). New `recipe/config.ts` (`OverrideSchema` /
+`parseOverride` / `serializeOverride`); `instance.ts` `CONFIG_FILE` + `loadInstanceConfig` /
+`saveInstanceConfig`; `run.ts` pure `mergeLaunch`; **`up` loads + merges `config.yaml`** (so CLI+UI
+honor it, no caller wiring) — manifest never mutated, derived each launch. **UI:** a **Settings**
+tab (4th DetailPanel tab) — fetch-on-open `GET /api/instances/:id/config` (manifest⊕override +
+free-port suggest), edit host-port / env (required enforced) / placement(bind|volume `<select>`),
+**delta-only `PUT`** (only values ≠ default; route Zod-validates + rejects keys not in the manifest
+= 400), **server-confirmed**, applies next start. **Verified:** core unit tests
+(parse/serialize/load/save/merge) + real-engine smoke (saved host-port remap is published by `up`) +
+route data-path on a real instance; 148 tests green; ui:check / lint / fmt / **ui:build** clean.
+NOTE: the Settings **form** runtime (input → PUT → next start) is not machine-verifiable here —
+manual steps in the report. **Known limits** (ADR-022): dataRoot not editable; bind = placement only
+(derived path); `required` env enforced UI-only (`up` doesn't hard-block yet); no "Save & restart".
+
+**NEXT — UI polish + Phase 3.** Light/dark/auto **mode selector** (writes `compositz-theme`; boot
+script already applies it) is the small remaining UI follow-up. Then **Phase 3 — Hardening**:
+shared-cache live exercise, **volumes/GC + full data deletion** (needs Engine volume endpoints the
+client lacks), GPU detection, versioning.
 
 **Deferred:** **Shadcn components → vendor verbatim from upstream** (`shadcn-ui/ui`
 `apps/v4/registry/bases/base/ui/`) instead of the current hand-adapted ones — a migration (dep
