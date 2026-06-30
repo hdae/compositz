@@ -1,7 +1,15 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { join } from "@std/path";
 import { ingestBundle } from "./ingest.ts";
-import { listInstances, loadInstance, removeInstanceDir } from "./instance.ts";
+import {
+  CONFIG_FILE,
+  listInstances,
+  loadInstance,
+  loadInstanceConfig,
+  removeInstanceDir,
+  saveInstanceConfig,
+} from "./instance.ts";
+import { CompositzError } from "../errors.ts";
 
 const MANIFEST = (id: string, name: string) =>
   `manifestVersion: 2
@@ -66,6 +74,53 @@ Deno.test("removeInstanceDir: deletes the instance definition (idempotent)", asy
     await removeInstanceDir(store, inst.instanceId);
     assertEquals((await listInstances(store)).length, 0);
     await removeInstanceDir(store, inst.instanceId); // no-op, no throw
+    await Deno.remove(src, { recursive: true });
+  } finally {
+    await Deno.remove(store, { recursive: true }).catch(() => {});
+  }
+});
+
+// --- per-instance launch override (config.yaml, RI-4) ----------------------
+
+Deno.test("loadInstanceConfig: a fresh instance (no config.yaml) is the empty override", async () => {
+  const store = await Deno.makeTempDir({ prefix: "compositz-store-" });
+  try {
+    const src = await dirBundle("hello", "Hello");
+    const inst = await ingestBundle({ kind: "dir", dir: src }, store);
+    assertEquals(await loadInstanceConfig(join(store, inst.instanceId)), {});
+    await Deno.remove(src, { recursive: true });
+  } finally {
+    await Deno.remove(store, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("saveInstanceConfig → loadInstanceConfig: round-trips the override", async () => {
+  const store = await Deno.makeTempDir({ prefix: "compositz-store-" });
+  try {
+    const src = await dirBundle("hello", "Hello");
+    const inst = await ingestBundle({ kind: "dir", dir: src }, store);
+    const dir = join(store, inst.instanceId);
+    const override = {
+      hostPorts: { ui: 8189 },
+      env: { TOKEN: "x" },
+      placement: { out: "bind" as const },
+    };
+    await saveInstanceConfig(dir, override);
+    assertEquals(await loadInstanceConfig(dir), override);
+    await Deno.remove(src, { recursive: true });
+  } finally {
+    await Deno.remove(store, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("loadInstanceConfig: an invalid config.yaml throws (fail loud, never silently ignore)", async () => {
+  const store = await Deno.makeTempDir({ prefix: "compositz-store-" });
+  try {
+    const src = await dirBundle("hello", "Hello");
+    const inst = await ingestBundle({ kind: "dir", dir: src }, store);
+    const dir = join(store, inst.instanceId);
+    await Deno.writeTextFile(join(dir, CONFIG_FILE), "hostPorts: { ui: 70000 }\n"); // out of range
+    await assertRejects(() => loadInstanceConfig(dir), CompositzError);
     await Deno.remove(src, { recursive: true });
   } finally {
     await Deno.remove(store, { recursive: true }).catch(() => {});

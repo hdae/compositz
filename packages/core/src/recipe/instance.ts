@@ -12,11 +12,14 @@ import { CompositzError } from "../errors.ts";
 import type { BuildFile } from "../build.ts";
 import { type Manifest } from "./manifest.ts";
 import { loadRecipe } from "./loader.ts";
+import { type Override, parseOverride, serializeOverride } from "./config.ts";
 
 /** Subdirectory holding the recipe bundle inside an instance directory. */
 export const APP_SUBDIR = "app";
 /** Provenance file inside an instance directory. */
 export const META_FILE = "meta.json";
+/** Per-instance launch override (RI-4) inside an instance directory. */
+export const CONFIG_FILE = "config.yaml";
 
 /** Non-derivable provenance for an instance (the manifest holds appId + version). */
 export interface InstanceMeta {
@@ -79,6 +82,29 @@ export async function listInstances(instancesDir: string): Promise<Instance[]> {
 /** Remove an instance's directory (its definition + override). Docker resources/data are untouched. */
 export async function removeInstanceDir(instancesDir: string, instanceId: string): Promise<void> {
   await Deno.remove(`${instancesDir}/${instanceId}`, { recursive: true }).catch(() => {});
+}
+
+/**
+ * Load the per-instance launch override (`config.yaml`). An absent file ⇒ the empty
+ * override (the common case). A present-but-invalid file throws (fail loud — never
+ * silently launch with a misread override).
+ */
+export async function loadInstanceConfig(instanceDir: string): Promise<Override> {
+  const dir = instanceDir.replaceAll("\\", "/").replace(/\/+$/, "");
+  let text: string;
+  try {
+    text = await Deno.readTextFile(`${dir}/${CONFIG_FILE}`);
+  } catch (e) {
+    if (e instanceof Deno.errors.NotFound) return {}; // no override yet
+    throw e;
+  }
+  return parseOverride(text);
+}
+
+/** Persist the per-instance launch override (`config.yaml`). */
+export async function saveInstanceConfig(instanceDir: string, override: Override): Promise<void> {
+  const dir = instanceDir.replaceAll("\\", "/").replace(/\/+$/, "");
+  await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, serializeOverride(override));
 }
 
 async function readMeta(path: string): Promise<InstanceMeta> {

@@ -38,12 +38,21 @@ export {
 export { loadRecipe, type Recipe } from "./src/recipe/loader.ts";
 export {
   APP_SUBDIR,
+  CONFIG_FILE,
   type Instance,
   type InstanceMeta,
   listInstances,
   loadInstance,
+  loadInstanceConfig,
   removeInstanceDir,
+  saveInstanceConfig,
 } from "./src/recipe/instance.ts";
+export {
+  type Override,
+  OverrideSchema,
+  parseOverride,
+  serializeOverride,
+} from "./src/recipe/config.ts";
 export {
   type BundleSource,
   duplicateInstance,
@@ -63,6 +72,7 @@ export {
   instanceContainerName,
   instanceImageTag,
   type LaunchConfig,
+  mergeLaunch,
   resolveHostPorts,
   toCreateSpec,
   type ToSpecOptions,

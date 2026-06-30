@@ -8,11 +8,12 @@ import { tarContext } from "../build.ts";
 import type { EngineClient } from "../engine/client.ts";
 import type { BuildProgress } from "../engine/types.ts";
 import { defaultDataRoot } from "../storage.ts";
-import type { Instance } from "./instance.ts";
+import { type Instance, loadInstanceConfig } from "./instance.ts";
 import {
   instanceContainerName,
   instanceImageTag,
   type LaunchConfig,
+  mergeLaunch,
   resolveHostPorts,
   toCreateSpec,
 } from "./run.ts";
@@ -67,10 +68,16 @@ export async function up(
   // pick ports for the new one.
   await client.remove(name, { force: true }).catch(() => {});
 
+  // The persisted per-instance override (config.yaml) is the base; the in-memory
+  // `launch` arg overlays it so a caller can still force values. Loading it here means
+  // every caller (CLI / UI) honors the saved override without wiring it themselves.
+  const override = await loadInstanceConfig(instance.dir);
+  const merged = mergeLaunch(override, launch);
+
   // Resolve host ports ONCE (the GPU retry reuses them) and return them so callers
   // build the web URL from the port actually published, not the manifest default.
-  const hostPorts = await resolvePorts(client, m, launch);
-  const effective: LaunchConfig = { dataRoot: defaultDataRoot(), ...launch, hostPorts };
+  const hostPorts = await resolvePorts(client, m, merged);
+  const effective: LaunchConfig = { dataRoot: defaultDataRoot(), ...merged, hostPorts };
 
   const startWith = async (withGpu: boolean): Promise<string> => {
     const spec = toCreateSpec(m, instance.instanceId, { ...effective, withGpu });

@@ -41,6 +41,23 @@ export type ToSpecOptions = LaunchConfig & {
 };
 
 /**
+ * Layer one launch override over another, per sub-key — `over` wins. Used to overlay an
+ * in-memory override (e.g. a CLI flag) on top of the persisted `config.yaml`. `dataRoot`
+ * is only set when one side actually supplies it, so an absent value never clobbers the
+ * default `up` fills in (`{ ...merged }` must not introduce `dataRoot: undefined`).
+ */
+export function mergeLaunch(base: LaunchConfig, over: LaunchConfig): LaunchConfig {
+  const merged: LaunchConfig = {
+    hostPorts: { ...base.hostPorts, ...over.hostPorts },
+    env: { ...base.env, ...over.env },
+    placement: { ...base.placement, ...over.placement },
+  };
+  const dataRoot = over.dataRoot ?? base.dataRoot;
+  if (dataRoot !== undefined) merged.dataRoot = dataRoot;
+  return merged;
+}
+
+/**
  * The image an instance runs: a prebuilt `image` (shared, external), or the
  * per-instance tag we build it to (`compositz/<instanceId>:<version>`).
  */

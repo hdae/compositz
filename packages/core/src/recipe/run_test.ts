@@ -3,6 +3,7 @@ import { parseManifest } from "./manifest.ts";
 import {
   instanceContainerName,
   instanceImageTag,
+  mergeLaunch,
   resolveHostPorts,
   toCreateSpec,
   webEndpoints,
@@ -244,4 +245,33 @@ Deno.test("resolveHostPorts avoids self-collision among the recipe's own ports",
   // Two ports want the same host port; the second is bumped.
   const ports = [{ name: "a", host: 5000 }, { name: "b", host: 5000 }];
   assertEquals(resolveHostPorts(ports, new Set()), { a: 5000, b: 5001 });
+});
+
+// --- mergeLaunch (persisted override ⊕ in-memory overlay) -------------------
+
+Deno.test("mergeLaunch: `over` wins per sub-key, merging the rest of each record", () => {
+  const base = { hostPorts: { ui: 8188, api: 9000 }, env: { A: "1", B: "2" } };
+  const over = { hostPorts: { ui: 8200 }, env: { B: "9" } };
+  assertEquals(mergeLaunch(base, over), {
+    hostPorts: { ui: 8200, api: 9000 },
+    env: { A: "1", B: "9" },
+    placement: {},
+  });
+});
+
+Deno.test("mergeLaunch: an empty overlay returns the base values", () => {
+  const base = { hostPorts: { ui: 8188 }, placement: { out: "bind" as const } };
+  assertEquals(mergeLaunch(base, {}), {
+    hostPorts: { ui: 8188 },
+    env: {},
+    placement: { out: "bind" },
+  });
+});
+
+Deno.test("mergeLaunch: dataRoot is set only when supplied — never clobbers with undefined", () => {
+  // The hazard this guards: `{ ...merged }` introducing `dataRoot: undefined` would
+  // override the default `up` fills in. So when neither side has it, the key is ABSENT.
+  assertEquals("dataRoot" in mergeLaunch({}, {}), false);
+  assertEquals(mergeLaunch({ dataRoot: "/data" }, {}).dataRoot, "/data");
+  assertEquals(mergeLaunch({ dataRoot: "/base" }, { dataRoot: "/over" }).dataRoot, "/over");
 });
