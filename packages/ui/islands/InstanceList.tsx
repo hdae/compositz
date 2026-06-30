@@ -20,6 +20,7 @@ import {
   type InstanceRow,
   type InstanceSettings,
   type InstanceView,
+  type PortBump,
   type Service,
   toInstanceRows,
   withOptimisticAction,
@@ -59,7 +60,7 @@ type Initial = {
 type TabKey = "build" | "logs" | "services" | "settings";
 
 /** A freshly-imported instance awaiting the trust ("install?") decision. */
-type TrustPrompt = { view: InstanceView; source: string };
+type TrustPrompt = { view: InstanceView; source: string; bumps: PortBump[] };
 
 /** The GitHub-import modal's state: the in-progress spec, whether a fetch is running, last error. */
 type GithubPrompt = { spec: string; submitting: boolean; error: string | null };
@@ -155,10 +156,11 @@ export default function InstanceList(
         ok?: boolean;
         view?: InstanceView;
         source?: string;
+        bumps?: PortBump[];
         error?: string;
       };
       if (res.ok && body.ok && body.view) {
-        setTrust({ view: body.view, source: body.source ?? "upload" });
+        setTrust({ view: body.view, source: body.source ?? "upload", bumps: body.bumps ?? [] });
       } else {
         setActionError(`import failed: ${body.error ?? `HTTP ${res.status}`}`);
       }
@@ -186,11 +188,16 @@ export default function InstanceList(
         ok?: boolean;
         view?: InstanceView;
         source?: string;
+        bumps?: PortBump[];
         error?: string;
       };
       if (res.ok && body.ok && body.view) {
         setGithub(null);
-        setTrust({ view: body.view, source: body.source ?? `github:${spec}` });
+        setTrust({
+          view: body.view,
+          source: body.source ?? `github:${spec}`,
+          bumps: body.bumps ?? [],
+        });
       } else {
         setGithub((g) =>
           g && { ...g, submitting: false, error: body.error ?? `HTTP ${res.status}` }
@@ -285,6 +292,12 @@ export default function InstanceList(
     } finally {
       setPending((p) => ({ ...p, [id]: false }));
     }
+  }
+
+  // Restart a running instance so a just-saved override takes effect (down → up).
+  async function restart(id: string) {
+    await act(id, "down");
+    await act(id, "up");
   }
 
   // Build the instance image, streaming the build log into the (auto-opened) Build tab.
@@ -456,6 +469,7 @@ export default function InstanceList(
                             services={r.services}
                             activeTab={activeTab}
                             onTab={(t) => setTabByInstance((m) => ({ ...m, [r.instanceId]: t }))}
+                            onRestart={() => restart(r.instanceId)}
                           />
                         )
                         : null}
@@ -522,6 +536,15 @@ export default function InstanceList(
               <span class="font-mono">{trust?.source}</span>. Only install recipes you trust — the
               image is built or pulled from the source.
             </AlertDialogDescription>
+            {trust && trust.bumps.length > 0
+              ? (
+                <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                  A host port was already in use, so it was reassigned:{" "}
+                  {trust.bumps.map((b) => `${b.name} ${b.from}→${b.to}`).join(", ")}. You can change
+                  it in Settings.
+                </p>
+              )
+              : null}
             <AlertDialogFooter>
               <Button
                 variant="outline"
@@ -724,7 +747,7 @@ function ActionButton(
 }
 
 function DetailPanel(
-  { instanceId, running, buildLines, installing, services, activeTab, onTab }: {
+  { instanceId, running, buildLines, installing, services, activeTab, onTab, onRestart }: {
     instanceId: string;
     running: boolean;
     buildLines: string[];
@@ -732,6 +755,7 @@ function DetailPanel(
     services: Service[];
     activeTab: TabKey;
     onTab: (t: TabKey) => void;
+    onRestart: () => void;
   },
 ) {
   const buildAvailable = buildLines.length > 0 || installing;
@@ -779,7 +803,7 @@ function DetailPanel(
           <ServicesList services={services} running={running} />
         </TabsContent>
         <TabsContent value="settings">
-          <SettingsPanel instanceId={instanceId} running={running} />
+          <SettingsPanel instanceId={instanceId} running={running} onRestart={onRestart} />
         </TabsContent>
       </Tabs>
     </div>
@@ -836,59 +860,54 @@ function ServicesList({ services, running }: { services: Service[]; running: boo
   if (!services.length) {
     return <p class="text-sm text-muted-foreground">No web UI ports declared.</p>;
   }
-  // Listed straight from the manifest; the badge reflects whether the port is published
-  // yet (the live host binding has appeared in `ps`) — `ready` once reachable, otherwise
-  // `starting…` so the row doesn't blink in/out during container startup.
+  // The port shown is the live published one when known, else the DEFINED port
+  // (override ▷ manifest); `ready` reflects whether the live binding is confirmed in
+  // `ps`. Open is active only when ready (the defined port may not be bound yet).
   return (
     <ul class="space-y-2">
-      {services.map((s) => {
-        const ready = s.url !== undefined;
-        return (
-          <li
-            key={s.name}
-            class="flex items-center justify-between gap-3 rounded border border-border px-3 py-2"
-          >
-            <div class="min-w-0">
-              <div class="flex items-center gap-2">
-                <span class="text-sm font-medium">{s.name}</span>
-                {ready
-                  ? <span class="text-xs text-muted-foreground font-mono">:{s.port}</span>
-                  : null}
-                {ready
-                  ? (
-                    <span class="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-500/15 dark:text-green-400">
-                      ready
-                    </span>
-                  )
-                  : (
-                    <span class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-400">
-                      starting…
-                    </span>
-                  )}
-              </div>
-              {s.description
-                ? <p class="text-xs text-muted-foreground truncate">{s.description}</p>
-                : null}
+      {services.map((s) => (
+        <li
+          key={s.name}
+          class="flex items-center justify-between gap-3 rounded border border-border px-3 py-2"
+        >
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium">{s.name}</span>
+              <span class="text-xs text-muted-foreground font-mono">:{s.port}</span>
+              {s.ready
+                ? (
+                  <span class="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-500/15 dark:text-green-400">
+                    ready
+                  </span>
+                )
+                : (
+                  <span class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-400">
+                    starting…
+                  </span>
+                )}
             </div>
-            {ready
-              ? (
-                <a
-                  href={s.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0")}
-                >
-                  <ExternalLink class="size-4" />Open
-                </a>
-              )
-              : (
-                <Button variant="outline" size="sm" disabled class="shrink-0">
-                  <ExternalLink class="size-4" />Open
-                </Button>
-              )}
-          </li>
-        );
-      })}
+            {s.description
+              ? <p class="text-xs text-muted-foreground truncate">{s.description}</p>
+              : null}
+          </div>
+          {s.ready
+            ? (
+              <a
+                href={s.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                class={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0")}
+              >
+                <ExternalLink class="size-4" />Open
+              </a>
+            )
+            : (
+              <Button variant="outline" size="sm" disabled class="shrink-0">
+                <ExternalLink class="size-4" />Open
+              </Button>
+            )}
+        </li>
+      ))}
     </ul>
   );
 }
@@ -900,7 +919,13 @@ const FIELD_CLASS =
 // opens (Base UI unmounts inactive panels): GET the manifest⊕override view-model,
 // edit, then Save PUTs only the values that differ from the manifest defaults. The
 // override applies on the next start (loaded by `up`) — server-confirmed, no optimism.
-function SettingsPanel({ instanceId, running }: { instanceId: string; running: boolean }) {
+function SettingsPanel(
+  { instanceId, running, onRestart }: {
+    instanceId: string;
+    running: boolean;
+    onRestart: () => void;
+  },
+) {
   const [settings, setSettings] = useState<InstanceSettings | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [ports, setPorts] = useState<Record<string, string>>({});
@@ -967,6 +992,25 @@ function SettingsPanel({ instanceId, running }: { instanceId: string; running: b
 
   const missingRequired = settings.env.some((e) => e.required && !env[e.name]?.trim());
 
+  // Port conflict is DEFINITION-based (the host ports DEFINED by other instances, plus
+  // this instance's own other ports) and recomputes as the user types — so it catches
+  // stopped instances and clears the moment the value is changed to a free one.
+  const portValues = settings.ports.map((p) => ({ name: p.name, value: Number(ports[p.name]) }));
+  const conflictsWith = (name: string, value: number): boolean => {
+    if (!Number.isInteger(value)) return false;
+    if (settings.takenByOthers.includes(value)) return true;
+    return portValues.some((pv) => pv.name !== name && pv.value === value);
+  };
+  const freePortFrom = (from: number, name: string): number => {
+    const used = new Set(settings.takenByOthers);
+    for (const pv of portValues) {
+      if (pv.name !== name && Number.isInteger(pv.value)) used.add(pv.value);
+    }
+    let n = Number.isInteger(from) && from >= 1 ? from : 1024;
+    while (used.has(n) && n < 65535) n++;
+    return n;
+  };
+
   // The override = only values that DIFFER from the manifest defaults (a minimal config.yaml).
   const buildOverride = () => {
     const hostPorts: Record<string, number> = {};
@@ -1021,7 +1065,8 @@ function SettingsPanel({ instanceId, running }: { instanceId: string; running: b
               Ports
             </h4>
             {settings.ports.map((p) => {
-              const inUse = p.suggested !== (p.override ?? p.manifestHost);
+              const cur = Number(ports[p.name]);
+              const conflict = conflictsWith(p.name, cur);
               return (
                 <div key={p.name} class="flex items-center justify-between gap-3">
                   <div class="min-w-0">
@@ -1038,14 +1083,14 @@ function SettingsPanel({ instanceId, running }: { instanceId: string; running: b
                         container {p.container} · default {p.manifestHost}
                       </span>
                     </div>
-                    {inUse
+                    {conflict
                       ? (
                         <button
                           type="button"
                           class="text-xs text-amber-600 hover:underline dark:text-amber-400"
-                          onClick={() => editPort(p.name, String(p.suggested))}
+                          onClick={() => editPort(p.name, String(freePortFrom(cur, p.name)))}
                         >
-                          {p.manifestHost} in use → use free port {p.suggested}
+                          port {cur} already in use → use free port {freePortFrom(cur, p.name)}
                         </button>
                       )
                       : null}
@@ -1057,7 +1102,11 @@ function SettingsPanel({ instanceId, running }: { instanceId: string; running: b
                     value={ports[p.name] ?? ""}
                     onInput={(e) => editPort(p.name, (e.currentTarget as HTMLInputElement).value)}
                     aria-label={`Host port for ${p.name}`}
-                    class={cn(FIELD_CLASS, "w-28 font-mono")}
+                    class={cn(
+                      FIELD_CLASS,
+                      "w-28 font-mono",
+                      conflict && "border-amber-500 focus-visible:ring-amber-500",
+                    )}
                   />
                 </div>
               );
@@ -1150,12 +1199,16 @@ function SettingsPanel({ instanceId, running }: { instanceId: string; running: b
             </span>
           )
           : null}
-        {saved
+        {saved ? <span class="text-xs text-green-600 dark:text-green-400">Saved.</span> : null}
+        {saved && running
           ? (
-            <span class="text-xs text-green-600 dark:text-green-400">
-              Saved{running ? " — applies on next start" : ""}.
-            </span>
+            <Button variant="outline" size="sm" onClick={onRestart}>
+              Restart now to apply
+            </Button>
           )
+          : null}
+        {saved && !running
+          ? <span class="text-xs text-muted-foreground">Applies on next start.</span>
           : null}
         {saveError ? <span class="text-xs text-destructive">{saveError}</span> : null}
       </div>

@@ -17,6 +17,9 @@ export type WebPort = {
   protocol: string;
   /** Absolute UI path appended to the URL. */
   path: string;
+  /** Effective DEFINED host port (override ▷ manifest host ▷ container) — the fallback
+   * when no live published port is known yet. */
+  host: number;
   description?: string;
 };
 
@@ -28,19 +31,22 @@ export type PublishedPort = {
 };
 
 /**
- * A declared web endpoint plus its live reachability. `url`/`port` are set once the
- * running container publishes the port; while the container is still starting (the
- * binding hasn't appeared in `ps` yet) they are `undefined` — the service is listed
- * from the manifest with a "starting" state rather than vanishing from the list.
+ * A declared web endpoint resolved to a host port. The port is the LIVE published port
+ * when known (authoritative — it reflects an unrestarted instance still on its old port,
+ * and an engine auto-bump), else the DEFINED port (override ▷ manifest). `ready` is true
+ * once the live binding is confirmed in `ps`; while still starting it is false and the
+ * `port`/`url` show the *expected* (defined) endpoint rather than blank.
  */
 export type Service = {
   name: string;
   path: string;
   description?: string;
-  /** Live published host port, once known. */
-  port?: number;
-  /** Live openable URL, once the port is published. */
-  url?: string;
+  /** Host port: live published ▷ defined (override ▷ manifest). */
+  port: number;
+  /** Openable URL built from `port` + path. */
+  url: string;
+  /** The live binding is confirmed in `ps` (vs. the still-starting expected endpoint). */
+  ready: boolean;
 };
 
 /** An instance reduced to the fields the dashboard renders (built by the handler). */
@@ -59,12 +65,16 @@ export type InstanceView = {
 };
 
 // --- per-instance settings (RI-4 override editor) --------------------------
-// The Settings editor view-model: each manifest item with its author default, the
-// saved override (if any), and (for ports) a free-port suggestion. Built server-side
-// from manifest ⊕ config.yaml; the island renders it into an editable form and PUTs
-// back only the values that differ from the defaults.
+// The Settings editor view-model: each manifest item with its author default and the
+// saved override (if any). Built server-side from manifest ⊕ config.yaml; the island
+// renders it into an editable form and PUTs back only the values that differ from the
+// defaults. Port conflicts are checked CLIENT-side against `takenByOthers` (the host
+// ports DEFINED by other instances), so the warning recomputes live as the user types.
 
-/** One manifest port in the Settings editor: default host, saved override, free-port suggestion. */
+/** A host port reassigned at add time to avoid a collision (shown in the trust prompt). */
+export type PortBump = { name: string; from: number; to: number };
+
+/** One manifest port in the Settings editor: author default + saved override. */
 export type PortSetting = {
   name: string;
   container: number;
@@ -74,8 +84,6 @@ export type PortSetting = {
   manifestHost: number;
   /** Saved host-port override, if any. */
   override?: number;
-  /** A free host port near the effective value (auto-suggest; engine-aware, best-effort). */
-  suggested: number;
 };
 
 /** One manifest env var in the Settings editor. */
@@ -103,6 +111,8 @@ export type InstanceSettings = {
   ports: PortSetting[];
   env: EnvSetting[];
   mounts: MountSetting[];
+  /** Host ports DEFINED by OTHER instances — the client checks port conflicts against this. */
+  takenByOthers: number[];
 };
 
 /**
@@ -164,23 +174,25 @@ export function toContainerStatuses(
 }
 
 /**
- * List EVERY declared web port (so the Services list is populated straight from the
- * manifest the moment the instance runs, with no blank window), resolving each to a
- * live URL by matching it to a running container's published ports (container port +
- * protocol). The manifest's declared host port is only a *desired* value (it can be
- * auto-bumped on conflict), so the authoritative host port is the engine's published
- * one — never the manifest's. A port not yet published has `url`/`port` undefined
- * (the UI shows it as "starting").
+ * List EVERY declared web port, resolving each host port by precedence:
+ * **live published ▷ defined (override ▷ manifest)**. The live port wins when known
+ * because it is what the container is ACTUALLY on — covering an instance whose override
+ * changed but wasn't restarted yet, and an engine auto-bump. When no live binding has
+ * appeared in `ps` yet (the starting window), fall back to the defined port (`wp.host`)
+ * so the row shows the *expected* endpoint instead of a blank, with `ready: false`.
  */
 export function instanceServices(webPorts: WebPort[], ports: PublishedPort[]): Service[] {
   return webPorts.map((wp) => {
-    const pub = ports.find((p) => p.container === wp.container && p.protocol === wp.protocol);
+    const live = ports.find((p) => p.container === wp.container && p.protocol === wp.protocol)
+      ?.public;
+    const port = live ?? wp.host;
     return {
       name: wp.name,
       path: wp.path,
       description: wp.description,
-      port: pub?.public,
-      url: pub ? `http://localhost:${pub.public}${wp.path}` : undefined,
+      port,
+      url: `http://localhost:${port}${wp.path}`,
+      ready: live !== undefined,
     };
   });
 }

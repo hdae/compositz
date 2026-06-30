@@ -23,7 +23,7 @@ type Initial = {
 export const handler = define.handlers({
   async GET(_ctx) {
     const instances = await listInstances(store);
-    const views: InstanceView[] = instances.map(toInstanceView);
+    const views: InstanceView[] = await Promise.all(instances.map(toInstanceView));
 
     // Best-effort engine read: the UI must still render when Docker is down.
     let initial: Initial;

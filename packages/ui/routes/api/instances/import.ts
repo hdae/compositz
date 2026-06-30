@@ -1,6 +1,6 @@
 import { CompositzError, EngineHttpError, ingestBundle, instancesDir } from "@compositz/core";
 import { define } from "../../../utils.ts";
-import { toInstanceView } from "../../../lib/instance-view.ts";
+import { finalizeImport } from "../../../lib/instance-view.ts";
 
 // SERVER-ONLY: imports @compositz/core (→ node:net + filesystem). Accepts a recipe
 // bundle as the raw request body (a tar / tar.gz archive) and creates a new instance
@@ -31,11 +31,8 @@ export const handler = define.handlers({
     const source = filename ? `upload:${sanitizeFilename(filename)}` : "upload";
     try {
       const instance = await ingestBundle({ kind: "archive", stream: body }, store, { source });
-      return Response.json({
-        ok: true,
-        view: toInstanceView(instance),
-        source: instance.meta.source ?? source,
-      });
+      const { view, bumps } = await finalizeImport(store, instance);
+      return Response.json({ ok: true, view, source: instance.meta.source ?? source, bumps });
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
       // A bad-input CompositzError (bad archive / traversal / invalid manifest) is

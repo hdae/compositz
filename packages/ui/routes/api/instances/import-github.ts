@@ -1,6 +1,6 @@
 import { CompositzError, EngineHttpError, ingestGithub, instancesDir } from "@compositz/core";
 import { define } from "../../../utils.ts";
-import { toInstanceView } from "../../../lib/instance-view.ts";
+import { finalizeImport } from "../../../lib/instance-view.ts";
 
 // SERVER-ONLY: imports @compositz/core (→ node:net + fetch + filesystem). Accepts a
 // GitHub source spec (`owner/repo[/subdir][@ref]`, optional `github:` prefix) as JSON
@@ -21,11 +21,8 @@ export const handler = define.handlers({
     }
     try {
       const instance = await ingestGithub(spec, store);
-      return Response.json({
-        ok: true,
-        view: toInstanceView(instance),
-        source: instance.meta.source ?? spec,
-      });
+      const { view, bumps } = await finalizeImport(store, instance);
+      return Response.json({ ok: true, view, source: instance.meta.source ?? spec, bumps });
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
       // A bad spec / bad repo-ref (404) / bad bundle / invalid manifest is the client's
