@@ -21,7 +21,10 @@ type Command = (args: string[]) => Promise<number>;
 
 const COMMANDS: Record<string, { run: Command; help: string }> = {
   doctor: { run: doctor, help: "Check that the Docker engine is reachable" },
-  import: { run: importCmd, help: "Import a recipe bundle (tar/tar.gz/dir) → create an instance" },
+  import: {
+    run: importCmd,
+    help: "Import a recipe (tar/tar.gz/dir/github:owner/repo) → create an instance",
+  },
   ls: { run: ls, help: "List instances in the store" },
   duplicate: { run: duplicateCmd, help: "Derive a fresh instance from an existing one" },
   install: { run: install, help: "Build an instance's image" },
