@@ -13,6 +13,7 @@ export {
   LoaderCircle,
   Play,
   ScrollText,
+  Settings,
   Square,
   Trash2,
   Upload,

@@ -58,6 +58,53 @@ export type InstanceView = {
   imageTag: string;
 };
 
+// --- per-instance settings (RI-4 override editor) --------------------------
+// The Settings editor view-model: each manifest item with its author default, the
+// saved override (if any), and (for ports) a free-port suggestion. Built server-side
+// from manifest ⊕ config.yaml; the island renders it into an editable form and PUTs
+// back only the values that differ from the defaults.
+
+/** One manifest port in the Settings editor: default host, saved override, free-port suggestion. */
+export type PortSetting = {
+  name: string;
+  container: number;
+  web: boolean;
+  description?: string;
+  /** Manifest default host port (`p.host ?? p.container`). */
+  manifestHost: number;
+  /** Saved host-port override, if any. */
+  override?: number;
+  /** A free host port near the effective value (auto-suggest; engine-aware, best-effort). */
+  suggested: number;
+};
+
+/** One manifest env var in the Settings editor. */
+export type EnvSetting = {
+  name: string;
+  description?: string;
+  required: boolean;
+  /** Manifest default / placeholder value. */
+  default?: string;
+  /** Saved value override, if any. */
+  override?: string;
+};
+
+/** One manifest mount in the Settings editor (placement is the only override). */
+export type MountSetting = {
+  name: string;
+  target: string;
+  description?: string;
+  manifestPlacement: "bind" | "volume";
+  override?: "bind" | "volume";
+};
+
+/** The Settings editor view-model for one instance (manifest ⊕ saved override). */
+export type InstanceSettings = {
+  ports: PortSetting[];
+  env: EnvSetting[];
+  mounts: MountSetting[];
+};
+
 /**
  * A managed container reduced to what the dashboard needs — slim enough to push
  * over SSE as JSON. `instance` is the instance id carried by the container label

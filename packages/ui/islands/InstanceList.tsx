@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   Play,
   ScrollText,
+  Settings,
   Square,
   Trash2,
   Upload,
@@ -17,6 +18,7 @@ import {
 import {
   type ContainerStatus,
   type InstanceRow,
+  type InstanceSettings,
   type InstanceView,
   type Service,
   toInstanceRows,
@@ -54,7 +56,7 @@ type Initial = {
   engineError: string | null;
 };
 
-type TabKey = "build" | "logs" | "services";
+type TabKey = "build" | "logs" | "services" | "settings";
 
 /** A freshly-imported instance awaiting the trust ("install?") decision. */
 type TrustPrompt = { view: InstanceView; source: string };
@@ -742,7 +744,7 @@ function DetailPanel(
       <Tabs
         value={effective}
         onValueChange={(v: unknown) => {
-          if (v === "build" || v === "logs" || v === "services") onTab(v);
+          if (v === "build" || v === "logs" || v === "services" || v === "settings") onTab(v);
         }}
       >
         <TabsList>
@@ -759,6 +761,9 @@ function DetailPanel(
           <TabsTrigger value="services">
             <Globe class="size-3.5" />Services
           </TabsTrigger>
+          <TabsTrigger value="settings">
+            <Settings class="size-3.5" />Settings
+          </TabsTrigger>
         </TabsList>
         {buildAvailable
           ? (
@@ -772,6 +777,9 @@ function DetailPanel(
         </TabsContent>
         <TabsContent value="services">
           <ServicesList services={services} running={running} />
+        </TabsContent>
+        <TabsContent value="settings">
+          <SettingsPanel instanceId={instanceId} running={running} />
         </TabsContent>
       </Tabs>
     </div>
@@ -882,5 +890,275 @@ function ServicesList({ services, running }: { services: Service[]; running: boo
         );
       })}
     </ul>
+  );
+}
+
+const FIELD_CLASS =
+  "rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
+
+// The per-instance launch-override editor (RI-4). Mounts fresh when the Settings tab
+// opens (Base UI unmounts inactive panels): GET the manifest⊕override view-model,
+// edit, then Save PUTs only the values that differ from the manifest defaults. The
+// override applies on the next start (loaded by `up`) — server-confirmed, no optimism.
+function SettingsPanel({ instanceId, running }: { instanceId: string; running: boolean }) {
+  const [settings, setSettings] = useState<InstanceSettings | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [ports, setPorts] = useState<Record<string, string>>({});
+  const [env, setEnv] = useState<Record<string, string>>({});
+  const [placement, setPlacement] = useState<Record<string, "bind" | "volume">>({});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setSettings(null);
+    setLoadError(null);
+    fetch(`/api/instances/${instanceId}/config`)
+      .then((r) => r.json())
+      .then((b: { ok?: boolean; settings?: InstanceSettings; error?: string }) => {
+        if (!alive) return;
+        if (b.ok && b.settings) {
+          setSettings(b.settings);
+          setPorts(
+            Object.fromEntries(
+              b.settings.ports.map((p) => [p.name, String(p.override ?? p.manifestHost)]),
+            ),
+          );
+          setEnv(
+            Object.fromEntries(b.settings.env.map((e) => [e.name, e.override ?? e.default ?? ""])),
+          );
+          setPlacement(
+            Object.fromEntries(
+              b.settings.mounts.map((m) => [m.name, m.override ?? m.manifestPlacement]),
+            ),
+          );
+        } else {
+          setLoadError(b.error ?? "failed to load settings");
+        }
+      })
+      .catch((e) => alive && setLoadError(e instanceof Error ? e.message : String(e)));
+    return () => {
+      alive = false;
+    };
+  }, [instanceId]);
+
+  // Any edit invalidates a prior "Saved" confirmation.
+  const editPort = (name: string, v: string) => {
+    setPorts((s) => ({ ...s, [name]: v }));
+    setSaved(false);
+  };
+  const editEnv = (name: string, v: string) => {
+    setEnv((s) => ({ ...s, [name]: v }));
+    setSaved(false);
+  };
+  const editPlace = (name: string, v: "bind" | "volume") => {
+    setPlacement((s) => ({ ...s, [name]: v }));
+    setSaved(false);
+  };
+
+  if (loadError) {
+    return <p class="text-sm text-destructive">Failed to load settings: {loadError}</p>;
+  }
+  if (!settings) return <p class="text-sm text-muted-foreground">Loading settings…</p>;
+  if (!settings.ports.length && !settings.env.length && !settings.mounts.length) {
+    return <p class="text-sm text-muted-foreground">Nothing to configure for this recipe.</p>;
+  }
+
+  const missingRequired = settings.env.some((e) => e.required && !env[e.name]?.trim());
+
+  // The override = only values that DIFFER from the manifest defaults (a minimal config.yaml).
+  const buildOverride = () => {
+    const hostPorts: Record<string, number> = {};
+    for (const p of settings.ports) {
+      const n = Number(ports[p.name]?.trim());
+      if (Number.isInteger(n) && n !== p.manifestHost) hostPorts[p.name] = n;
+    }
+    const envOut: Record<string, string> = {};
+    for (const e of settings.env) {
+      const v = env[e.name] ?? "";
+      if (v !== "" && v !== (e.default ?? "")) envOut[e.name] = v;
+    }
+    const placeOut: Record<string, "bind" | "volume"> = {};
+    for (const m of settings.mounts) {
+      if (placement[m.name] && placement[m.name] !== m.manifestPlacement) {
+        placeOut[m.name] = placement[m.name];
+      }
+    }
+    const o: Record<string, unknown> = {};
+    if (Object.keys(hostPorts).length) o.hostPorts = hostPorts;
+    if (Object.keys(envOut).length) o.env = envOut;
+    if (Object.keys(placeOut).length) o.placement = placeOut;
+    return o;
+  };
+
+  async function save() {
+    setSaving(true);
+    setSaved(false);
+    setSaveError(null);
+    try {
+      const res = await fetch(`/api/instances/${instanceId}/config`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(buildOverride()),
+      });
+      const b = await res.json().catch(() => ({})) as { ok?: boolean; error?: string };
+      if (res.ok && b.ok) setSaved(true);
+      else setSaveError(b.error ?? `HTTP ${res.status}`);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div class="space-y-5">
+      {settings.ports.length
+        ? (
+          <section class="space-y-2">
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Ports
+            </h4>
+            {settings.ports.map((p) => {
+              const inUse = p.suggested !== (p.override ?? p.manifestHost);
+              return (
+                <div key={p.name} class="flex items-center justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-medium">{p.name}</span>
+                      {p.web
+                        ? (
+                          <span class="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-800 dark:bg-blue-500/15 dark:text-blue-400">
+                            web
+                          </span>
+                        )
+                        : null}
+                      <span class="text-xs text-muted-foreground">
+                        container {p.container} · default {p.manifestHost}
+                      </span>
+                    </div>
+                    {inUse
+                      ? (
+                        <button
+                          type="button"
+                          class="text-xs text-amber-600 hover:underline dark:text-amber-400"
+                          onClick={() => editPort(p.name, String(p.suggested))}
+                        >
+                          {p.manifestHost} in use → use free port {p.suggested}
+                        </button>
+                      )
+                      : null}
+                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    max={65535}
+                    value={ports[p.name] ?? ""}
+                    onInput={(e) => editPort(p.name, (e.currentTarget as HTMLInputElement).value)}
+                    aria-label={`Host port for ${p.name}`}
+                    class={cn(FIELD_CLASS, "w-28 font-mono")}
+                  />
+                </div>
+              );
+            })}
+          </section>
+        )
+        : null}
+
+      {settings.env.length
+        ? (
+          <section class="space-y-2">
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Environment
+            </h4>
+            {settings.env.map((e) => (
+              <div key={e.name} class="space-y-1">
+                <div class="flex items-center gap-2">
+                  <span class="font-mono text-sm">{e.name}</span>
+                  {e.required
+                    ? <span class="text-xs font-medium text-destructive">required</span>
+                    : null}
+                </div>
+                {e.description
+                  ? <p class="text-xs text-muted-foreground">{e.description}</p>
+                  : null}
+                <input
+                  type="text"
+                  value={env[e.name] ?? ""}
+                  placeholder={e.default ?? ""}
+                  onInput={(ev) => editEnv(e.name, (ev.currentTarget as HTMLInputElement).value)}
+                  aria-label={`Value for ${e.name}`}
+                  class={cn(FIELD_CLASS, "w-full")}
+                />
+              </div>
+            ))}
+          </section>
+        )
+        : null}
+
+      {settings.mounts.length
+        ? (
+          <section class="space-y-2">
+            <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Storage
+            </h4>
+            {settings.mounts.map((m) => (
+              <div key={m.name} class="flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium">{m.name}</span>
+                    <span class="text-xs text-muted-foreground font-mono truncate">{m.target}</span>
+                  </div>
+                  {m.description
+                    ? <p class="text-xs text-muted-foreground truncate">{m.description}</p>
+                    : null}
+                </div>
+                <select
+                  value={placement[m.name] ?? m.manifestPlacement}
+                  onChange={(e) =>
+                    editPlace(
+                      m.name,
+                      (e.currentTarget as HTMLSelectElement).value as "bind" | "volume",
+                    )}
+                  aria-label={`Placement for ${m.name}`}
+                  class={cn(FIELD_CLASS, "w-28")}
+                >
+                  <option value="volume">volume</option>
+                  <option value="bind">bind</option>
+                </select>
+              </div>
+            ))}
+          </section>
+        )
+        : null}
+
+      <div class="flex items-center gap-3 border-t border-border pt-3">
+        <Button size="sm" disabled={saving || missingRequired} onClick={save}>
+          {saving
+            ? (
+              <>
+                <LoaderCircle class="size-4 animate-spin" />Saving…
+              </>
+            )
+            : "Save"}
+        </Button>
+        {missingRequired
+          ? (
+            <span class="text-xs text-amber-600 dark:text-amber-400">
+              Set required values to save.
+            </span>
+          )
+          : null}
+        {saved
+          ? (
+            <span class="text-xs text-green-600 dark:text-green-400">
+              Saved{running ? " — applies on next start" : ""}.
+            </span>
+          )
+          : null}
+        {saveError ? <span class="text-xs text-destructive">{saveError}</span> : null}
+      </div>
+    </div>
   );
 }
