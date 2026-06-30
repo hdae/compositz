@@ -53,6 +53,13 @@ export {
   randomInstanceId,
 } from "./src/recipe/ingest.ts";
 export {
+  githubSource,
+  type GithubSpec,
+  githubTarballUrl,
+  ingestGithub,
+  parseGithubSpec,
+} from "./src/recipe/github.ts";
+export {
   instanceContainerName,
   instanceImageTag,
   type LaunchConfig,

@@ -43,7 +43,12 @@ export function randomInstanceId(appId: string, size = 8): string {
 
 /** A recipe bundle to ingest: a packed-archive byte stream, or a directory on disk. */
 export type BundleSource =
-  | { kind: "archive"; stream: ReadableStream<Uint8Array> }
+  | {
+    kind: "archive";
+    stream: ReadableStream<Uint8Array>;
+    /** Narrow ingestion to this path inside the bundle (e.g. a GitHub monorepo subdir). */
+    subdir?: string;
+  }
   | { kind: "dir"; dir: string };
 
 /**
@@ -65,7 +70,8 @@ export async function ingestBundle(
       await copyTreeTo(source.dir, staging);
     }
 
-    const bundleRoot = await locateBundleRoot(staging);
+    const subdir = source.kind === "archive" ? source.subdir : undefined;
+    const bundleRoot = await locateBundleRoot(staging, subdir);
     const { manifest } = await loadRecipe(bundleRoot); // Zod-validate; throws on any problem
     const instanceId = randomInstanceId(manifest.id);
 
@@ -249,25 +255,49 @@ async function copyTreeTo(src: string, dest: string): Promise<void> {
 /**
  * Find the bundle root in a staging dir: the directory holding `compositz.yaml`,
  * at the root or in a single top-level wrapper dir (e.g. `tar czf` of a directory,
- * or a GitHub codeload tarball). Zero or multiple matches are ambiguous → reject.
+ * or a GitHub codeload tarball). When `subdir` is given, descend into it under each
+ * candidate root first (a GitHub monorepo subdir). Zero or multiple matches are
+ * ambiguous → reject.
  */
-async function locateBundleRoot(staging: string): Promise<string> {
+async function locateBundleRoot(staging: string, subdir?: string): Promise<string> {
   const manifest = BRAND.manifestFile;
-  if (await pathExists(join(staging, manifest))) return staging;
+  const sub = subdir ? safeRelSubdir(subdir) : "";
+  const rootOf = (base: string) => (sub ? join(base, sub) : base);
 
+  // 1. Manifest directly under the staging root (a bundle packed without a wrapper).
+  const direct = rootOf(staging);
+  if (await pathExists(join(direct, manifest))) return direct;
+
+  // 2. Otherwise a single top-level wrapper dir (a `tar czf` of a dir, or a codeload
+  //    tarball `<repo>-<ref>/…`), descended into `subdir` when one is given.
   const candidates: string[] = [];
   for await (const entry of Deno.readDir(staging)) {
-    if (entry.isDirectory && await pathExists(join(staging, entry.name, manifest))) {
-      candidates.push(join(staging, entry.name));
-    }
+    if (!entry.isDirectory) continue;
+    const root = rootOf(join(staging, entry.name));
+    if (await pathExists(join(root, manifest))) candidates.push(root);
   }
   if (candidates.length === 1) return candidates[0];
   if (candidates.length === 0) {
     throw new CompositzError(
-      `no ${manifest} found in the bundle (expected at the root or in a single top-level directory)`,
+      sub
+        ? `no ${manifest} found under "${sub}" in the bundle (checked the root and each top-level directory)`
+        : `no ${manifest} found in the bundle (expected at the root or in a single top-level directory)`,
     );
   }
   throw new CompositzError(`ambiguous bundle: ${manifest} found in multiple top-level directories`);
+}
+
+/**
+ * Validate an untrusted subdir is a relative path that stays inside the bundle, and
+ * return it normalized (forward slashes, no trailing slash). Empty / "." ⇒ "".
+ */
+function safeRelSubdir(subdir: string): string {
+  const norm = normalize(subdir.replaceAll("\\", "/")).replace(/\/+$/, "");
+  if (norm === "" || norm === ".") return "";
+  if (isAbsolute(norm) || norm.split("/").some((seg) => seg === "..")) {
+    throw new CompositzError(`invalid subdir "${subdir}": must be a path inside the bundle`);
+  }
+  return norm;
 }
 
 async function pathExists(path: string): Promise<boolean> {

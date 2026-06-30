@@ -171,6 +171,63 @@ Deno.test("duplicateInstance: does NOT copy instance state placed outside app/",
   });
 });
 
+// --- subdir descent (GitHub monorepo, RI-3) --------------------------------
+
+Deno.test("ingestBundle: a subdir descends into a path inside a codeload-style wrapper", async () => {
+  await withStore(async (store) => {
+    const tar = makeTar([
+      { path: "repo-main/README.md", data: enc.encode("top-level noise") },
+      { path: "repo-main/recipes/hello/compositz.yaml", data: enc.encode(MANIFEST) },
+      { path: "repo-main/recipes/hello/Dockerfile", data: enc.encode(DOCKERFILE) },
+    ]);
+    const inst = await ingestBundle(
+      { kind: "archive", stream: S(tar), subdir: "recipes/hello" },
+      store,
+    );
+    assertEquals(inst.appId, "hello");
+    assertEquals((await Deno.stat(join(store, inst.instanceId, "app", "Dockerfile"))).isFile, true);
+  });
+});
+
+Deno.test("ingestBundle: a subdir works without a top-level wrapper dir too", async () => {
+  await withStore(async (store) => {
+    const tar = makeTar([
+      { path: "recipes/hello/compositz.yaml", data: enc.encode(MANIFEST) },
+      { path: "recipes/hello/Dockerfile", data: enc.encode(DOCKERFILE) },
+    ]);
+    const inst = await ingestBundle(
+      { kind: "archive", stream: S(tar), subdir: "recipes/hello" },
+      store,
+    );
+    assertEquals(inst.appId, "hello");
+  });
+});
+
+Deno.test("ingestBundle: a subdir with no manifest is rejected, naming the subdir", async () => {
+  await withStore(async (store) => {
+    const tar = makeTar([
+      { path: "repo-main/recipes/hello/compositz.yaml", data: enc.encode(MANIFEST) },
+      { path: "repo-main/recipes/hello/Dockerfile", data: enc.encode(DOCKERFILE) },
+    ]);
+    await assertRejects(
+      () => ingestBundle({ kind: "archive", stream: S(tar), subdir: "recipes/missing" }, store),
+      Error,
+      'under "recipes/missing"',
+    );
+  });
+});
+
+Deno.test("ingestBundle: a subdir that escapes the bundle is rejected", async () => {
+  await withStore(async (store) => {
+    const tar = makeTar([{ path: "repo-main/compositz.yaml", data: enc.encode(MANIFEST) }]);
+    await assertRejects(
+      () => ingestBundle({ kind: "archive", stream: S(tar), subdir: "../escape" }, store),
+      Error,
+      "must be a path inside the bundle",
+    );
+  });
+});
+
 // --- security: extraction refuses to escape the destination ----------------
 
 Deno.test("extractArchiveTo: rejects a `..` traversal path", async () => {
