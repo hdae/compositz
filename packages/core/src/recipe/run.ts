@@ -69,9 +69,21 @@ export function instanceContainerName(instanceId: string): string {
   return containerName(instanceId);
 }
 
-/** Effective host port for a named port: launch remap ▷ manifest host ▷ container. */
+/**
+ * The effective host port a named port is DEFINED to publish on: override remap ▷
+ * manifest `host` ▷ container port. This is the definition (manifest ⊕ override), NOT
+ * the live published port — the engine may auto-bump it on a launch conflict.
+ */
+export function effectiveHostPort(
+  p: { name: string; host?: number; container: number },
+  hostPorts?: Record<string, number>,
+): number {
+  return hostPorts?.[p.name] ?? p.host ?? p.container;
+}
+
+/** Effective host port for a named port, from a full launch override. */
 function hostPortOf(p: Manifest["ports"][number], launch: LaunchConfig): number {
-  return launch.hostPorts?.[p.name] ?? p.host ?? p.container;
+  return effectiveHostPort(p, launch.hostPorts);
 }
 
 export type WebEndpoint = { name: string; url: string };

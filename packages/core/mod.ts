@@ -69,6 +69,7 @@ export {
   parseGithubSpec,
 } from "./src/recipe/github.ts";
 export {
+  effectiveHostPort,
   instanceContainerName,
   instanceImageTag,
   type LaunchConfig,
@@ -81,8 +82,11 @@ export {
   webUrl,
 } from "./src/recipe/run.ts";
 export {
+  deconflictHostPorts,
+  definedHostPorts,
   down,
   installInstance,
+  type PortBump,
   removeInstanceImage,
   up,
   type UpResult,

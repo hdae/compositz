@@ -8,8 +8,14 @@ import { tarContext } from "../build.ts";
 import type { EngineClient } from "../engine/client.ts";
 import type { BuildProgress } from "../engine/types.ts";
 import { defaultDataRoot } from "../storage.ts";
-import { type Instance, loadInstanceConfig } from "./instance.ts";
 import {
+  type Instance,
+  listInstances,
+  loadInstanceConfig,
+  saveInstanceConfig,
+} from "./instance.ts";
+import {
+  effectiveHostPort,
   instanceContainerName,
   instanceImageTag,
   type LaunchConfig,
@@ -122,6 +128,64 @@ async function resolvePorts(
     // engine list failed — fall back to the desired ports unchanged.
   }
   return resolveHostPorts(desired, taken);
+}
+
+/** A host port reassigned away from a collision: `name`'s desired `from` → assigned `to`. */
+export type PortBump = { name: string; from: number; to: number };
+
+/**
+ * Every host port DEFINED (manifest ⊕ persisted override) by instances in the store,
+ * optionally excluding one instance. Engine-independent (no `ps`) — so it reflects
+ * stopped instances too. The source of truth for "which host ports are spoken for"
+ * shared by add-time deconfliction and the Settings conflict warning.
+ */
+export async function definedHostPorts(
+  instancesDir: string,
+  excludeInstanceId?: string,
+): Promise<number[]> {
+  const ports: number[] = [];
+  for (const inst of await listInstances(instancesDir)) {
+    if (inst.instanceId === excludeInstanceId) continue;
+    const ovr = await loadInstanceConfig(inst.dir);
+    for (const p of inst.manifest.ports) ports.push(effectiveHostPort(p, ovr.hostPorts));
+  }
+  return ports;
+}
+
+/**
+ * Deconflict a freshly-created instance's host ports against the DEFINED host ports of
+ * all OTHER instances in the store (manifest ⊕ persisted override — engine-independent,
+ * so it catches stopped instances too). Each colliding port is reassigned to the next
+ * free one, PERSISTED to this instance's `config.yaml` override (so the assignment is
+ * stable and visible in the Settings editor), and reported. Returns the bumps (empty if
+ * none) so the caller can NOTIFY the user — reducing the surprise of a silent remap.
+ *
+ * This is the add-time counterpart to `up`'s launch-time `resolvePorts`: add-time keeps
+ * managed instances from colliding by definition; `up` stays the safety net for ports
+ * held by non-managed (external) processes at launch.
+ */
+export async function deconflictHostPorts(
+  instancesDir: string,
+  instance: Instance,
+): Promise<PortBump[]> {
+  const taken = new Set(await definedHostPorts(instancesDir, instance.instanceId));
+
+  const override = await loadInstanceConfig(instance.dir);
+  const desired = instance.manifest.ports.map((p) => ({
+    name: p.name,
+    host: effectiveHostPort(p, override.hostPorts),
+  }));
+  const resolved = resolveHostPorts(desired, taken);
+  const bumps = desired
+    .filter((d) => resolved[d.name] !== d.host)
+    .map((d) => ({ name: d.name, from: d.host, to: resolved[d.name] }));
+
+  if (bumps.length > 0) {
+    const hostPorts = { ...override.hostPorts };
+    for (const b of bumps) hostPorts[b.name] = b.to;
+    await saveInstanceConfig(instance.dir, { ...override, hostPorts });
+  }
+  return bumps;
 }
 
 /** Stop and remove an instance's container (no-op if absent). Persisted mounts survive. */
