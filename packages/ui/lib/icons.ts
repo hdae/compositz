@@ -7,6 +7,7 @@ export {
   ChevronDown,
   Download,
   ExternalLink,
+  GitBranch,
   Globe,
   Hammer,
   LoaderCircle,

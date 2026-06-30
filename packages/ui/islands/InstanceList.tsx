@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Download,
   ExternalLink,
+  GitBranch,
   Globe,
   Hammer,
   LoaderCircle,
@@ -58,6 +59,9 @@ type TabKey = "build" | "logs" | "services";
 /** A freshly-imported instance awaiting the trust ("install?") decision. */
 type TrustPrompt = { view: InstanceView; source: string };
 
+/** The GitHub-import modal's state: the in-progress spec, whether a fetch is running, last error. */
+type GithubPrompt = { spec: string; submitting: boolean; error: string | null };
+
 export default function InstanceList(
   { views: initialViews, initial }: { views: InstanceView[]; initial: Initial },
 ) {
@@ -76,6 +80,7 @@ export default function InstanceList(
   const [dragging, setDragging] = useState(false);
   const [deleting, setDeleting] = useState<InstanceRow | null>(null); // delete-confirm target
   const [trust, setTrust] = useState<TrustPrompt | null>(null); // import → trust gate
+  const [github, setGithub] = useState<GithubPrompt | null>(null); // GitHub import modal
   const [expanded, setExpanded] = useState<Record<string, boolean>>({}); // detail panel open
   const [tabByInstance, setTabByInstance] = useState<Record<string, TabKey>>({});
   const fileInput = useRef<HTMLInputElement>(null);
@@ -159,6 +164,39 @@ export default function InstanceList(
       setActionError(`import failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setImporting(false);
+    }
+  }
+
+  // Import from GitHub: the server downloads the codeload tarball and ingests it (same
+  // server-confirmed flow as a file upload — the instance exists on disk before the
+  // trust gate, so there is no optimistic guesswork). On success close the modal and
+  // open the trust prompt; on failure keep the modal open with the error so the spec
+  // can be fixed and retried.
+  async function importGithub(spec: string) {
+    setGithub((g) => g && { ...g, submitting: true, error: null });
+    try {
+      const res = await fetch("/api/instances/import-github", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ spec }),
+      });
+      const body = await res.json().catch(() => ({})) as {
+        ok?: boolean;
+        view?: InstanceView;
+        source?: string;
+        error?: string;
+      };
+      if (res.ok && body.ok && body.view) {
+        setGithub(null);
+        setTrust({ view: body.view, source: body.source ?? `github:${spec}` });
+      } else {
+        setGithub((g) =>
+          g && { ...g, submitting: false, error: body.error ?? `HTTP ${res.status}` }
+        );
+      }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      setGithub((g) => g && { ...g, submitting: false, error });
     }
   }
 
@@ -296,15 +334,25 @@ export default function InstanceList(
       <div>
         {/* menu / action bar */}
         <div class="flex items-center justify-between mb-3">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={importing}
-            onClick={pickFile}
-          >
-            {importing ? <LoaderCircle class="size-4 animate-spin" /> : <Upload class="size-4" />}
-            {importing ? "Importing…" : "Import recipe"}
-          </Button>
+          <div class="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={importing}
+              onClick={pickFile}
+            >
+              {importing ? <LoaderCircle class="size-4 animate-spin" /> : <Upload class="size-4" />}
+              {importing ? "Importing…" : "Import recipe"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={importing}
+              onClick={() => setGithub({ spec: "", submitting: false, error: null })}
+            >
+              <GitBranch class="size-4" />From GitHub
+            </Button>
+          </div>
           <EngineBadge online={engineOnline} error={engineError} />
           <input
             ref={fileInput}
@@ -484,6 +532,77 @@ export default function InstanceList(
                 Trust & install
               </Button>
             </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {
+          /* GitHub import: enter a public-repo spec → server downloads + ingests → the
+            trust gate above opens. Dismissable (unlike the trust gate), but not while a
+            fetch is in flight. */
+        }
+        <AlertDialog
+          open={github !== null}
+          onOpenChange={(open: boolean) => {
+            if (!open && !github?.submitting) setGithub(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogTitle>Import from GitHub</AlertDialogTitle>
+            <AlertDialogDescription>
+              Enter a public repo as{" "}
+              <span class="font-mono">owner/repo[/subdir][@ref]</span>. The default branch is used
+              when <span class="font-mono">@ref</span> is omitted.
+            </AlertDialogDescription>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const spec = github?.spec.trim();
+                if (spec && !github?.submitting) importGithub(spec);
+              }}
+            >
+              <input
+                type="text"
+                autofocus
+                value={github?.spec ?? ""}
+                disabled={!!github?.submitting}
+                placeholder="comfyanonymous/ComfyUI"
+                aria-label="GitHub repository spec"
+                onInput={(e) =>
+                  setGithub((g) =>
+                    g && { ...g, spec: (e.currentTarget as HTMLInputElement).value }
+                  )}
+                class="mt-4 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              {github?.error ? <p class="mt-2 text-sm text-destructive">{github.error}</p> : null}
+              <AlertDialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!!github?.submitting}
+                  onClick={() => setGithub(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={!!github?.submitting || !github?.spec.trim()}
+                >
+                  {github?.submitting
+                    ? (
+                      <>
+                        <LoaderCircle class="size-4 animate-spin" />Fetching…
+                      </>
+                    )
+                    : (
+                      <>
+                        <Download class="size-4" />Import
+                      </>
+                    )}
+                </Button>
+              </AlertDialogFooter>
+            </form>
           </AlertDialogContent>
         </AlertDialog>
       </div>
