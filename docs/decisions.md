@@ -661,7 +661,11 @@ port grab.
 override (now async), `instanceServices` takes the live-▷-defined precedence and `Service` always
 has `port`/`url` + a `ready` flag; import routes deconflict via a shared `finalizeImport` and
 surface bumps in the trust prompt; the Settings route returns `takenByOthers`; the CLI
-`import`/`duplicate` print the reassignment. Verified: hermetic core tests (deconflict honors
-others' overrides; precedence cases) + a CLI end-to-end (import → duplicate → import reassigns
+`import`/`duplicate` print the reassignment. Because services now resolve from the definition, the
+**Services list is shown even when the instance is stopped** (badge `stopped`/`starting…`/`ready`)
+so the web entry points are visible before start; each opens in a new window OR the **OS default
+browser** via a server route (`POST /api/open`, restricted to local http(s) URLs — the webview can't
+reach the system default itself). Verified: hermetic core tests (deconflict honors others'
+overrides; precedence cases) + a CLI end-to-end (import → duplicate → import reassigns
 8090→8091→8092, persisted). **Deferred:** hard-blocking `up` on an external port still occupied at
 launch (currently the safety-net bump or a Docker error).
