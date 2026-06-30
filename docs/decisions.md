@@ -617,3 +617,51 @@ form, and the Settings view-model types in `lib/dashboard.ts`. Verified: core un
 published by `up`) + the route data-path on a real instance. **Deferred** (see
 [recipe-ingestion.md](recipe-ingestion.md#open-details)): editable `dataRoot`, arbitrary bind host
 paths, hard-blocking `up` on an unset required env, and a "Save & restart" convenience.
+
+## ADR-023 — Definition-driven ports: add-time deconfliction + display precedence · ✅ Accepted
+
+A refinement of how host ports are resolved and shown, settled with the user after RI-4. Amends
+ADR-015 (auto-increment) and ADR-020 (Services from the live port). The goal: make the
+**definition** (manifest ⊕ override) the source of truth for ports while keeping the convenience of
+auto-assignment — "reduce surprise and keep convenience" (the user).
+
+**Decisions:**
+
+- **Web display port = `live published ▷ override ▷ manifest`** (per web port). The LIVE port wins
+  when known because it is what the container is ACTUALLY on — this is correct when an override was
+  saved but the instance not yet restarted (still on the old port), and when `up` auto-bumped. When
+  no live binding is in `ps` yet (the starting window), fall back to the DEFINED port so the row
+  shows the _expected_ endpoint (with `ready: false`) instead of a blank. Supersedes ADR-020's
+  live-`PublicPort`-only resolution.
+- **Conflicts are resolved at ADD time, against DEFINITIONS, with a notification — not silently at
+  launch.** On import / GitHub / duplicate, `deconflictHostPorts` checks the new instance's ports
+  against the host ports DEFINED (manifest ⊕ persisted override) by all OTHER instances — engine-
+  independent, so it catches **stopped** instances. A colliding port is reassigned to the next free
+  one, **persisted to the instance's `config.yaml`** (so the assignment is stable and editable in
+  Settings), and **reported** so the UI/CLI can say "8090 was in use → 8091". This is the user's
+  "変えておいた" — a remap the user is told about, not a silent one.
+- **`up`'s launch-time auto-bump (ADR-015) stays, as a safety net.** Add-time deconfliction keeps
+  managed instances from colliding by definition; `up`'s `resolvePorts` remains for ports held by
+  **non-managed (external)** processes at launch. Its effect is visible via the live-first display
+  precedence above (no silent divergence).
+- **The Settings conflict warning is definition-based and client-reactive.** `GET /config` returns
+  `takenByOthers` (other instances' defined host ports); the form flags a conflict and suggests a
+  free port **as the user types** — fixing the prior bugs (it only saw _running_ containers, and the
+  warning was computed once at load so it never cleared). After a save while running, a **"Restart
+  now"** button applies the override (down → up).
+
+**Why:** with RI-4 the user can set ports explicitly, so port-conflict handling should be a
+**predictable, visible, definition-level** concern rather than a silent runtime bump; live-first
+display is the one ordering that stays correct across the save→restart window AND an
+external-conflict bump; keeping `up`'s bump as a net avoids a hard launch failure on an external
+port grab.
+
+**Consequences:** core gains `effectiveHostPort` / `definedHostPorts` / `deconflictHostPorts`
+(+`PortBump`); the dashboard `WebPort` carries the effective `host`, `toInstanceView` loads the
+override (now async), `instanceServices` takes the live-▷-defined precedence and `Service` always
+has `port`/`url` + a `ready` flag; import routes deconflict via a shared `finalizeImport` and
+surface bumps in the trust prompt; the Settings route returns `takenByOthers`; the CLI
+`import`/`duplicate` print the reassignment. Verified: hermetic core tests (deconflict honors
+others' overrides; precedence cases) + a CLI end-to-end (import → duplicate → import reassigns
+8090→8091→8092, persisted). **Deferred:** hard-blocking `up` on an external port still occupied at
+launch (currently the safety-net bump or a Docker error).

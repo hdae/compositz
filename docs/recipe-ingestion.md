@@ -4,9 +4,9 @@
 > decisions in
 > [ADR-014](decisions.md#adr-014--recipe-sourcing-3-tier-storage--manifest-v2--accepted) /
 > [ADR-015](decisions.md#adr-015--manifest-v2-core-structured-mounts--createmountpoint-managed-cache-layout--accepted-verified),
-> live manifest in [recipe-format.md](recipe-format.md). **Ingestion (RI-2 tar/dir + RI-3 GitHub) is
-> done; the per-instance override UI (RI-4) is still planned** — this doc holds their design plus
-> the increment plan.
+> live manifest in [recipe-format.md](recipe-format.md). **RI-1..4 are done** — manifest v2,
+> ingestion (tar/dir + GitHub), and the per-instance override (`config.yaml` + Settings tab). This
+> doc holds their design plus the increment plan.
 
 ## Guiding principle — every field maps to a Docker concept
 
@@ -39,7 +39,7 @@ over the Engine API, not a parallel config universe:
 │   │   │   ├── Dockerfile
 │   │   │   └── …(build context)
 │   │   ├── meta.json                # provenance only: { source, createdAt }  (instanceId = dir name)
-│   │   └── config.yaml              # per-instance override (RI-4): hostPorts/env/placement/dataRoot
+│   │   └── config.yaml              # per-instance override (RI-4): hostPorts/env/placement
 │   └── comfyui-x7y8z9/              # a duplicate: app/ copied, fresh data
 └── settings.yaml                    # global settings (data-root override, …) — future
 ```
@@ -158,8 +158,10 @@ Field rules:
   coexist). Resolved to `NAME=value`.
 
 Validation: `build` XOR `image`; `ports[].name` / `mounts[].name` / `env[].name` unique; `cache`
-preset duplicates rejected (custom keyed by `name`); host-port conflicts resolved at install by
-**auto-incrementing to a free port**, checked against existing instances.
+preset duplicates rejected (custom keyed by `name`). Host-port conflicts are resolved **at add
+time** against other instances' DEFINITIONS (manifest ⊕ override) — reassigned to a free port,
+persisted, and reported (ADR-023); `up` keeps a launch-time auto-bump as a safety net for
+externally-held ports.
 
 Minimal manifest (static site — no mounts/cache/env):
 
@@ -190,10 +192,13 @@ future `settings.yaml`; `up` supplies the default. Bind host-paths stay **derive
 name (`<data-root>/<instanceId>/<name>`) — placement is the only mount override (no arbitrary host
 path).
 
-**UI (RI-4):** a **Settings** tab on each instance edits these three; it loads on open, suggests a
-free host port when the default is in use, requires `required` env values before Save, and **PUTs
-only the values that differ** from the defaults (a minimal `config.yaml`). Saving is
-**server-confirmed**; the override applies on the **next start**.
+**UI (RI-4):** a **Settings** tab on each instance edits these three; it loads on open, flags a host
+port already used by another instance's DEFINITION and suggests a free one (client-reactive — it
+recomputes as you type and catches stopped instances; ADR-023), requires `required` env values
+before Save, and **PUTs only the values that differ** from the defaults (a minimal `config.yaml`).
+Saving is **server-confirmed**; the override applies on the **next start** — after a save while
+running, a **Restart now** button (down → up) applies it. A web service's displayed port follows
+**live ▷ override ▷ manifest** (ADR-023).
 
 ## Increment plan
 

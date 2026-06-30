@@ -107,6 +107,13 @@ versioning).
   UI = a **Settings tab** (4th DetailPanel tab): fetch-on-open `GET /config`, free-port suggest,
   required-env enforced, **delta-only PUT** with manifest-name key validation, server-confirmed,
   applies next start. Complete (core+UI).
+- **ADR-023: definition-driven ports (RI-4 follow-up).** Amends ADR-015/020. Web display port =
+  **live ▷ override ▷ manifest** (live wins so an unrestarted override / external bump shows the
+  real port; defined port fills the starting window). Conflicts resolved **at add time vs
+  DEFINITIONS** (`deconflictHostPorts` — engine-free, catches stopped; persists the remap to
+  `config.yaml` + **notifies**); `up`'s auto-bump stays as the external-port safety net. Settings
+  conflict warning is definition-based + client-reactive (`takenByOthers`); "Restart now" after
+  save. Complete (core+UI+CLI).
 
 ## Pitfalls index
 
