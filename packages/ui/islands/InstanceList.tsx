@@ -755,7 +755,7 @@ function DetailPanel(
     services: Service[];
     activeTab: TabKey;
     onTab: (t: TabKey) => void;
-    onRestart: () => void;
+    onRestart: () => Promise<void>;
   },
 ) {
   const buildAvailable = buildLines.length > 0 || installing;
@@ -855,59 +855,83 @@ function RuntimeLog({ instanceId, running }: { instanceId: string; running: bool
   return <pre ref={ref} class={LOG_PANEL_CLASS}>{lines.join("")}</pre>;
 }
 
+// Open a local service URL in the OS DEFAULT browser via the server (the webview can't).
+function openInBrowser(url: string): void {
+  fetch("/api/open", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url }),
+  }).catch(() => {});
+}
+
 function ServicesList({ services, running }: { services: Service[]; running: boolean }) {
-  if (!running) return <p class="text-sm text-muted-foreground">Not running.</p>;
   if (!services.length) {
     return <p class="text-sm text-muted-foreground">No web UI ports declared.</p>;
   }
-  // The port shown is the live published one when known, else the DEFINED port
-  // (override ▷ manifest); `ready` reflects whether the live binding is confirmed in
-  // `ps`. Open is active only when ready (the defined port may not be bound yet).
+  // Listed from the definition even when stopped, so the endpoints are visible before
+  // start. The port is the live published one when known, else the DEFINED port
+  // (override ▷ manifest). Open is active only once the live binding is confirmed (ready).
   return (
     <ul class="space-y-2">
-      {services.map((s) => (
-        <li
-          key={s.name}
-          class="flex items-center justify-between gap-3 rounded border border-border px-3 py-2"
-        >
-          <div class="min-w-0">
-            <div class="flex items-center gap-2">
-              <span class="text-sm font-medium">{s.name}</span>
-              <span class="text-xs text-muted-foreground font-mono">:{s.port}</span>
-              {s.ready
+      {services.map((s) => {
+        const openable = running && s.ready;
+        const badge = !running
+          ? { label: "stopped", cls: "bg-muted text-muted-foreground" }
+          : s.ready
+          ? {
+            label: "ready",
+            cls: "bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-400",
+          }
+          : {
+            label: "starting…",
+            cls: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400",
+          };
+        return (
+          <li
+            key={s.name}
+            class="flex items-center justify-between gap-3 rounded border border-border px-3 py-2"
+          >
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-medium">{s.name}</span>
+                <span class="text-xs text-muted-foreground font-mono">:{s.port}</span>
+                <span class={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", badge.cls)}>
+                  {badge.label}
+                </span>
+              </div>
+              {s.description
+                ? <p class="text-xs text-muted-foreground truncate">{s.description}</p>
+                : null}
+            </div>
+            <div class="flex shrink-0 items-center gap-2">
+              {openable
                 ? (
-                  <span class="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-500/15 dark:text-green-400">
-                    ready
-                  </span>
+                  <a
+                    href={s.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class={buttonVariants({ variant: "outline", size: "sm" })}
+                  >
+                    <ExternalLink class="size-4" />New window
+                  </a>
                 )
                 : (
-                  <span class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-400">
-                    starting…
-                  </span>
+                  <Button variant="outline" size="sm" disabled>
+                    <ExternalLink class="size-4" />New window
+                  </Button>
                 )}
-            </div>
-            {s.description
-              ? <p class="text-xs text-muted-foreground truncate">{s.description}</p>
-              : null}
-          </div>
-          {s.ready
-            ? (
-              <a
-                href={s.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                class={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0")}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!openable}
+                onClick={() => openInBrowser(s.url)}
               >
-                <ExternalLink class="size-4" />Open
-              </a>
-            )
-            : (
-              <Button variant="outline" size="sm" disabled class="shrink-0">
-                <ExternalLink class="size-4" />Open
+                <Globe class="size-4" />Browser
               </Button>
-            )}
-        </li>
-      ))}
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -923,7 +947,7 @@ function SettingsPanel(
   { instanceId, running, onRestart }: {
     instanceId: string;
     running: boolean;
-    onRestart: () => void;
+    onRestart: () => Promise<void>;
   },
 ) {
   const [settings, setSettings] = useState<InstanceSettings | null>(null);
@@ -933,7 +957,20 @@ function SettingsPanel(
   const [placement, setPlacement] = useState<Record<string, "bind" | "volume">>({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Restart applies the just-saved override (down → up); clear "saved" once done so the
+  // Restart prompt doesn't linger after the restart completes.
+  const doRestart = async () => {
+    setRestarting(true);
+    try {
+      await onRestart();
+      setSaved(false);
+    } finally {
+      setRestarting(false);
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -1202,8 +1239,14 @@ function SettingsPanel(
         {saved ? <span class="text-xs text-green-600 dark:text-green-400">Saved.</span> : null}
         {saved && running
           ? (
-            <Button variant="outline" size="sm" onClick={onRestart}>
-              Restart now to apply
+            <Button variant="outline" size="sm" disabled={restarting} onClick={doRestart}>
+              {restarting
+                ? (
+                  <>
+                    <LoaderCircle class="size-4 animate-spin" />Restarting…
+                  </>
+                )
+                : "Restart now to apply"}
             </Button>
           )
           : null}

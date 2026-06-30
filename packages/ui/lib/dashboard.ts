@@ -142,7 +142,7 @@ export type InstanceRow = {
   version: string;
   description: string;
   webPorts: WebPort[];
-  /** Live openable services (empty unless a running container publishes the ports). */
+  /** Declared services, always listed from the definition; the live port fills in when running. */
   services: Service[];
   /** Image built locally? `null` when the engine is unreachable (unknown). */
   installed: boolean | null;
@@ -200,9 +200,10 @@ export function instanceServices(webPorts: WebPort[], ports: PublishedPort[]): S
 /**
  * Derive dashboard rows from instances and an optional engine snapshot.
  *
- * When `snapshot` is `null` the engine was unreachable: installed status is
- * unknown (`null`), nothing is running, and no services resolve, but instances
- * still list.
+ * Services are ALWAYS listed from the definition (manifest ⊕ override) — so the user can
+ * see a recipe's web endpoints before starting it. The live published port fills in (and
+ * the service becomes openable) once a running container publishes it. When `snapshot` is
+ * `null` the engine was unreachable: installed is unknown (`null`), nothing is running.
  */
 export function toInstanceRows(
   views: InstanceView[],
@@ -218,17 +219,21 @@ export function toInstanceRows(
       webPorts: v.webPorts,
     };
     if (snapshot === null) {
-      return { ...base, installed: null, running: false, services: [] };
+      return {
+        ...base,
+        installed: null,
+        running: false,
+        services: instanceServices(v.webPorts, []),
+      };
     }
     const container = snapshot.containers.find(
       (c) => c.instance === v.instanceId && c.state === "running",
     );
-    const services = container ? instanceServices(v.webPorts, container.ports) : [];
     return {
       ...base,
       installed: snapshot.installedTags.includes(v.imageTag),
       running: container !== undefined,
-      services,
+      services: instanceServices(v.webPorts, container?.ports ?? []),
     };
   });
 }

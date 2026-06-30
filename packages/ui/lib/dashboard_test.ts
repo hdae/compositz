@@ -56,7 +56,17 @@ Deno.test("engine offline (null snapshot): instances list, installed unknown, no
   assertEquals(rows.length, 1);
   assertEquals(rows[0].installed, null);
   assertEquals(rows[0].running, false);
-  assertEquals(rows[0].services, []);
+  // services still list from the definition (no live port → defined 8090, not ready)
+  assertEquals(rows[0].services, [
+    {
+      name: "web",
+      path: "/",
+      description: undefined,
+      port: 8090,
+      url: "http://localhost:8090/",
+      ready: false,
+    },
+  ]);
   assertEquals(rows[0].name, "Hello Web");
 });
 
@@ -183,9 +193,18 @@ Deno.test("toInstanceRows shows the DEFINED (expected) port before the live bind
   ]);
 });
 
-Deno.test("toInstanceRows: a stopped instance has no services", () => {
+Deno.test("toInstanceRows: a stopped instance still lists services from the definition (not ready)", () => {
   const stopped = status({ state: "exited", ports: [] });
-  assertEquals(toInstanceRows([view()], snapshot({ containers: [stopped] }))[0].services, []);
+  assertEquals(toInstanceRows([view()], snapshot({ containers: [stopped] }))[0].services, [
+    {
+      name: "web",
+      path: "/",
+      description: undefined,
+      port: 8090,
+      url: "http://localhost:8090/",
+      ready: false,
+    },
+  ]);
 });
 
 Deno.test("withOptimisticAction(up) yields a running container for the instance", () => {
