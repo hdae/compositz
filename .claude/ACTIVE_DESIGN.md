@@ -112,10 +112,12 @@ versioning).
   real port; defined port fills the starting window). Conflicts resolved **at add time vs
   DEFINITIONS** (`deconflictHostPorts` — engine-free, catches stopped; persists the remap to
   `config.yaml` + **notifies**); `up`'s auto-bump stays as the external-port safety net. Settings
-  conflict warning is definition-based + client-reactive (`takenByOthers`); "Restart now" after save
-  (clears once done). Services list shows even when **stopped** (badge stopped/starting…/ready);
-  each opens in a new window OR the **OS default browser** (`POST /api/open`, localhost http(s) only
-  — the webview can't reach the system default). Complete (core+UI+CLI).
+  conflict warning is definition-based + client-reactive (`takenByOthers`). **"Restart now" shows
+  only when a restart would change something**: `up` records `.launched.yaml`, route returns
+  `restartNeeded = running && config ≠ launched` (`sameOverride`) — so no lingering after restart /
+  a no-op save. Services list shows even when **stopped** (badge stopped/starting…/ready); each
+  opens in the **OS default browser** (`POST /api/open`, localhost http(s) only — the webview can't
+  reach the system default) or a new window. Complete (core+UI+CLI).
 
 ## Pitfalls index
 

@@ -665,7 +665,11 @@ surface bumps in the trust prompt; the Settings route returns `takenByOthers`; t
 **Services list is shown even when the instance is stopped** (badge `stopped`/`starting…`/`ready`)
 so the web entry points are visible before start; each opens in a new window OR the **OS default
 browser** via a server route (`POST /api/open`, restricted to local http(s) URLs — the webview can't
-reach the system default itself). Verified: hermetic core tests (deconflict honors others'
-overrides; precedence cases) + a CLI end-to-end (import → duplicate → import reassigns
-8090→8091→8092, persisted). **Deferred:** hard-blocking `up` on an external port still occupied at
-launch (currently the safety-net bump or a Docker error).
+reach the system default itself). The Settings **"Restart now"** prompt shows ONLY when a restart
+would change something: `up` records the launched override to `.launched.yaml`, and the route
+returns `restartNeeded = running && saved-config ≠ launched` (`sameOverride`) — so it doesn't linger
+after a restart or a no-op save. Verified: hermetic core tests (deconflict honors others' overrides;
+precedence cases; `sameOverride`; launched-marker independence) + CLI/real-engine end-to-end
+(reassign 8090→8091→8092 persisted; restart-needed false→true→false across edit + relaunch).
+**Deferred:** hard-blocking `up` on an external port still occupied at launch (currently the
+safety-net bump or a Docker error).
