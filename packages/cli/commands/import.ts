@@ -1,5 +1,5 @@
-import { ingestBundle, ingestGithub } from "@compositz/core";
-import { dim, green, red } from "@std/fmt/colors";
+import { deconflictHostPorts, ingestBundle, ingestGithub } from "@compositz/core";
+import { dim, green, red, yellow } from "@std/fmt/colors";
 import { storeDir } from "../lib.ts";
 
 const USAGE =
@@ -39,6 +39,11 @@ export async function importCmd(args: string[]): Promise<number> {
         { source: `file:${arg}` },
       );
     }
+  }
+
+  // Reassign any host port that collides with another instance's DEFINED port, and say so.
+  for (const b of await deconflictHostPorts(storeDir(), instance)) {
+    console.log(yellow(`  note: ${b.name} port ${b.from} in use → reassigned to ${b.to}`));
   }
 
   console.log(green(`OK — imported ${instance.manifest.name}`) + dim(` as ${instance.instanceId}`));
