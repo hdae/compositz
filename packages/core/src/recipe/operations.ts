@@ -13,6 +13,7 @@ import {
   listInstances,
   loadInstanceConfig,
   saveInstanceConfig,
+  saveLaunchedConfig,
 } from "./instance.ts";
 import {
   effectiveHostPort,
@@ -92,16 +93,23 @@ export async function up(
     return Id;
   };
 
-  if (m.gpu === "none") return { id: await startWith(false), usedGpu: false, hostPorts };
-  if (m.gpu === "required") return { id: await startWith(true), usedGpu: true, hostPorts };
+  const run = async (): Promise<UpResult> => {
+    if (m.gpu === "none") return { id: await startWith(false), usedGpu: false, hostPorts };
+    if (m.gpu === "required") return { id: await startWith(true), usedGpu: true, hostPorts };
+    // preferred: try GPU, fall back to CPU.
+    try {
+      return { id: await startWith(true), usedGpu: true, hostPorts };
+    } catch {
+      await client.remove(name, { force: true }).catch(() => {});
+      return { id: await startWith(false), usedGpu: false, hostPorts };
+    }
+  };
 
-  // preferred: try GPU, fall back to CPU.
-  try {
-    return { id: await startWith(true), usedGpu: true, hostPorts };
-  } catch {
-    await client.remove(name, { force: true }).catch(() => {});
-    return { id: await startWith(false), usedGpu: false, hostPorts };
-  }
+  const result = await run();
+  // Record what we just launched WITH (the user-level override) so the UI can tell when
+  // the saved config has since diverged and a restart is needed. Best-effort.
+  await saveLaunchedConfig(instance.dir, override).catch(() => {});
+  return result;
 }
 
 /**

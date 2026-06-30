@@ -41,16 +41,20 @@ export {
   CONFIG_FILE,
   type Instance,
   type InstanceMeta,
+  LAUNCHED_FILE,
   listInstances,
   loadInstance,
   loadInstanceConfig,
+  loadLaunchedConfig,
   removeInstanceDir,
   saveInstanceConfig,
+  saveLaunchedConfig,
 } from "./src/recipe/instance.ts";
 export {
   type Override,
   OverrideSchema,
   parseOverride,
+  sameOverride,
   serializeOverride,
 } from "./src/recipe/config.ts";
 export {

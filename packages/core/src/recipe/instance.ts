@@ -20,6 +20,9 @@ export const APP_SUBDIR = "app";
 export const META_FILE = "meta.json";
 /** Per-instance launch override (RI-4) inside an instance directory. */
 export const CONFIG_FILE = "config.yaml";
+/** Snapshot of the override the instance was last LAUNCHED with (written at `up`) — lets the
+ * UI tell when the saved config has diverged from what's running (a restart is needed). */
+export const LAUNCHED_FILE = ".launched.yaml";
 
 /** Non-derivable provenance for an instance (the manifest holds appId + version). */
 export interface InstanceMeta {
@@ -84,27 +87,48 @@ export async function removeInstanceDir(instancesDir: string, instanceId: string
   await Deno.remove(`${instancesDir}/${instanceId}`, { recursive: true }).catch(() => {});
 }
 
+function normDir(instanceDir: string): string {
+  return instanceDir.replaceAll("\\", "/").replace(/\/+$/, "");
+}
+
+/** Read + parse an override file under an instance dir; `undefined` if it doesn't exist. */
+async function readOverrideFile(instanceDir: string, file: string): Promise<Override | undefined> {
+  let text: string;
+  try {
+    text = await Deno.readTextFile(`${normDir(instanceDir)}/${file}`);
+  } catch (e) {
+    if (e instanceof Deno.errors.NotFound) return undefined;
+    throw e;
+  }
+  return parseOverride(text); // a present-but-invalid file throws (fail loud)
+}
+
 /**
  * Load the per-instance launch override (`config.yaml`). An absent file ⇒ the empty
  * override (the common case). A present-but-invalid file throws (fail loud — never
  * silently launch with a misread override).
  */
 export async function loadInstanceConfig(instanceDir: string): Promise<Override> {
-  const dir = instanceDir.replaceAll("\\", "/").replace(/\/+$/, "");
-  let text: string;
-  try {
-    text = await Deno.readTextFile(`${dir}/${CONFIG_FILE}`);
-  } catch (e) {
-    if (e instanceof Deno.errors.NotFound) return {}; // no override yet
-    throw e;
-  }
-  return parseOverride(text);
+  return (await readOverrideFile(instanceDir, CONFIG_FILE)) ?? {};
 }
 
 /** Persist the per-instance launch override (`config.yaml`). */
 export async function saveInstanceConfig(instanceDir: string, override: Override): Promise<void> {
-  const dir = instanceDir.replaceAll("\\", "/").replace(/\/+$/, "");
-  await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, serializeOverride(override));
+  await Deno.writeTextFile(`${normDir(instanceDir)}/${CONFIG_FILE}`, serializeOverride(override));
+}
+
+/**
+ * Load the override the instance was last LAUNCHED with (`.launched.yaml`). `undefined`
+ * if it was never launched. Compared against the live `config.yaml` to tell whether a
+ * restart is needed to apply edited settings.
+ */
+export function loadLaunchedConfig(instanceDir: string): Promise<Override | undefined> {
+  return readOverrideFile(instanceDir, LAUNCHED_FILE);
+}
+
+/** Record the override an instance is launched with (written by `up`). */
+export async function saveLaunchedConfig(instanceDir: string, override: Override): Promise<void> {
+  await Deno.writeTextFile(`${normDir(instanceDir)}/${LAUNCHED_FILE}`, serializeOverride(override));
 }
 
 async function readMeta(path: string): Promise<InstanceMeta> {

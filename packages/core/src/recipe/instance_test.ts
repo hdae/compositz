@@ -6,8 +6,10 @@ import {
   listInstances,
   loadInstance,
   loadInstanceConfig,
+  loadLaunchedConfig,
   removeInstanceDir,
   saveInstanceConfig,
+  saveLaunchedConfig,
 } from "./instance.ts";
 import { CompositzError } from "../errors.ts";
 
@@ -121,6 +123,30 @@ Deno.test("loadInstanceConfig: an invalid config.yaml throws (fail loud, never s
     const dir = join(store, inst.instanceId);
     await Deno.writeTextFile(join(dir, CONFIG_FILE), "hostPorts: { ui: 70000 }\n"); // out of range
     await assertRejects(() => loadInstanceConfig(dir), CompositzError);
+    await Deno.remove(src, { recursive: true });
+  } finally {
+    await Deno.remove(store, { recursive: true }).catch(() => {});
+  }
+});
+
+Deno.test("loadLaunchedConfig: undefined until launched; round-trips; independent of config.yaml", async () => {
+  const store = await Deno.makeTempDir({ prefix: "compositz-store-" });
+  try {
+    const src = await dirBundle("hello", "Hello");
+    const inst = await ingestBundle({ kind: "dir", dir: src }, store);
+    const dir = join(store, inst.instanceId);
+
+    // never launched ⇒ undefined (distinct from the empty override `{}`)
+    assertEquals(await loadLaunchedConfig(dir), undefined);
+
+    // launch with a given override → recorded separately from config.yaml
+    await saveLaunchedConfig(dir, { hostPorts: { web: 8090 } });
+    assertEquals(await loadLaunchedConfig(dir), { hostPorts: { web: 8090 } });
+
+    // editing config.yaml does NOT change the launched snapshot (so a divergence is detectable)
+    await saveInstanceConfig(dir, { hostPorts: { web: 8099 } });
+    assertEquals(await loadLaunchedConfig(dir), { hostPorts: { web: 8090 } });
+    assertEquals(await loadInstanceConfig(dir), { hostPorts: { web: 8099 } });
     await Deno.remove(src, { recursive: true });
   } finally {
     await Deno.remove(store, { recursive: true }).catch(() => {});

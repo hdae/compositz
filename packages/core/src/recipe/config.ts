@@ -40,6 +40,19 @@ export function parseOverride(yamlText: string): Override {
   return result.data;
 }
 
+/** Structural equality of two overrides — ignores key order and empty-vs-absent sections. */
+export function sameOverride(a: Override, b: Override): boolean {
+  const sorted = <T>(r?: Record<string, T>) =>
+    Object.entries(r ?? {}).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
+  const norm = (o: Override) =>
+    JSON.stringify({
+      hostPorts: sorted(o.hostPorts),
+      env: sorted(o.env),
+      placement: sorted(o.placement),
+    });
+  return norm(a) === norm(b);
+}
+
 /** Serialize an override to `config.yaml` text, dropping empty sections for a clean file. */
 export function serializeOverride(override: Override): string {
   const out: Override = {};

@@ -1,5 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import { parseOverride, serializeOverride } from "./config.ts";
+import { parseOverride, sameOverride, serializeOverride } from "./config.ts";
 import { CompositzError } from "../errors.ts";
 
 // --- parseOverride ---------------------------------------------------------
@@ -62,4 +62,25 @@ Deno.test("serializeOverride: round-trips through parseOverride", () => {
 Deno.test("serializeOverride: drops empty sections for a clean file", () => {
   assertEquals(parseOverride(serializeOverride({ hostPorts: {}, env: {}, placement: {} })), {});
   assertEquals(serializeOverride({}), serializeOverride({ hostPorts: {} }));
+});
+
+// --- sameOverride (restart-needed comparison) ------------------------------
+
+Deno.test("sameOverride: equal regardless of key order; empty == absent section", () => {
+  assertEquals(sameOverride({ hostPorts: { a: 1, b: 2 } }, { hostPorts: { b: 2, a: 1 } }), true);
+  assertEquals(sameOverride({}, { hostPorts: {}, env: {}, placement: {} }), true);
+  assertEquals(
+    sameOverride(
+      { hostPorts: { ui: 8189 }, env: { T: "x" }, placement: { o: "bind" } },
+      { placement: { o: "bind" }, env: { T: "x" }, hostPorts: { ui: 8189 } },
+    ),
+    true,
+  );
+});
+
+Deno.test("sameOverride: a differing value / key / section is not equal", () => {
+  assertEquals(sameOverride({ hostPorts: { ui: 8189 } }, { hostPorts: { ui: 8190 } }), false);
+  assertEquals(sameOverride({ hostPorts: { ui: 8189 } }, { hostPorts: { web: 8189 } }), false);
+  assertEquals(sameOverride({ env: { A: "1" } }, {}), false);
+  assertEquals(sameOverride({ placement: { o: "bind" } }, { placement: { o: "volume" } }), false);
 });
