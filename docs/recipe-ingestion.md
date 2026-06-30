@@ -72,8 +72,12 @@ is imported to **create an instance** (`<app-data>/instances/<instanceId>/app/`)
 - **tar / tar.gz bundle** — the recipe dir packed; uploaded/dropped in the UI. (`.zip` is out of
   scope; GitHub codeload is `.tar.gz` anyway.)
 - **local directory** — a recipe dir on disk (dev seed: `compositz import recipes/hello-web`).
-- **GitHub** (RI-3) — `owner/repo[@ref][/subdir]`: download the codeload tarball over HTTPS,
-  extract, validate, create. **No `git` binary** — plain HTTPS + `@std/tar`.
+- **GitHub** (RI-3 ✅ core+CLI) — `owner/repo[/subdir][@ref]` (subdir before ref; an optional
+  `github:` prefix; `@ref` omitted ⇒ default branch): download the codeload tarball
+  (`codeload.github.com/<owner>/<repo>/tar.gz/<ref|HEAD>`) over HTTPS, extract, validate, create.
+  **No `git` binary, no GitHub API** — plain HTTPS + `@std/tar`. Public repos only. CLI:
+  `compositz import github:owner/repo[/subdir][@ref]`; UI entry is the next increment. See
+  [ADR-021](decisions.md).
 
 Ingest = extract (security-hardened: reject absolute / `..` / symlink / hardlink entries) →
 **Zod-validate** → mint `instanceId` → store under `instances/<instanceId>/`. To run a **second
@@ -183,7 +187,7 @@ remaps, env values, per-mount `placement` (bind/volume) and bind host-path, and 
 | **RT**   | ✅ Docker `/events` real-time status (done & verified).                                                                                                                                                                                                            |
 | **RI-1** | ✅ **Manifest v2** (Zod + recipe-format) + storage layout + data-root + bind/volume mounts (structured `Mounts` + `CreateMountpoint`) + cache provisioning & env injection + effective-spec derivation (manifest ⊕ launch override) in core. Done & live-verified. |
 | **RI-2** | **Instance store + ingestion** (tar/tar.gz/dir → extract → validate → mint `instanceId` → create instance) + instanceId-threaded naming + `duplicate`. See [ADR-017](decisions.md).                                                                                |
-| **RI-3** | **GitHub ingestion** (`owner/repo[@ref][/subdir]` → tarball → create instance).                                                                                                                                                                                    |
+| **RI-3** | ✅ (core+CLI) **GitHub ingestion** (`owner/repo[/subdir][@ref]` → codeload tarball → create instance; no `git`/API, public-only). See [ADR-021](decisions.md). UI entry pending.                                                                                   |
 | **RI-4** | Per-instance **override UI** (host-port remap w/ auto-suggest, env values, placement) + multi-web "Open UI" buttons.                                                                                                                                               |
 
 ## Open details
@@ -201,6 +205,9 @@ Still open for later increments:
   unit-tested but not yet machine-run end-to-end.
 - **Authoring helper**: a **reference entrypoint** (uv-sync boilerplate using `$VIRTUAL_ENV` /
   `$UV_CACHE_DIR`) so recipes don't reinvent it — recipe-format appendix (future).
-- RI-3: GitHub auth for private repos (public-only first cut).
+- **RI-3 GitHub — by-design first-cut limits** (ADR-021): **public repos only** (no auth); the spec
+  is `owner/repo[/subdir][@ref]` only — **no full-URL paste** (`https://github.com/owner/repo/...`)
+  yet; `@` is reserved for the ref, so a subdir cannot contain `@`. The **UI entry** (spec input +
+  trust dialog provider) is the remaining RI-3 increment — core + CLI are done.
 - Multi-instance UI (run N of one recipe) is deferred; the schema is already instance-ready
   (`COMPOSITZ_INSTANCE`, per-instance venv subpath).

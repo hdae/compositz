@@ -65,8 +65,8 @@ removed. Second copy = re-import or `duplicate` (copies `app/` only, not data). 
 security- and memory-hardened (see Resume point). Layout:
 [recipe-ingestion.md](../../docs/recipe-ingestion.md#storage--instance-centric).
 
-**Next (sequenced):** **RI-3** (GitHub sourcing → `ingestBundle`) → **RI-4** (per-instance override
-UI + multi-web "Open UI" buttons).
+**Next (sequenced):** **RI-3 UI entry** (GitHub-spec input + route over the done `ingestGithub`;
+core+CLI shipped — ADR-021) → **RI-4** (per-instance override UI + multi-web "Open UI" buttons).
 
 ## Decisions recently settled
 
@@ -94,6 +94,11 @@ UI + multi-web "Open UI" buttons).
   "install?" dialog (Yes builds / No deletes / fail keeps + retry); delete removes
   `compositz/<id>:<ver>` (no-op for shared `image` recipes). "Open UI" → tabbed panel (build/runtime
   log + Services, the latter joined to the container's live `PublicPort`). Tooltip/Tabs added.
+- **ADR-021: GitHub ingestion (RI-3, core+CLI).** Grammar **amended** to `owner/repo[/subdir][@ref]`
+  (subdir-before-ref disambiguates slashed refs). Codeload tarball over HTTPS (no `git`/API,
+  public-only, `HEAD`=default branch); reuses `ingestBundle` via a new `subdir?` on the archive
+  source + a subdir descent in `locateBundleRoot`. One shared `ingestGithub`; CLI `import github:…`;
+  UI entry is the next increment.
 
 ## Pitfalls index
 
@@ -143,6 +148,15 @@ UI + multi-web "Open UI" buttons).
   Vite plugin in `vite.config.ts` marking only `/lucide-preact/` modules side-effect-free. Add icons
   via `lib/icons.ts` (barrel re-export — fine with the plugin); **don't remove the plugin** or
   import the barrel elsewhere. Re-check the island chunk size on lucide upgrades.
+- **GitHub codeload (RI-3, ADR-021), empirically verified:**
+  `codeload.github.com/<o>/<r>/tar.gz/<ref>` needs **no token and no GitHub API** for public repos;
+  `<ref>=HEAD` ⇒ the default branch; a **slashed ref** resolves as a literal path
+  (`…/tar.gz/releases/v1`); a bad repo/ref ⇒ clean **404**. The tarball's single wrapper dir is
+  `<repo>-<ref>/` (`/`→`-` in ref) — unnamed-dependent, so `locateBundleRoot` unwraps by structure,
+  not name.
+- **`deno lint no-control-regex` forbids `\x00-\x1f` literals in a RegExp.** To reject control
+  chars/whitespace, test **char codes** (`ch.charCodeAt(0) <= 0x20 || === 0x7f`), not a regex class
+  — same idiom as `sanitizeFilename`. Bit both `github.ts` `validateRef` and the import route.
 
 ## Resume point
 
@@ -201,10 +215,23 @@ rollback on failure) so a running row's `starting…` panel doesn't linger. NOTE
 optimistic UI** ([[feedback-avoid-optimistic-ui]]) — accepted for now; prefer server-confirmed for
 new actions. 110 tests green.
 
-**NEXT — RI-3** (GitHub ingestion: `owner/repo[@ref][/subdir]` → codeload `.tar.gz` over HTTPS →
-`ingestBundle`; no `git` binary) → **RI-4** (per-instance override UI; the multi-web "Open UI" half
-is done via the Services tab). Small deferred UI follow-up: the light/dark/auto **mode selector**
-(writes `compositz-theme`, the boot script already applies it).
+**RI-3 GitHub ingestion (core+CLI) — ✅ DONE (ADR-021).** Spec grammar **amended** to
+`owner/repo[/subdir][@ref]` (subdir BEFORE ref, so a slashed branch like `@releases/v1` and a subdir
+coexist unambiguously; optional `github:` prefix; `.git` tolerated). New `recipe/github.ts`
+(`parseGithubSpec` / `githubTarballUrl` / `githubSource` / `ingestGithub`): `fetch` the codeload
+tarball `codeload.github.com/<o>/<r>/tar.gz/<ref|HEAD>` → pipe `res.body` into the existing
+`ingestBundle({kind:"archive", stream, subdir})`. `BundleSource` archive gained `subdir?`;
+`locateBundleRoot` gained a subdir descent (behavior-preserving when absent). CLI `import github:…`.
+`meta.source = github:owner/repo[/subdir][@ref]` (round-trips). No `git`, no GitHub API,
+public-only. **Verified:** 17 hermetic unit tests + 2 opt-in live-codeload integration tests
+(`COMPOSITZ_NET_TESTS=1`, run green here); CLI smoke (usage / parse error / 404 propagate / dir
+regression / no store residue). 128 tests green; check/lint/fmt clean.
+
+**NEXT — RI-3 UI entry**: a GitHub-spec input in the import area + a route reusing `ingestGithub`,
+with the trust dialog (ADR-020) showing `github:owner/repo` as a **real provider** (the meaningful
+provider RI-3 was meant to land). Then **RI-4** (per-instance override UI; the multi-web "Open UI"
+half is done via the Services tab). Small deferred UI follow-up: the light/dark/auto **mode
+selector** (writes `compositz-theme`, the boot script already applies it).
 
 **Deferred:** **Shadcn components → vendor verbatim from upstream** (`shadcn-ui/ui`
 `apps/v4/registry/bases/base/ui/`) instead of the current hand-adapted ones — a migration (dep

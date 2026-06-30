@@ -265,7 +265,9 @@ How recipes are ingested, where data lives, and how launches are customized. Ful
   — no author-written `${}`; cache paths are **env-injected**.
 - **Ingestion sources:** a **tar/zip bundle** (upload) and **GitHub** (`owner/repo[@ref][/subdir]`
   via codeload tarball — no `git` binary, reuse `@std/tar`). Ingest = extract + Zod-validate +
-  store; build stays the separate Install step.
+  store; build stays the separate Install step. (The GitHub spec grammar was later amended to
+  **`owner/repo[/subdir][@ref]`** — subdir before ref — to disambiguate slashed branch names; see
+  [ADR-021](#adr-021--github-ingestion-ri-3--spec-grammar--codeload-over-https--accepted).)
 - **Launch customization** is a per-install **override of values** (`<app-data>/config/<id>.yaml`):
   host-port remaps, env values, per-mount placement/host-path, data-root. Merged over manifest
   defaults at `up` → effective spec **derived each launch**, never written back.
@@ -522,3 +524,48 @@ in `lib/dashboard.ts`. `EngineClient` gains `removeImage` and a `logs({ signal }
 (the latter also fixes an abort-during-`#open()` socket leak shared with `events()`). Tooltip/Tabs
 join the Base-UI component set (ADR-018); icon-button tooltips wrap the control in a `<span>` so
 they still show while the button is disabled.
+
+## ADR-021 — GitHub ingestion (RI-3): spec grammar + codeload over HTTPS · ✅ Accepted
+
+Implements RI-3 (GitHub sourcing) over the existing instance-centric ingestion (ADR-017). Amends
+ADR-014's source-spec grammar. Settled with the user (candidates ①B/②A/③A).
+
+**Decisions:**
+
+- **Spec grammar amended to `owner/repo[/subdir][@ref]`** (subdir BEFORE ref). ADR-014 wrote
+  `owner/repo[@ref][/subdir]`, but that order is ambiguous once a branch name contains `/`
+  (`feature/login`) and a subdir is also present — the parser can't tell where the ref ends. With
+  the ref delimited **last** by `@`, it MAY itself contain `/`, and the subdir sits between repo and
+  `@ref`, so a slashed ref and a subdir coexist with no guessing. An optional `github:` scheme
+  prefix is accepted (mirrors `meta.source`); a pasted trailing `.git` on the repo is tolerated. `@`
+  is reserved for the ref (not usable inside a subdir).
+- **Codeload tarball over HTTPS, no `git` and no GitHub API.**
+  `https://codeload.github.com/{owner}/{repo}/tar.gz/{ref}` with `ref` defaulting to **`HEAD`** (the
+  repo's default branch — verified). Codeload needs no token and no rate budget, and resolves
+  slashed refs as a literal path (`…/tar.gz/releases/v1` — verified). The GitHub _API_ would add a
+  redirect hop and a rate limit for no gain on the **public-only** first cut. A bad repo/ref is a
+  clean 404.
+- **Reuse the streaming `ingestBundle` unchanged.** `fetch(url).body` is piped straight into
+  `{ kind: "archive", stream, subdir }` — same gzip auto-detect, same security-hardened extraction,
+  same Zod-validate + atomic publish as upload/dir. `subdir` support is added to `locateBundleRoot`:
+  after unwrapping the single codeload wrapper `<repo>-<ref>/`, it descends into the (validated,
+  escape-checked) subdir. One shared core entrypoint `ingestGithub(spec, dir, opts)` is the single
+  path used by the CLI now and the UI in the next increment.
+- **CLI surface = a `github:` prefix on `compositz import`.**
+  `import github:owner/repo[/subdir][@ref]` selects GitHub; it's unambiguous against a relative path
+  (`recipes/hello-web`) and mirrors the `meta.source` string, so no new subcommand is needed.
+
+**Why:** subdir-before-ref is the only ordering that keeps the parse pure and unambiguous while
+supporting both slashed refs and subdirs; codeload (not the API) needs no auth and no rate budget
+for public repos; threading `fetch().body` through the existing `ingestBundle` means GitHub recipes
+get byte-identical extraction/validation/atomic-publish to every other source (no second path to
+drift).
+
+**Consequences:** new `recipe/github.ts` (`parseGithubSpec` / `githubTarballUrl` / `githubSource` /
+`ingestGithub`); `BundleSource` archive gains an optional `subdir`; `locateBundleRoot` gains a
+subdir descent (behavior-preserving when absent). `meta.source = github:owner/repo[/subdir][@ref]`
+round-trips through the parser. Verified: 17 hermetic unit tests + 2 opt-in live-codeload
+integration tests (`COMPOSITZ_NET_TESTS=1`). **Next increment:** the UI entry (a GitHub-spec input +
+the trust dialog showing `github:owner/repo` as a real provider). **Deferred** (see
+[recipe-ingestion.md](recipe-ingestion.md#open-details)): private-repo auth, full-URL paste
+(`https://github.com/owner/repo/...`), and `@` inside a subdir.
