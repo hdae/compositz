@@ -113,6 +113,8 @@ export type InstanceSettings = {
   mounts: MountSetting[];
   /** Host ports DEFINED by OTHER instances — the client checks port conflicts against this. */
   takenByOthers: number[];
+  /** The saved config has diverged from what the running instance was launched with. */
+  restartNeeded: boolean;
 };
 
 /**

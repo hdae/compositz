@@ -5,8 +5,10 @@ import {
   instancesDir,
   loadInstance,
   loadInstanceConfig,
+  loadLaunchedConfig,
   type Override,
   OverrideSchema,
+  sameOverride,
   saveInstanceConfig,
 } from "@compositz/core";
 import { join } from "@std/path";
@@ -60,7 +62,15 @@ async function buildSettings(instance: Instance, override: Override): Promise<In
     })),
     // ports DEFINED by other instances (manifest ⊕ override) — excludes this instance's own.
     takenByOthers: await definedHostPorts(store, instance.instanceId),
+    // a restart is needed iff the instance is launched and its saved config has diverged.
+    restartNeeded: await restartNeeded(instance, override),
   };
+}
+
+/** The saved override differs from what the (running) instance was last launched with. */
+async function restartNeeded(instance: Instance, saved: Override): Promise<boolean> {
+  const launched = await loadLaunchedConfig(instance.dir);
+  return launched !== undefined && !sameOverride(saved, launched);
 }
 
 /** Reject any override key that does not name a manifest port / env / mount. */
@@ -97,7 +107,7 @@ export const handler = define.handlers({
       }
       assertKnownKeys(instance, parsed.data);
       await saveInstanceConfig(instance.dir, parsed.data);
-      return Response.json({ ok: true });
+      return Response.json({ ok: true, restartNeeded: await restartNeeded(instance, parsed.data) });
     } catch (e) {
       return fail(e);
     }

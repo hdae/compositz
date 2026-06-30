@@ -904,6 +904,14 @@ function ServicesList({ services, running }: { services: Service[]; running: boo
                 : null}
             </div>
             <div class="flex shrink-0 items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!openable}
+                onClick={() => openInBrowser(s.url)}
+              >
+                <Globe class="size-4" />Browser
+              </Button>
               {openable
                 ? (
                   <a
@@ -920,14 +928,6 @@ function ServicesList({ services, running }: { services: Service[]; running: boo
                     <ExternalLink class="size-4" />New window
                   </Button>
                 )}
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!openable}
-                onClick={() => openInBrowser(s.url)}
-              >
-                <Globe class="size-4" />Browser
-              </Button>
             </div>
           </li>
         );
@@ -958,15 +958,20 @@ function SettingsPanel(
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  // The saved config has diverged from what the running container was launched with — set
+  // from the server (GET on open, PUT on save), so the Restart prompt shows ONLY when a
+  // restart would actually apply a change.
+  const [restartNeeded, setRestartNeeded] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Restart applies the just-saved override (down → up); clear "saved" once done so the
-  // Restart prompt doesn't linger after the restart completes.
+  // Restart applies the just-saved override (down → up); once done, the running config
+  // matches the saved one, so clear both "saved" and the restart-needed prompt.
   const doRestart = async () => {
     setRestarting(true);
     try {
       await onRestart();
       setSaved(false);
+      setRestartNeeded(false);
     } finally {
       setRestarting(false);
     }
@@ -976,12 +981,14 @@ function SettingsPanel(
     let alive = true;
     setSettings(null);
     setLoadError(null);
+    setSaved(false);
     fetch(`/api/instances/${instanceId}/config`)
       .then((r) => r.json())
       .then((b: { ok?: boolean; settings?: InstanceSettings; error?: string }) => {
         if (!alive) return;
         if (b.ok && b.settings) {
           setSettings(b.settings);
+          setRestartNeeded(b.settings.restartNeeded);
           setPorts(
             Object.fromEntries(
               b.settings.ports.map((p) => [p.name, String(p.override ?? p.manifestHost)]),
@@ -1083,9 +1090,15 @@ function SettingsPanel(
         headers: { "content-type": "application/json" },
         body: JSON.stringify(buildOverride()),
       });
-      const b = await res.json().catch(() => ({})) as { ok?: boolean; error?: string };
-      if (res.ok && b.ok) setSaved(true);
-      else setSaveError(b.error ?? `HTTP ${res.status}`);
+      const b = await res.json().catch(() => ({})) as {
+        ok?: boolean;
+        restartNeeded?: boolean;
+        error?: string;
+      };
+      if (res.ok && b.ok) {
+        setSaved(true);
+        setRestartNeeded(!!b.restartNeeded);
+      } else setSaveError(b.error ?? `HTTP ${res.status}`);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1237,7 +1250,7 @@ function SettingsPanel(
           )
           : null}
         {saved ? <span class="text-xs text-green-600 dark:text-green-400">Saved.</span> : null}
-        {saved && running
+        {running && restartNeeded
           ? (
             <Button variant="outline" size="sm" disabled={restarting} onClick={doRestart}>
               {restarting
