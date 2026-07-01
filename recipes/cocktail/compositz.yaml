@@ -1,0 +1,50 @@
+manifestVersion: 2
+id: cocktail
+name: Cocktail
+version: "0.1.0"
+description: >-
+  日本語チャットから Anima で高品質イラストを生成するマルチターン UI
+  (hdae/cocktail: Gemma GGUF + diffusers Anima)。要 CUDA GPU。
+
+# Build from ./Dockerfile. The Dockerfile clones the upstream repo itself (this
+# bundle ships only the recipe, no vendored source), so `up` needs the upstream
+# ref pinned here — bump COCKTAIL_REF to update.
+build:
+  args:
+    COCKTAIL_REF: c74dec758197ef2f73246a208cb019963389dd59
+
+# One port serves BOTH the chat UI and the API on the same origin: the FastAPI
+# server mounts the built Vite SPA at "/" and keeps the API under "/api/*"
+# (apps/server/src/cocktail_server/main.py `_register_spa`).
+ports:
+  - name: web
+    container: 8000
+    host: 8000
+    web: true
+    path: /
+    description: チャット UI 兼 API（同一オリジン、/api/* が API）。
+
+# Everything the app persists lives under one directory (RunPod Network Volume
+# style): the uv venv + uv/Python cache, the HuggingFace model cache, downloaded
+# weights, and generated images — all pointed here by the Dockerfile's ENV. Kept
+# on one managed volume so the multi-GB first-boot download survives restarts.
+# NOTE: not compositz's `cache:` presets — the app owns its own cache layout.
+mounts:
+  - name: workspace
+    target: /workspace
+    placement: volume
+    description: venv/uvキャッシュ/HFモデル/重み/生成画像を集約。初回 up は数GB DL で長い。
+
+env:
+  - name: CIVITAI_TOKEN
+    description: Civitai の gated モデルを使うときのみ設定。既定モデルは不要。
+  - name: RESIDENCY_MODE
+    default: auto
+    description: VRAM 運用モード auto/swap/coresident（16GB=swap、24GB+=coresident）。
+  - name: STARTUP_PRELOAD
+    default: "true"
+    description: 起動時にモデルを DL+プリロード。GPU 無しで smoke するときだけ false。
+
+# CUDA-only: the LLM runs on a source-built CUDA llama.cpp wheel and image gen
+# runs diffusers on the GPU (torch cu128). Fail fast on a GPU-less host.
+gpu: required
