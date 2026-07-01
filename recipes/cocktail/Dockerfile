@@ -52,7 +52,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 # GGML_CUDA を有効化し、対象アーキのカーネルを焼いた wheel を /wheels に出力する。
 ENV CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES}"
-RUN uv pip wheel --python-preference only-managed --python 3.12 \
+# uv には `pip wheel` サブコマンドが無い（uv pip は compile/sync/install/... のみ）。uv は
+# managed な Python 3.12 + pip の用意にだけ使い、CUDA ビルド自体は pip wheel で行う。
+# llama-cpp-python の scikit-build-core が CMAKE_ARGS を読むため sm_120 有効の wheel が焼ける。
+# runtime の uv venv も 3.12 なので wheel タグ(cp312)が一致し、そのまま uv pip install できる。
+RUN uv venv --seed --python-preference only-managed --python 3.12 /opt/build-venv \
+ && /opt/build-venv/bin/pip wheel \
         --no-binary llama-cpp-python \
         "llama-cpp-python==${LLAMA_CPP_VERSION}" \
         --wheel-dir /wheels
