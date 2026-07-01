@@ -65,10 +65,24 @@ removed. Second copy = re-import or `duplicate` (copies `app/` only, not data). 
 security- and memory-hardened (see Resume point). Layout:
 [recipe-ingestion.md](../../docs/recipe-ingestion.md#storage--instance-centric).
 
-**Next (sequenced):** the **RI-1..4 ingestion/override arc is complete** (RI-4 = `config.yaml` +
-Settings tab, ADR-022). Remaining UI polish: the light/dark/auto **mode selector** (additive). Then
-**Phase 3 — Hardening** (shared-cache live exercise, volumes/GC + full data deletion, GPU detection,
-versioning).
+**Dogfood — cocktail recipe ✅ built & ran end-to-end on the user's GPU host.** `recipes/cocktail/`
+(hdae/cocktail: Gemma GGUF + diffusers Anima, `gpu: required`) is a **clone-in-Dockerfile,
+self-contained** recipe: the Dockerfile clones the pinned upstream ref, builds `apps/client/dist`
+itself (upstream assumes a host pre-build), then mirrors upstream's llama-CUDA-wheel + runtime
+stages. Gotcha fixed: **`uv pip wheel` is not a real uv subcommand** → build the CUDA
+`llama-cpp-python` wheel via a `uv venv --seed` venv's `pip wheel` (`32c6c47`). First real
+non-trivial recipe.
+
+**Next (sequenced):** ► **NOW: revisit the managed-cache design.** cocktail funnels
+`HF_HOME`/`UV_CACHE_DIR`/venv/weights/images under one `/workspace` mount, which the `cache:`
+presets **can't express without conflicting** (they inject a Compositz-chosen path). Decide: support
+"adopt an app's own cache dir as a shared cache" (a manifest way to point a shared cache at an
+app-chosen path) vs keep **presets-own-the-location** as the by-design boundary. Full write-up:
+[docs/limitations.md](../../docs/limitations.md) "Managed caches assume Compositz owns the cache
+location". — Then the **RI-1..4 arc is complete** (RI-4 = `config.yaml` + Settings tab, ADR-022);
+remaining UI polish: light/dark/auto **mode selector** (additive); then **Phase 3 — Hardening**
+(shared-cache live exercise, volumes/GC + full data deletion, GPU detection, versioning). Also
+queued: known-issues "first `up` looks stuck" readiness UX.
 
 ## Decisions recently settled
 
