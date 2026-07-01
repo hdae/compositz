@@ -22,6 +22,7 @@ _manager_ is trusted; the _apps_ are sandboxed.
 | [recipe-format.md](recipe-format.md)       | The `compositz.yaml` manifest spec + authoring guide                                                   |
 | [recipe-ingestion.md](recipe-ingestion.md) | Recipe sourcing (tar/GitHub), instance-centric storage, launch config + increment plan                 |
 | [known-issues.md](known-issues.md)         | Open / being-worked problems                                                                           |
+| [limitations.md](limitations.md)           | Intentional by-design constraints (not bugs)                                                           |
 
 ## Status at a glance (2026-06-30)
 
