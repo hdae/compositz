@@ -125,4 +125,5 @@ export {
   type Mount,
   type PullProgress,
   type VersionResponse,
+  type VolumeSummary,
 } from "./src/engine/types.ts";

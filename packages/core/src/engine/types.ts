@@ -82,6 +82,22 @@ export interface ContainerSummary {
   Labels: Record<string, string>;
 }
 
+/** One volume from `GET /volumes`. */
+export interface VolumeSummary {
+  Name: string;
+  Driver: string;
+  /** Daemon-host path of the volume's data — informational only from a remote client. */
+  Mountpoint: string;
+  Labels: Record<string, string> | null;
+  Scope: string;
+  CreatedAt?: string;
+}
+
+export interface VolumeListResponse {
+  Volumes: VolumeSummary[] | null;
+  Warnings: string[] | null;
+}
+
 export interface VersionResponse {
   Version: string;
   ApiVersion: string;

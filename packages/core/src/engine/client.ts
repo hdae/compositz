@@ -19,6 +19,8 @@ import type {
   LogsOptions,
   PullProgress,
   VersionResponse,
+  VolumeListResponse,
+  VolumeSummary,
 } from "./types.ts";
 
 const encoder = new TextEncoder();
@@ -138,6 +140,27 @@ export class EngineClient {
   async removeImage(ref: string, opts: { force?: boolean } = {}): Promise<void> {
     const q = opts.force ? "?force=1" : "";
     await this.#call("DELETE", `/images/${ref}${q}`, { ok: [404] });
+  }
+
+  /** GET /volumes — list volumes, optionally filtered (e.g. by exact name or label). */
+  async listVolumes(
+    opts: { filters?: Record<string, string[]> } = {},
+  ): Promise<VolumeSummary[]> {
+    const q = new URLSearchParams();
+    if (opts.filters) q.set("filters", JSON.stringify(opts.filters));
+    const qs = q.toString();
+    const res = await this.#call<VolumeListResponse>("GET", `/volumes${qs ? `?${qs}` : ""}`);
+    return res?.Volumes ?? [];
+  }
+
+  /**
+   * DELETE /volumes/{name} — remove a named volume AND ITS DATA (irreversible).
+   * A 404 (already gone) is tolerated; a 409 (still mounted by a container)
+   * surfaces as an EngineHttpError so the caller decides (call `down` first).
+   */
+  async removeVolume(name: string, opts: { force?: boolean } = {}): Promise<void> {
+    const q = opts.force ? "?force=1" : "";
+    await this.#call("DELETE", `/volumes/${encodeURIComponent(name)}${q}`, { ok: [404] });
   }
 
   /** GET /containers/json — list containers, optionally filtered (e.g. by label). */
