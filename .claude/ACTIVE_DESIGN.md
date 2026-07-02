@@ -73,16 +73,22 @@ stages. Gotcha fixed: **`uv pip wheel` is not a real uv subcommand** → build t
 `llama-cpp-python` wheel via a `uv venv --seed` venv's `pip wheel` (`32c6c47`). First real
 non-trivial recipe.
 
-**Next (sequenced):** ► **NOW: revisit the managed-cache design.** cocktail funnels
-`HF_HOME`/`UV_CACHE_DIR`/venv/weights/images under one `/workspace` mount, which the `cache:`
-presets **can't express without conflicting** (they inject a Compositz-chosen path). Decide: support
-"adopt an app's own cache dir as a shared cache" (a manifest way to point a shared cache at an
-app-chosen path) vs keep **presets-own-the-location** as the by-design boundary. Full write-up:
-[docs/limitations.md](../../docs/limitations.md) "Managed caches assume Compositz owns the cache
-location". — Then the **RI-1..4 arc is complete** (RI-4 = `config.yaml` + Settings tab, ADR-022);
-remaining UI polish: light/dark/auto **mode selector** (additive); then **Phase 3 — Hardening**
-(shared-cache live exercise, volumes/GC + full data deletion, GPU detection, versioning). Also
-queued: known-issues "first `up` looks stuck" readiness UX.
+**Managed-cache design ✅ settled (ADR-024): forced sharing via create-time env injection.** The
+earlier "presets conflict with an app's own ENV" claim was **retracted** — measured on the live
+engine, container-create `Env` beats image `ENV`, so declaring presets forces the shared location
+for env-driven apps (cocktail is fully env-driven). venv preset **repaired**: it now also injects
+`UV_PROJECT_ENVIRONMENT` (uv sync ignores `VIRTUAL_ENV` — measured) + `UV_PYTHON_INSTALL_DIR`
+(`63a6ad3`); cocktail migrated to `cache: [venv, huggingface, custom(cocktail-weights)]`
+(`a35bb79`); docs narrowed + threat-model added (`59dcb41`). No global default-on (isolation).
+Deferred: `target:` graft for env-deaf apps (needs self-sorted mounts — moby sort is impl behavior);
+venv-orphan GC (known-issues). NOTE: the user's GPU-host cocktail instance predates this — re-import
+to adopt the shared caches.
+
+**Next (sequenced):** the **RI-1..4 arc is complete** (RI-4 = `config.yaml` + Settings tab,
+ADR-022); remaining UI polish: ► **NOW: light/dark/auto mode selector** (additive); then **Phase 3 —
+Hardening** (shared-cache live exercise, volumes/GC + full data deletion + venv-orphan reclaim, GPU
+detection, versioning, shared-cache hardening per limitations.md threat model). Also queued:
+known-issues "first `up` looks stuck" readiness UX.
 
 ## Decisions recently settled
 
