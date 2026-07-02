@@ -84,20 +84,22 @@ Deferred: `target:` graft for env-deaf apps (needs self-sorted mounts — moby s
 venv-orphan GC (known-issues). **Live-verified on the GPU host**: the user deleted + re-imported
 cocktail — shared uv/HF/weights volumes survived, first boot was fast.
 
-**Next:** ► **NOW: deletion/duplicate arc — user-approved 2026-07-03** (the feature-gap sweep ran:
-58 candidates → 30 kept, new finds recorded in roadmap Phase 3 + known-issues). Phases: ① CLI `rm`
-removes the per-instance image (parity with UI delete) → ② `EngineClient` volume endpoints
-(GET/DELETE `/volumes`) → ③ **volume export** (Settings + CLI; tar via the archive API on a
-_created_ container — no helper execution) → ④ **`rm --with-data` / UI delete option** — approved
-defaults: named volumes **DELETE by default**, bind data-root **KEPT by default** (opt-in delete),
-shared cache volumes NEVER touched (structural: `compositz_<id>_*` vs `compositz_uv` naming) → ⑤
-**GUI duplicate** — `duplicateInstance` gains config.yaml inheritance (env/placement inherited,
-hostPorts dropped → add-time `deconflictHostPorts`), server-confirmed UI → ⑥ **action-driven tab
-auto-switch** (user request: add→build log (as-is), build done→Settings, starting→runtime log,
-ready→Services; manual picks respected between transitions). Build cache stays ON by default;
-`--no-cache` is opt-in and lands with the NEXT arc: **in-place update** (provenance display →
-update-to-ref with re-trust + rebuild → user-facing build args — roadmap Phase 3). Then Phase 3
-hardening proper.
+**Deletion/duplicate arc — ✅ DONE (user-approved 2026-07-03; ADR-025 + ADR-026).** All six phases
+shipped & live-verified: CLI `rm` image parity → volume endpoints → **volume export** (never-started
+helper + archive API; teardown completes BEFORE stream close — measured exit race) → **delete
+removes data volumes by default** (`--keep-data`/checkbox; `--purge`/opt-in bind; definition kept on
+409 so volumes can't become invisible orphans) → **GUI duplicate** (config inherited minus hostPorts
+→ deconflict + notice) → **action-driven tabs + honest readiness** (ADR-026: HTTP probe on web ports
+— bare TCP is useless, docker-proxy accepts it; warming 2s SSE poll; start→runtime log, build
+done→Settings, ready→Services with engaged-tab protection). A 5-lens adversarial review (14
+findings, all held) was folded in — incl. the HIGH `rm .`/`rm ..` store-wipe fix
+(`removeInstanceDir` now enforces `INSTANCE_ID_PATTERN` itself).
+
+**Next:** ► **update arc (案2, queued)**: provenance display (source/ref/age in ls + row) →
+**in-place update to a ref/commit** (re-ingest into the SAME instanceId keeping volumes/config,
+behind a re-trust gate + rebuild) → user-facing build args (cocktail `COCKTAIL_REF`) → `--no-cache`
+rebuild action (build cache stays ON by default — user decision). Then Phase 3 hardening (volumes
+prune / venv GC / manifest expressiveness — roadmap).
 
 ## Decisions recently settled
 
@@ -149,6 +151,15 @@ hardening proper.
   reach the system default) or a new window. Complete (core+UI+CLI).
 
 ## Pitfalls index
+
+- **A bare TCP connect is USELESS as a readiness probe** — docker-proxy itself accepts the
+  connection even with nothing listening in the container (measured); and the published mapping
+  appears in `ps` the moment the container starts. Real readiness = an actual HTTP exchange
+  (`lib/probe.ts`, ADR-026). Also: no Docker event fires when a booting app finally listens — hence
+  the warming fast-poll in `/api/events`.
+- **`removeInstanceDir` enforces `INSTANCE_ID_PATTERN` itself** — a path-shaped "id" (`.`, `..`)
+  previously turned `compositz rm .` into a recursive wipe of the store. Never bypass it with a raw
+  `Deno.remove`; destructive paths validate their own inputs.
 
 - **Engine calls are server-only.** In Fresh, import `@compositz/core` in route handlers, never in
   islands / client code — `fresh:check-imports` fails the build if `node:net` reaches the client

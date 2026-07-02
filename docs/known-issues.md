@@ -76,6 +76,23 @@ settled rationale belongs in [decisions.md](decisions.md).
 - **Fix direction:** thread pull layer progress into the install NDJSON stream the same way build
   log lines flow.
 
+## An export helper leaked by a killed process lingers until the next delete
+
+- **What:** `exportMount`'s helper container is removed when its stream ends; a process killed
+  mid-export (CLI Ctrl-C, server exit) leaks it. Deletion now sweeps the instance's helpers before
+  removing volumes (label-scoped — so no more permanent 409-block), but a leaked helper still sits
+  in `ps -a` until that delete happens.
+- **Fix direction:** opportunistic stale-helper sweep in the Phase-3 GC / `volumes prune` pass (same
+  enumeration), plus optionally a CLI SIGINT handler for best-effort cleanup.
+
+## `config.yaml` is written non-atomically (no lock)
+
+- **What:** `saveInstanceConfig` overwrites `config.yaml` in place (no tmp+rename, no lock), and
+  add-time `deconflictHostPorts` does read-modify-write against a concurrent Settings PUT. A crash
+  mid-write can truncate the file — which then fails LOUD on the next load (parse error), never
+  silently misconfigures. Pre-dates this arc (RI-4); low likelihood for a single-user tool.
+- **Fix direction:** write tmp + same-dir atomic rename; last-writer-wins stays acceptable.
+
 ## Runtime-log tab can duplicate lines after an unexpected reconnect
 
 - **What:** the Runtime-log tab streams `/api/instances/:id/logs` (SSE) with a `tail=500` backfill.
