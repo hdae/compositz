@@ -24,16 +24,32 @@ ports:
     path: /
     description: チャット UI 兼 API（同一オリジン、/api/* が API）。
 
-# Everything the app persists lives under one directory (RunPod Network Volume
-# style): the uv venv + uv/Python cache, the HuggingFace model cache, downloaded
-# weights, and generated images — all pointed here by the Dockerfile's ENV. Kept
-# on one managed volume so the multi-GB first-boot download survives restarts.
-# NOTE: not compositz's `cache:` presets — the app owns its own cache layout.
+# Under compositz the heavy shareables (venv / uv cache / managed Python / HF
+# hub cache / weights) live on the shared cache volumes declared below — the
+# presets' create-time env overrides the Dockerfile's /workspace defaults
+# (ADR-024). This volume keeps what is genuinely per-instance: generated images
+# (IMAGES_DIR) — plus everything, when the image runs standalone off compositz.
 mounts:
   - name: workspace
     target: /workspace
     placement: volume
-    description: venv/uvキャッシュ/HFモデル/重み/生成画像を集約。初回 up は数GB DL で長い。
+    description: 生成画像 (IMAGES_DIR) の置き場。standalone 実行時は全データがここへ集約。
+
+# Shared managed caches — the point (ADR-024): a duplicated instance's first
+# boot re-downloads nothing. `venv` gives a per-instance venv on the shared uv
+# volume (the entrypoint's `uv sync` reads the injected UV_PROJECT_ENVIRONMENT);
+# `huggingface` shares the HF hub cache (Anima etc.); `cocktail-weights` shares
+# fetch_models' GGUF/weight downloads (atomic tmp+sha256+rename, so concurrent
+# first boots are safe). `scope: shared` here means "across duplicates of THIS
+# recipe" — the name is a cooperative namespace, not an isolation boundary
+# (docs/limitations.md).
+cache:
+  - type: venv
+  - type: huggingface
+  - type: custom
+    name: cocktail-weights
+    env: WEIGHTS_DIR
+    scope: shared
 
 env:
   - name: CIVITAI_TOKEN

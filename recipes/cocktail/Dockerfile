@@ -65,19 +65,23 @@ RUN uv venv --seed --python-preference only-managed --python 3.12 /opt/build-ven
 # ==============================================================================
 # Stage 3 — runtime （上流逐語 + ソースは clone/build 段から COPY）
 # torch / transformers / diffusers はイメージに焼かず、entrypoint の `uv sync` で
-# /workspace(= compositz の永続 volume) に入れる。llama-cpp-python だけは CUDA ビルドが
-# 要るので builder の wheel を持ち込む。HOST/PORT は publish が確実に届くよう明示する。
+# 永続 volume に入れる。llama-cpp-python だけは CUDA ビルドが要るので builder の
+# wheel を持ち込む。HOST/PORT は publish が確実に届くよう明示する。
 # ==============================================================================
 FROM debian:bookworm-slim
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    # uv: volume 跨ぎ hardlink 回避 / .pyc 生成 / Python 自体も uv に取得させる。
-    UV_LINK_MODE=copy \
+    # uv: .pyc は生成させ、Python 自体も uv に取得させる。link mode は既定の
+    # hardlink のまま — cache と venv は compositz プリセット下でも standalone
+    # でも同一 volume 上にあり、万一跨いでも uv が copy に自動フォールバックする。
     UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_PREFERENCE=only-managed \
-    # venv / Python / uv cache / モデル / 画像 / 重みをすべて /workspace 配下へ寄せ、
-    # compositz の永続 volume に載せて 2 回目以降の起動を速くする。
+    # 以下のパス群は standalone（compositz を介さない docker run）用のデフォルト。
+    # compositz 配下ではレシピの cache: プリセットがコンテナ作成時 Env として
+    # 上書きし（作成時 Env は image ENV に勝つ）、venv / uv cache / Python / HF /
+    # 重みは共有キャッシュ volume へ移る。/workspace に残るのは IMAGES_DIR
+    # （生成画像 = ユーザーデータ）のみ (ADR-024)。
     UV_PYTHON_INSTALL_DIR=/workspace/.uv-python \
     UV_PROJECT_ENVIRONMENT=/workspace/.venv \
     UV_CACHE_DIR=/workspace/.uv-cache \
