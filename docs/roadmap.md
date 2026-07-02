@@ -70,9 +70,13 @@ De-risk the two load-bearing unknowns before building.
   `import`/`ls`/`duplicate`/ `rm`; UI instance list + drag-drop import. Full suite green +
   live-verified (import→up→down→rm, managed-only/reversible). See [ADR-017](decisions.md) /
   [recipe-ingestion.md](recipe-ingestion.md).
-- ⏳ **Ingestion + launch UI (RI-3…RI-4)**: RI-3 = GitHub sourcing (`owner/repo[@ref][/subdir]` →
-  codeload tarball → instance); RI-4 = per-instance override UI (host-port remap w/ auto-suggest,
-  env values, placement) + multi-web "Open UI" buttons.
+- ✅ **Ingestion + launch UI (RI-3…RI-4)**: RI-3 = GitHub sourcing (`owner/repo[/subdir][@ref]` →
+  codeload tarball → instance, [ADR-021](decisions.md)); RI-4 = per-instance override
+  (`config.yaml` + Settings tab, [ADR-022](decisions.md)) + definition-driven ports
+  ([ADR-023](decisions.md)).
+- ⏳ **Duplicate in the GUI**: `duplicate` exists in core + CLI only; add a UI action (clones the
+  bundle, not the data — with the shared cache presets a duplicate's first boot is fast, verified on
+  the cocktail recipe).
 - 🔄 **Desktop shell**: the desktop **is** the Fresh management UI, packaged by `deno desktop`
   framework auto-detection (it embeds the built `_fresh/` into one native CEF binary — no separate
   package; recipe ops happen in the UI via core in-process). Was a PoC that launched one recipe and
@@ -84,8 +88,11 @@ De-risk the two load-bearing unknowns before building.
 
 ## Phase 3 — Hardening ⏳
 
-- ⏳ **Shared model cache**: one named volume (HF_HOME / ~/.cache/huggingface / ~/.ollama) mounted
-  into every container.
+- ✅ **Shared model cache** — via recipe-declared `cache:` presets (NOT injected into every
+  container; global default-on was rejected, [ADR-024](decisions.md)). Create-time env injection
+  overrides the image's own ENV; exercised live by `recipes/cocktail` (venv/HF/weights shared across
+  re-imports). Remaining hardening (poisoning/threat model) tracked below and in
+  [limitations.md](limitations.md).
 - ⏳ **Volume lifecycle & GC**: per-app named volumes; `gc --reclaim`; uv `repair` / `rebuild`
   wrappers (uv has no venv-aware GC or verify — Compositz wraps it).
 - ⏳ **GPU runtime detection**: choose nvidia vs CDI from `/info` / `/version`.
@@ -103,6 +110,11 @@ De-risk the two load-bearing unknowns before building.
   the ~440 MB CEF bundle for the lightweight system webview.
 - ⏳ **Catalog**: static `index.json` generated from the recipe repo, served via CDN/GitHub.
 - ⏳ **Recipe authoring tooling** for LLM agents (deferred; core currently just consumes recipes).
+- 💡 **Remote sharing via tunnel** (idea, user wish): expose a running app's web port through e.g. a
+  Cloudflare Tunnel — `cloudflared` could ride in the recipe image or as a manager-run sidecar
+  (sidecar keeps recipes tunnel-agnostic). MUST NOT ship without an auth story (a bare tunnel
+  publishes the app to the internet — Cloudflare Access or equivalent gate), plus a visible "this
+  instance is public" indicator in the UI.
 
 ## Cross-cutting / always-on
 

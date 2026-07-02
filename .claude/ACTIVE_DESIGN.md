@@ -81,14 +81,17 @@ for env-driven apps (cocktail is fully env-driven). venv preset **repaired**: it
 (`63a6ad3`); cocktail migrated to `cache: [venv, huggingface, custom(cocktail-weights)]`
 (`a35bb79`); docs narrowed + threat-model added (`59dcb41`). No global default-on (isolation).
 Deferred: `target:` graft for env-deaf apps (needs self-sorted mounts — moby sort is impl behavior);
-venv-orphan GC (known-issues). NOTE: the user's GPU-host cocktail instance predates this — re-import
-to adopt the shared caches.
+venv-orphan GC (known-issues). **Live-verified on the GPU host**: the user deleted + re-imported
+cocktail — shared uv/HF/weights volumes survived, first boot was fast.
 
 **Next (sequenced):** the **RI-1..4 arc is complete** (RI-4 = `config.yaml` + Settings tab,
-ADR-022); remaining UI polish: ► **NOW: light/dark/auto mode selector** (additive); then **Phase 3 —
-Hardening** (shared-cache live exercise, volumes/GC + full data deletion + venv-orphan reclaim, GPU
-detection, versioning, shared-cache hardening per limitations.md threat model). Also queued:
-known-issues "first `up` looks stuck" readiness UX.
+ADR-022); remaining UI polish: ► **NOW: light/dark/auto mode selector** (additive), then a GUI
+**duplicate** action (core+CLI-only today; cheap first boot now that caches are shared); then
+**Phase 3 — Hardening** (volumes/GC + full data deletion + venv-orphan reclaim, GPU detection,
+versioning, shared-cache hardening per limitations.md threat model — the shared-cache live exercise
+itself is ✅ done via cocktail). Also queued: known-issues "first `up` looks stuck" readiness UX;
+idea logged for **remote sharing via tunnel** (cloudflared sidecar, roadmap Phase 4 — MUST carry an
+auth story before exposing anything).
 
 ## Decisions recently settled
 
