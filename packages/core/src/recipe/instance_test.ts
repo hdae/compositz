@@ -82,6 +82,28 @@ Deno.test("removeInstanceDir: deletes the instance definition (idempotent)", asy
   }
 });
 
+Deno.test("removeInstanceDir: rejects a path-shaped id — the store must survive", async () => {
+  const store = await Deno.makeTempDir({ prefix: "compositz-store-" });
+  try {
+    const src = await dirBundle("hello", "Hello");
+    const inst = await ingestBundle({ kind: "dir", dir: src }, store);
+
+    // `rm .` / `rm ..` / traversal must throw BEFORE any filesystem delete —
+    // otherwise the recursive remove wipes the whole store (or app-data) and
+    // mass-orphans every instance's volumes.
+    for (const evil of [".", "..", "a/b", "../store", "UPPER", ""]) {
+      await assertRejects(() => removeInstanceDir(store, evil), CompositzError, "invalid");
+    }
+    assertEquals((await listInstances(store)).length, 1); // untouched
+
+    await removeInstanceDir(store, inst.instanceId); // the real one still works
+    assertEquals((await listInstances(store)).length, 0);
+    await Deno.remove(src, { recursive: true });
+  } finally {
+    await Deno.remove(store, { recursive: true }).catch(() => {});
+  }
+});
+
 // --- per-instance launch override (config.yaml, RI-4) ----------------------
 
 Deno.test("loadInstanceConfig: a fresh instance (no config.yaml) is the empty override", async () => {

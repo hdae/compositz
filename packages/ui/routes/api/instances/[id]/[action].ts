@@ -91,6 +91,7 @@ export const handler = define.handlers({
           const instance = await loadInstance(join(store, id)).catch(() => undefined);
           await down(client, id);
           if (instance) await removeInstanceImage(client, instance);
+          const warnings: string[] = [];
           if (instance) {
             const data = await removeInstanceData(client, instance, {
               volumes: body.volumes ?? true,
@@ -105,9 +106,24 @@ export const handler = define.handlers({
                 error: `data volumes not removed (${failed}) — instance kept, retry delete`,
               }, { status: 409 });
             }
+            if (data.bindDirFailed) {
+              // The volumes are already gone (irreversible) — disclose the partial
+              // outcome instead of pretending the delete either fully worked or
+              // fully didn't.
+              warnings.push(
+                `host data NOT removed (${data.bindDirFailed.error}) — remove manually: ${data.bindDirFailed.path}`,
+              );
+            }
+          } else {
+            // Unreadable definition ⇒ neither the image tag nor the volume names are
+            // derivable. Deleting silently would manufacture invisible orphans —
+            // disclose what was left behind.
+            warnings.push(
+              "definition was unreadable — its image and data volumes (if any) were NOT removed",
+            );
           }
           await removeInstanceDir(store, id);
-          return Response.json({ ok: true });
+          return Response.json({ ok: true, warning: warnings.join("; ") || undefined });
         }
         case "duplicate": {
           // Derive a fresh instance: bundle + Settings override (minus ports; data

@@ -14,6 +14,16 @@ import { type Manifest } from "./manifest.ts";
 import { loadRecipe } from "./loader.ts";
 import { type Override, parseOverride, serializeOverride } from "./config.ts";
 
+/**
+ * The instance id charset — `<appId>-<rand>`. Lowercase alphanumeric + hyphen.
+ * Callers that accept an id from outside (a UI route, a CLI arg) MUST validate
+ * against this, since it flows into filesystem paths and Docker names — and the
+ * DESTRUCTIVE path (`removeInstanceDir`) enforces it itself, so no caller can
+ * turn a path-shaped "id" (`.`, `..`, `a/b`) into a recursive delete outside
+ * one instance directory.
+ */
+export const INSTANCE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,80}$/;
+
 /** Subdirectory holding the recipe bundle inside an instance directory. */
 export const APP_SUBDIR = "app";
 /** Provenance file inside an instance directory. */
@@ -82,9 +92,22 @@ export async function listInstances(instancesDir: string): Promise<Instance[]> {
   return out;
 }
 
-/** Remove an instance's directory (its definition + override). Docker resources/data are untouched. */
+/**
+ * Remove an instance's directory (its definition + override). Docker resources/data
+ * are untouched. The id is validated HERE (not only at the callers): a path-shaped
+ * id (`.`, `..`, `a/b`) would otherwise recursively delete the whole store or
+ * app-data dir. A missing dir is fine (idempotent); any other failure throws (fail
+ * loud — a swallowed error would report "removed" for a still-present definition).
+ */
 export async function removeInstanceDir(instancesDir: string, instanceId: string): Promise<void> {
-  await Deno.remove(`${instancesDir}/${instanceId}`, { recursive: true }).catch(() => {});
+  if (!INSTANCE_ID_PATTERN.test(instanceId)) {
+    throw new CompositzError(`invalid instance id: "${instanceId}"`);
+  }
+  try {
+    await Deno.remove(`${instancesDir}/${instanceId}`, { recursive: true });
+  } catch (e) {
+    if (!(e instanceof Deno.errors.NotFound)) throw e;
+  }
 }
 
 function normDir(instanceDir: string): string {

@@ -158,7 +158,14 @@ export default function InstanceList(
     prevReady.current = ready;
     if (prev === null) return; // baseline snapshot — no transitions yet
     for (const [id, isReady] of Object.entries(ready)) {
-      if (isReady && !prev[id]) setTabByInstance((t) => ({ ...t, [id]: "services" }));
+      if (!isReady || prev[id]) continue;
+      // Respect an engaged user: only advance from where the flow itself put them
+      // (the runtime log, or no explicit pick). A manually-visited tab on an OPEN
+      // panel — e.g. Settings mid-edit, which unmounts on switch and would LOSE the
+      // edits — is never yanked; a closed panel just gets its tab pre-set.
+      const engaged = expanded[id] && tabByInstance[id] !== undefined &&
+        tabByInstance[id] !== "logs";
+      if (!engaged) setTabByInstance((t) => ({ ...t, [id]: "services" }));
     }
   }, [rows]);
 
@@ -300,10 +307,13 @@ export default function InstanceList(
         headers: { "content-type": "application/json" },
         body: JSON.stringify(opts),
       });
+      const body = await res.json().catch(() => ({})) as { error?: string; warning?: string };
       if (!res.ok) {
         if (removed) setViews((vs) => [...vs, removed]);
-        const body = await res.json().catch(() => ({})) as { error?: string };
         setActionError(`delete ${id} failed: ${body.error ?? `HTTP ${res.status}`}`);
+      } else if (body.warning) {
+        // Partial outcome (e.g. root-owned bind files survived) — surface it.
+        setNotice(`delete ${id}: ${body.warning}`);
       }
     } catch (e) {
       if (removed) setViews((vs) => [...vs, removed]);

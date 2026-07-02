@@ -27,12 +27,8 @@ import {
   writeMeta,
 } from "./instance.ts";
 
-/**
- * The instance id charset — `<appId>-<rand>`. Lowercase alphanumeric + hyphen.
- * Callers that accept an id from outside (a UI route) MUST validate against this,
- * since it flows into filesystem paths and Docker names.
- */
-export const INSTANCE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,80}$/;
+// The id charset lives with the instance model (the destructive path enforces it).
+export { INSTANCE_ID_PATTERN } from "./instance.ts";
 
 const ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz";
 

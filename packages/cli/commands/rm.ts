@@ -1,13 +1,14 @@
 import {
   down,
   EngineClient,
+  INSTANCE_ID_PATTERN,
   loadInstance,
   removeInstanceData,
   removeInstanceDir,
   removeInstanceImage,
 } from "@compositz/core";
 import { join } from "@std/path";
-import { dim, green, red } from "@std/fmt/colors";
+import { dim, green, red, yellow } from "@std/fmt/colors";
 import { storeDir } from "../lib.ts";
 
 /**
@@ -36,13 +37,26 @@ export async function rm(args: string[]): Promise<number> {
   let failures = 0;
   for (const id of ids) {
     try {
+      // Ids flow into filesystem paths — a path-shaped "id" (`.`, `..`, `a/b`) must
+      // never reach the recursive delete (removeInstanceDir guards too; this just
+      // fails earlier with a per-id message).
+      if (!INSTANCE_ID_PATTERN.test(id)) {
+        throw new Error(`invalid instance id: "${id}"`);
+      }
       // Load best-effort BEFORE removal to know the image tag + volume names; a
       // missing/corrupt instance still gets its dir removed (mirrors the UI delete).
       const instance = await loadInstance(join(store, id)).catch(() => undefined);
       await down(client, id);
-      if (instance) await removeInstanceImage(client, instance);
 
-      const notes = ["image removed"];
+      const notes: string[] = [];
+      if (instance) {
+        await removeInstanceImage(client, instance);
+        notes.push("image removed");
+      } else {
+        // Without a readable definition neither the image tag nor the volume names
+        // can be derived — say so instead of claiming a clean removal.
+        notes.push("definition was unreadable — image and data volumes (if any) left as-is");
+      }
       if (instance && !keepData) {
         const data = await removeInstanceData(client, instance, { bindData: purge });
         if (data.volumesFailed.length > 0) {
@@ -57,7 +71,15 @@ export async function rm(args: string[]): Promise<number> {
           notes.push(`${data.volumesRemoved.length} data volume(s) removed`);
         }
         if (data.bindDirRemoved) notes.push("bind data removed");
-      } else {
+        if (data.bindDirFailed) {
+          // The volumes above are already gone — disclose the partial outcome
+          // instead of failing as if nothing happened.
+          failures++;
+          console.error(yellow(
+            `bind data NOT removed (${data.bindDirFailed.error}) — remove manually: ${data.bindDirFailed.path}`,
+          ));
+        }
+      } else if (instance) {
         notes.push("data volumes kept");
       }
 

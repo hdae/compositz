@@ -323,6 +323,12 @@ export interface RemoveDataResult {
   volumesFailed: Array<{ name: string; error: string }>;
   /** The data-root bind dir removed (set only when `bindData` was requested and it existed). */
   bindDirRemoved?: string;
+  /**
+   * The bind dir could not be removed (typically EACCES: the app ran as root and
+   * wrote root-owned files). Reported, not thrown — the volume removals above have
+   * already happened irreversibly and MUST reach the caller's report.
+   */
+  bindDirFailed?: { path: string; error: string };
 }
 
 /**
@@ -345,6 +351,21 @@ export async function removeInstanceData(
   const result: RemoveDataResult = { volumesRemoved: [], volumesFailed: [] };
 
   if (opts.volumes ?? true) {
+    // Sweep leftover export helpers first: a helper leaked by a killed process
+    // (server/CLI died mid-export) still references the volumes and would turn
+    // every removal into a permanent 409. Label-scoped to THIS instance's helpers —
+    // structurally unable to touch anything else.
+    const helpers = await client.ps({
+      all: true,
+      filters: {
+        label: [
+          `${label("role")}=export-helper`,
+          `${label("instance")}=${instance.instanceId}`,
+        ],
+      },
+    }).catch(() => []);
+    for (const h of helpers) await client.remove(h.Id, { force: true }).catch(() => {});
+
     for (const mt of instance.manifest.mounts) {
       const name = volumeName(instance.instanceId, mt.name);
       // Docker's name filter is a substring match — confirm exactly before counting
@@ -367,7 +388,11 @@ export async function removeInstanceData(
       await Deno.remove(dir, { recursive: true });
       result.bindDirRemoved = dir;
     } catch (e) {
-      if (!(e instanceof Deno.errors.NotFound)) throw e;
+      // Report instead of throwing: the volume removals above already happened
+      // irreversibly — a throw here would discard that fact from the report.
+      if (!(e instanceof Deno.errors.NotFound)) {
+        result.bindDirFailed = { path: dir, error: e instanceof Error ? e.message : String(e) };
+      }
     }
   }
 

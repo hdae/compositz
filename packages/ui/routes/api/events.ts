@@ -96,7 +96,7 @@ export const handler = define.handlers({
         // Push the current managed-container snapshot (or an offline notice).
         let warming = false; // a running port not yet accepting → poll fast
         let lastPush = 0;
-        const pushSnapshot = async (): Promise<boolean> => {
+        const doPush = async (): Promise<boolean> => {
           try {
             const list = await client.ps({ all: true, filters: psFilters });
             const containers = await probeAccepting(
@@ -116,6 +116,29 @@ export const handler = define.handlers({
             lastPush = Date.now();
             return send("offline", { error: e instanceof Error ? e.message : String(e) });
           }
+        };
+
+        // Serialize + coalesce: the event loop and the refresh loop both push, and
+        // doPush awaits inside (ps + probes) — two interleaved reads could enqueue
+        // an OLDER snapshot after a newer one (stale-wins). One push at a time; a
+        // push requested mid-push runs exactly one more round with fresh data.
+        let inFlight: Promise<boolean> | null = null;
+        let queued = false;
+        const pushSnapshot = (): Promise<boolean> => {
+          if (inFlight) {
+            queued = true;
+            return inFlight;
+          }
+          inFlight = (async () => {
+            let ok = true;
+            do {
+              queued = false;
+              ok = await doPush();
+            } while (ok && queued && !signal.aborted);
+            inFlight = null;
+            return ok;
+          })();
+          return inFlight;
         };
 
         if (!await pushSnapshot()) { // initial paint

@@ -31,7 +31,13 @@ export async function exportCmd(args: string[]): Promise<number> {
   const outFile = out ?? `${id}-${mount}.tar`;
   const stream = await exportMount(client, instance, mount);
   const file = await Deno.open(outFile, { write: true, create: true, truncate: true });
-  await stream.pipeTo(file.writable); // closes the file when the stream ends
+  try {
+    await stream.pipeTo(file.writable); // closes the file when the stream ends
+  } catch (e) {
+    // Never leave a truncated .tar lying around looking like a good export.
+    await Deno.remove(outFile).catch(() => {});
+    throw e;
+  }
   const { size } = await Deno.stat(outFile);
   console.log(green(`OK — exported ${mount} → ${outFile}`) + dim(` (${formatSize(size)})`));
   return 0;
