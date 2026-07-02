@@ -93,17 +93,10 @@ settled rationale belongs in [decisions.md](decisions.md).
 - **Fix direction (future):** stream upload progress (or a server-sent extraction progress channel)
   and an abort control. Low priority — real recipe bundles are small.
 
-## First `up` of a slow-first-boot app looks stuck ("starting…" for minutes)
+## ~~First `up` of a slow-first-boot app looks stuck~~ — resolved by ADR-026
 
-- **What:** Compositz treats a service as ready when its published web port accepts a connection
-  (port-based readiness). An app that defers heavy setup to container start shows "starting…" for
-  the whole first boot with no progress signal. [`recipes/cocktail`](../recipes/cocktail/Dockerfile)
-  is the worst case: its entrypoint runs `uv sync` to install torch/diffusers (several GB) and then
-  downloads models **before** the server binds the port, so first `up` sits in "starting…" for
-  minutes. Second boot is fast (deps + models persist on the `/workspace` volume).
-- **Scope:** inherent to port-based readiness; not specific to one recipe. Most lightweight recipes
-  bind their port immediately, so this only bites heavy AI apps on their first launch.
-- **Fix direction:** carry container run-phase startup progress into the UI (build progress already
-  streams to the log tab; the _run_ phase does not), or support an optional manifest health-probe /
-  readiness path so the UI can distinguish "warming up" from "ready". Deferred — to discuss. See the
-  related cache-location constraint in [limitations.md](limitations.md).
+Resolved (2026-07-03): readiness is now a real **HTTP probe** against the published web port
+(`ready` = the app answers, "starting…" = honest warming state, re-probed every 2 s), and starting
+an instance opens the panel on the **runtime log**, so the app's own startup output is the progress
+signal. See [ADR-026](decisions.md). Residual option for non-HTTP readiness: the Phase-3 manifest
+`healthcheck` field (roadmap).

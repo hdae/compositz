@@ -144,6 +144,24 @@ export default function InstanceList(
 
   const rows = toInstanceRows(views, engineOnline ? { containers, installedTags } : null);
 
+  // Ready transition → surface the Services tab. The other action-driven tab switches
+  // (add→build log, build done→settings, starting→runtime log) are wired at their
+  // action sites; readiness is only observable HERE, from the live snapshot. The first
+  // snapshot seeds the baseline WITHOUT switching (an already-ready app must not steal
+  // the tab on page load). If the panel is closed, this only pre-sets the tab for the
+  // next open — a background transition never pops a panel up.
+  const prevReady = useRef<Record<string, boolean> | null>(null);
+  useEffect(() => {
+    const ready: Record<string, boolean> = {};
+    for (const r of rows) ready[r.instanceId] = r.running && r.services.some((s) => s.ready);
+    const prev = prevReady.current;
+    prevReady.current = ready;
+    if (prev === null) return; // baseline snapshot — no transitions yet
+    for (const [id, isReady] of Object.entries(ready)) {
+      if (isReady && !prev[id]) setTabByInstance((t) => ({ ...t, [id]: "services" }));
+    }
+  }, [rows]);
+
   const appendLog = (id: string, line: string) =>
     setLogs((l) => ({ ...l, [id]: [...(l[id] ?? []), line] }));
 
@@ -329,6 +347,13 @@ export default function InstanceList(
   }
 
   async function act(id: string, action: "up" | "down") {
+    if (action === "up") {
+      // Starting → open the panel on the runtime log so the app's own startup
+      // output is in view (the action-driven tab flow: add→build log,
+      // build done→settings, starting→runtime log, ready→services).
+      setExpanded((e) => ({ ...e, [id]: true }));
+      setTabByInstance((t) => ({ ...t, [id]: "logs" }));
+    }
     setPending((p) => ({ ...p, [id]: true }));
     setActionError(null);
     try {
@@ -384,6 +409,9 @@ export default function InstanceList(
           if (msg.type === "log" && msg.line) appendLog(id, msg.line);
           else if (msg.type === "done" && msg.tag) {
             setInstalledTags((t) => (t.includes(msg.tag!) ? t : [...t, msg.tag!]));
+            // Build finished → configuration is the natural next step before the
+            // first start. A FAILED build keeps the build tab (the error stays in view).
+            setTabByInstance((t) => ({ ...t, [id]: "settings" }));
           } else if (msg.type === "error") appendLog(id, `\nERROR: ${msg.error}`);
         }
       }

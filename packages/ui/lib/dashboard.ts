@@ -28,6 +28,13 @@ export type PublishedPort = {
   container: number;
   public: number;
   protocol: string;
+  /**
+   * The app behind the port ACCEPTS a TCP connection (server-side probe,
+   * lib/probe.ts). Docker publishes the mapping the moment the container starts —
+   * minutes before a heavy AI app listens — so `ready` requires an explicit `true`
+   * (a missing probe degrades to "starting…", visibly, never to a false "ready").
+   */
+  accepting?: boolean;
 };
 
 /**
@@ -185,16 +192,17 @@ export function toContainerStatuses(
  */
 export function instanceServices(webPorts: WebPort[], ports: PublishedPort[]): Service[] {
   return webPorts.map((wp) => {
-    const live = ports.find((p) => p.container === wp.container && p.protocol === wp.protocol)
-      ?.public;
-    const port = live ?? wp.host;
+    const live = ports.find((p) => p.container === wp.container && p.protocol === wp.protocol);
+    const port = live?.public ?? wp.host;
     return {
       name: wp.name,
       path: wp.path,
       description: wp.description,
       port,
       url: `http://localhost:${port}${wp.path}`,
-      ready: live !== undefined,
+      // Ready = published AND the app answers a TCP connect (probe). A live binding
+      // alone appears at container start, long before a heavy app listens.
+      ready: live !== undefined && live.accepting === true,
     };
   });
 }

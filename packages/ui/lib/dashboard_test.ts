@@ -108,7 +108,9 @@ Deno.test("instanceServices: a live published port WINS over the defined port", 
     path: "/app",
     host: 8080,
   }];
-  const ports: PublishedPort[] = [{ container: 8080, public: 49153, protocol: "tcp" }];
+  const ports: PublishedPort[] = [
+    { container: 8080, public: 49153, protocol: "tcp", accepting: true },
+  ];
   assertEquals(instanceServices(webPorts, ports), [
     {
       name: "ui",
@@ -119,6 +121,29 @@ Deno.test("instanceServices: a live published port WINS over the defined port", 
       ready: true,
     },
   ]);
+});
+
+Deno.test("instanceServices: a published port NOT yet accepting shows live but stays not-ready", () => {
+  // Docker publishes the mapping at container start, long before a heavy app
+  // listens ("warming") — the live port wins for DISPLAY, but ready needs the probe.
+  const ports: PublishedPort[] = [
+    { container: 8080, public: 18080, protocol: "tcp", accepting: false },
+  ];
+  assertEquals(instanceServices([WEB_PORT], ports), [
+    {
+      name: "web",
+      path: "/",
+      description: undefined,
+      port: 18080,
+      url: "http://localhost:18080/",
+      ready: false,
+    },
+  ]);
+  // an UNPROBED binding (no accepting field) degrades the same way — never a false "ready"
+  assertEquals(
+    instanceServices([WEB_PORT], [{ container: 8080, public: 18080, protocol: "tcp" }])[0].ready,
+    false,
+  );
 });
 
 Deno.test("instanceServices: with NO live binding, falls back to the DEFINED port (not blank)", () => {
@@ -152,7 +177,7 @@ Deno.test("instanceServices lists every declared web port (live where published,
     { name: "admin", container: 9090, protocol: "tcp", path: "/admin", host: 9090 },
   ];
   const ports: PublishedPort[] = [
-    { container: 8080, public: 18080, protocol: "tcp" },
+    { container: 8080, public: 18080, protocol: "tcp", accepting: true },
     // admin (9090) not published yet → falls back to its defined host 9090
   ];
   assertEquals(instanceServices(webPorts, ports).map((s) => [s.url, s.ready]), [
@@ -163,7 +188,9 @@ Deno.test("instanceServices lists every declared web port (live where published,
 
 Deno.test("toInstanceRows resolves services from the running container's LIVE ports (auto-bumped)", () => {
   // Declared host 8090; the running container published it on a bumped 18080 — live wins.
-  const running = status({ ports: [{ container: 8080, public: 18080, protocol: "tcp" }] });
+  const running = status({
+    ports: [{ container: 8080, public: 18080, protocol: "tcp", accepting: true }],
+  });
   const rows = toInstanceRows([view()], snapshot({ containers: [running] }));
   assertEquals(rows[0].services, [
     {

@@ -3,6 +3,7 @@ import { EngineClient, instancesDir, label, listInstances } from "@compositz/cor
 import { define } from "../utils.ts";
 import { type ContainerStatus, type InstanceView, toContainerStatuses } from "../lib/dashboard.ts";
 import { toInstanceView } from "../lib/instance-view.ts";
+import { probeAccepting, probeHost } from "../lib/probe.ts";
 import InstanceList from "../islands/InstanceList.tsx";
 
 // The instance store (app-data; COMPOSITZ_INSTANCES_DIR overrides) — absolute,
@@ -36,7 +37,14 @@ export const handler = define.handlers({
         if (await client.imageExists(v.imageTag)) installedTags.push(v.imageTag);
       }));
       initial = {
-        containers: toContainerStatuses(list, label("instance")),
+        containers: await probeAccepting(
+          toContainerStatuses(list, label("instance")),
+          probeHost(client.endpoint),
+          new Map(views.map((v) => [
+            v.instanceId,
+            new Set(v.webPorts.map((wp) => wp.container)),
+          ])),
+        ),
         installedTags,
         engineOnline: true,
         engineError: null,

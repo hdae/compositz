@@ -769,3 +769,43 @@ remaining Phase-3 volume work (`volumes prune` for pre-existing orphans, venv-su
 gains `persistedMounts` (the single mount-source derivation). Live-verified on the real engine:
 default delete / `--keep-data` / busy-volume 409 → definition kept → retry; shared caches untouched
 throughout.
+
+## ADR-026 — Action-driven tab flow + connection-based readiness (amends ADR-023) · ✅ Accepted
+
+User-requested (2026-07-03): the detail panel should follow the lifecycle — **add → build log
+(existing), build done → Settings, starting → runtime log, ready → Services.**
+
+**The blocker, measured:** implementing "ready → Services" on the existing `ready` flag would fire
+the instant a container starts, because (a) Docker reports the published mapping in `ps` at
+container start — minutes before a heavy AI app listens — and (b) a bare **TCP connect is useless as
+a probe: docker-proxy itself accepts** the connection even with nothing listening in the container
+(both verified against the live engine). ADR-023's "ready" badge therefore meant "container
+running", not "app answering" — and the known-issues text that described it as accept-based was
+wrong about the implementation (retracted; it is accurate NOW).
+
+**Decisions:**
+
+- **Readiness = an HTTP probe against the published web port** (server-side, `lib/probe.ts`): any
+  HTTP response (200/404/401/30x) ⇒ `accepting: true`; refused / reset-by-proxy / timeout (800 ms) ⇒
+  `false`. Probes target ONLY the manifest's `web: true` ports (browser UIs — http by the product's
+  own URL scheme); other published ports pass through unprobed, so a non-HTTP port can neither fake
+  readiness nor spin the poll. Probe host = the Docker daemon's host (loopback for unix/npipe, the
+  remote host for a TCP `DOCKER_HOST`).
+- **`ready` is strict:** live binding AND `accepting === true`. A missing/failed probe degrades to a
+  visible "starting…", never to a false "ready".
+- **Warming fast-poll:** no Docker event fires when a booting app finally listens, so while any
+  probed port is `accepting: false` the SSE snapshot loop re-pushes every 2 s (15 s backstop
+  otherwise). Self-terminating: the fast poll stops the moment everything answers.
+- **Tab flow:** Start opens the panel on the runtime log (the app's own startup output IS the
+  progress signal); a successful build switches to Settings (a FAILED build keeps the build log in
+  view); the ready TRANSITION switches to Services — seeded from a baseline snapshot so an
+  already-ready app never steals the tab on page load, and a background transition only pre-sets the
+  tab of a CLOSED panel (no popup). Manual tab picks are respected between transitions.
+
+**Consequences:** `PublishedPort` gains `accepting?: boolean`; `instanceServices` requires it for
+`ready`; the events route reads the instance store each push to know the web ports (cheap, local).
+The "first `up` looks stuck" known-issue is resolved for the UI: the badge is now honest and the
+runtime log opens on start. Residual: an https-only or non-HTTP "web" UI would never probe ready
+(none exist; the product's service URLs are http) — the Phase-3 manifest `healthcheck` field stays
+the declarative escape hatch. The Settings "Restart now" also lands on the runtime log (it IS a
+start) — flagged for user feedback.
