@@ -72,7 +72,9 @@ const MountSchema = z.strictObject({
 const VenvCacheSchema = z.strictObject({
   type: z.literal("venv"),
 }).describe(
-  "Per-instance uv venv + co-located uv cache on one volume (hardlink-safe). Injects VIRTUAL_ENV + UV_CACHE_DIR.",
+  "Per-instance uv venv + co-located uv cache/interpreters on one shared volume (hardlink-safe). " +
+    "Injects VIRTUAL_ENV + UV_PROJECT_ENVIRONMENT (same path) + UV_CACHE_DIR + UV_PYTHON_INSTALL_DIR. " +
+    "Incompatible with apps that hard-code a `.venv`-relative path: uv project ops are redirected to the injected path.",
 );
 
 const HuggingfaceCacheSchema = z.strictObject({

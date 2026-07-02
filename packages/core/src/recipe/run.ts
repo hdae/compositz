@@ -220,14 +220,23 @@ type CacheMount = { mount: Mount; vars: Array<[string, string]> };
 function cacheProvision(c: CacheSpec, instanceId: string): CacheMount {
   switch (c.type) {
     case "venv": {
-      // venv + uv cache co-located on ONE volume so uv's hardlink dedup works
-      // (ADR-006). Shared across instances; per-instance venv subpath.
+      // venv + uv cache + managed interpreters co-located on ONE volume so uv's
+      // hardlink dedup works (ADR-006) and the venv's `pyvenv.cfg home` never
+      // points across volumes. Shared across instances; per-instance venv subpath.
       const target = `${MANAGED_MOUNT_ROOT}/uv`;
+      const venv = `${target}/venvs/${instanceId}`;
       return {
         mount: { Type: "volume", Source: cacheVolumeName("uv"), Target: target },
         vars: [
           ["UV_CACHE_DIR", `${target}/cache`],
-          ["VIRTUAL_ENV", `${target}/venvs/${instanceId}`],
+          // Both names, same path: `uv venv "$VIRTUAL_ENV"` / activation-style
+          // entrypoints read VIRTUAL_ENV, but uv PROJECT operations (`uv sync`,
+          // `uv run`) ignore it (warn + use `.venv`) and only honor
+          // UV_PROJECT_ENVIRONMENT — omitting it silently loses persistence
+          // for every `uv sync`-style app (ADR-024).
+          ["VIRTUAL_ENV", venv],
+          ["UV_PROJECT_ENVIRONMENT", venv],
+          ["UV_PYTHON_INSTALL_DIR", `${target}/python`],
         ],
       };
     }

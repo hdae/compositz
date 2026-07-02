@@ -103,10 +103,14 @@ Deno.test("toCreateSpec maps ports, mounts, caches, env, gpu — all keyed by in
   ]);
 
   // user env (from default), then managed cache vars, then the instance marker.
+  // VIRTUAL_ENV and UV_PROJECT_ENVIRONMENT carry the SAME path: uv project ops
+  // (`uv sync`) ignore VIRTUAL_ENV and only honor UV_PROJECT_ENVIRONMENT.
   assertEquals(spec.Env, [
     "FOO=bar",
     "UV_CACHE_DIR=/compositz/uv/cache",
     "VIRTUAL_ENV=/compositz/uv/venvs/comfyui-a1b2c3",
+    "UV_PROJECT_ENVIRONMENT=/compositz/uv/venvs/comfyui-a1b2c3",
+    "UV_PYTHON_INSTALL_DIR=/compositz/uv/python",
     "HF_HOME=/compositz/hf",
     "COMPOSITZ_INSTANCE=comfyui-a1b2c3",
   ]);
@@ -120,6 +124,10 @@ Deno.test("toCreateSpec: a different instance id isolates venv, label and env ma
   const spec = toCreateSpec(m, "comfyui-x7y8z9", { dataRoot: "/root", env: { FOO: "baz" } });
   assertEquals(spec.Env?.includes("FOO=baz"), true);
   assertEquals(spec.Env?.includes("VIRTUAL_ENV=/compositz/uv/venvs/comfyui-x7y8z9"), true);
+  assertEquals(
+    spec.Env?.includes("UV_PROJECT_ENVIRONMENT=/compositz/uv/venvs/comfyui-x7y8z9"),
+    true,
+  );
   assertEquals(spec.Env?.includes("COMPOSITZ_INSTANCE=comfyui-x7y8z9"), true);
   assertEquals(spec.Labels?.["io.compositz.instance"], "comfyui-x7y8z9");
 });
