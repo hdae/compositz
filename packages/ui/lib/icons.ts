@@ -5,6 +5,7 @@
 // resolver, and its `exports` map blocks per-icon deep imports.
 export {
   ChevronDown,
+  Copy,
   Download,
   ExternalLink,
   FileDown,

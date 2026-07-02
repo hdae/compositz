@@ -8,7 +8,7 @@ import {
   INSTANCE_ID_PATTERN,
   randomInstanceId,
 } from "./ingest.ts";
-import { loadInstance } from "./instance.ts";
+import { loadInstance, loadInstanceConfig } from "./instance.ts";
 
 const MANIFEST = `manifestVersion: 2
 id: hello
@@ -154,20 +154,39 @@ Deno.test("duplicateInstance: copies only app/, mints a new id", async () => {
   });
 });
 
-Deno.test("duplicateInstance: does NOT copy instance state placed outside app/", async () => {
+Deno.test("duplicateInstance: data / launch state / ports do NOT carry over", async () => {
   await withStore(async (store) => {
     const a = await ingestBundle(archive(VALID_TAR()), store);
-    // simulate per-instance state next to app/ (override config + a data marker)
-    await Deno.writeTextFile(join(store, a.instanceId, "config.yaml"), "hostPorts: {}\n");
+    // simulate per-instance state next to app/: a ports-only override + launch
+    // snapshot + a data marker
+    await Deno.writeTextFile(join(store, a.instanceId, "config.yaml"), "hostPorts:\n  web: 9999\n");
+    await Deno.writeTextFile(join(store, a.instanceId, ".launched.yaml"), "env: {}\n");
     await Deno.mkdir(join(store, a.instanceId, "data"));
     await Deno.writeTextFile(join(store, a.instanceId, "data", "output.txt"), "secret");
 
     const b = await duplicateInstance(store, a.instanceId);
     // the bundle is copied…
     assertEquals((await Deno.stat(join(store, b.instanceId, "app", "Dockerfile"))).isFile, true);
-    // …but NONE of the source's sibling state carries over
+    // …but data / launch snapshot never carry over, and a hostPorts-only override
+    // inherits as NOTHING (ports are per-copy; no config.yaml gets written at all)
     assertEquals(await exists(join(store, b.instanceId, "config.yaml")), false);
+    assertEquals(await exists(join(store, b.instanceId, ".launched.yaml")), false);
     assertEquals(await exists(join(store, b.instanceId, "data")), false);
+  });
+});
+
+Deno.test("duplicateInstance: inherits the Settings override (env, placement) minus hostPorts", async () => {
+  await withStore(async (store) => {
+    const a = await ingestBundle(archive(VALID_TAR()), store);
+    await Deno.writeTextFile(
+      join(store, a.instanceId, "config.yaml"),
+      "hostPorts:\n  web: 9999\nenv:\n  TOKEN: sekrit\nplacement:\n  models: bind\n",
+    );
+    const b = await duplicateInstance(store, a.instanceId);
+    const cfg = await loadInstanceConfig(join(store, b.instanceId));
+    assertEquals(cfg.env, { TOKEN: "sekrit" });
+    assertEquals(cfg.placement, { models: "bind" });
+    assertEquals(cfg.hostPorts, undefined);
   });
 });
 

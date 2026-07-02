@@ -17,7 +17,15 @@ import { UntarStream } from "@std/tar";
 import { CompositzError } from "../errors.ts";
 import { BRAND } from "../brand.ts";
 import { loadRecipe } from "./loader.ts";
-import { APP_SUBDIR, type Instance, loadInstance, META_FILE, writeMeta } from "./instance.ts";
+import {
+  APP_SUBDIR,
+  type Instance,
+  loadInstance,
+  loadInstanceConfig,
+  META_FILE,
+  saveInstanceConfig,
+  writeMeta,
+} from "./instance.ts";
 
 /**
  * The instance id charset — `<appId>-<rand>`. Lowercase alphanumeric + hyphen.
@@ -104,8 +112,11 @@ export async function ingestBundle(
 }
 
 /**
- * Duplicate an instance into a new one: copies ONLY the `app/` bundle (a fresh
- * deployment), never the persistent data (volumes / data-root start empty).
+ * Duplicate an instance into a new one: copies the `app/` bundle plus the Settings
+ * override (env values, placement — "another copy of this app as I configured it"),
+ * never the persistent data (volumes / data-root start empty). `hostPorts` are
+ * DROPPED from the inherited override: a copy must claim its own ports — callers
+ * deconflict against the definitions right after (`deconflictHostPorts`).
  */
 export async function duplicateInstance(
   instancesDir: string,
@@ -113,6 +124,9 @@ export async function duplicateInstance(
 ): Promise<Instance> {
   const srcApp = join(instancesDir, srcInstanceId, APP_SUBDIR);
   const { id } = (await loadRecipe(srcApp)).manifest; // validates the source is a real instance
+  const { hostPorts: _dropped, ...inherited } = await loadInstanceConfig(
+    join(instancesDir, srcInstanceId),
+  );
   const instanceId = randomInstanceId(id);
   const finalDir = join(instancesDir, instanceId);
   if (await pathExists(finalDir)) {
@@ -128,6 +142,7 @@ export async function duplicateInstance(
       source: `duplicate:${srcInstanceId}`,
       createdAt: new Date().toISOString(),
     });
+    if (Object.keys(inherited).length > 0) await saveInstanceConfig(staging, inherited);
     await Deno.rename(staging, finalDir);
     return await loadInstance(finalDir);
   } catch (e) {

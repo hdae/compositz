@@ -74,9 +74,11 @@ De-risk the two load-bearing unknowns before building.
   codeload tarball → instance, [ADR-021](decisions.md)); RI-4 = per-instance override
   (`config.yaml` + Settings tab, [ADR-022](decisions.md)) + definition-driven ports
   ([ADR-023](decisions.md)).
-- ⏳ **Duplicate in the GUI**: `duplicate` exists in core + CLI only; add a UI action (clones the
-  bundle, not the data — with the shared cache presets a duplicate's first boot is fast, verified on
-  the cocktail recipe).
+- ✅ **Duplicate in the GUI**: a per-row action posts `/api/instances/:id/duplicate` —
+  server-confirmed (row added from the response), add-time port deconfliction with a visible notice.
+  `duplicateInstance` now also inherits the Settings override (env / placement) **minus
+  `hostPorts`** — a copy claims its own ports ([ADR-025](decisions.md) session). Route live-verified
+  (collision bump 8090→8091 reported end-to-end).
 - 🔄 **Desktop shell**: the desktop **is** the Fresh management UI, packaged by `deno desktop`
   framework auto-detection (it embeds the built `_fresh/` into one native CEF binary — no separate
   package; recipe ops happen in the UI via core in-process). Was a PoC that launched one recipe and

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { VNode } from "preact";
 import {
   ChevronDown,
+  Copy,
   Download,
   ExternalLink,
   FileDown,
@@ -78,6 +79,8 @@ export default function InstanceList(
   const [engineError, setEngineError] = useState<string | null>(initial.engineError);
   const [pending, setPending] = useState<Record<string, boolean>>({}); // up/down in flight
   const [installing, setInstalling] = useState<Record<string, boolean>>({});
+  const [duplicating, setDuplicating] = useState<Record<string, boolean>>({});
+  const [notice, setNotice] = useState<string | null>(null); // non-error info (e.g. port bumps)
   const [logs, setLogs] = useState<Record<string, string[]>>({}); // install build log per instance
   const [actionError, setActionError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -272,6 +275,7 @@ export default function InstanceList(
     setTabByInstance((m) => omit(m, id));
     setInstalling((m) => omit(m, id));
     setPending((m) => omit(m, id));
+    setDuplicating((m) => omit(m, id));
     try {
       const res = await fetch(`/api/instances/${id}/delete`, {
         method: "POST",
@@ -286,6 +290,41 @@ export default function InstanceList(
     } catch (e) {
       if (removed) setViews((vs) => [...vs, removed]);
       setActionError(`delete ${id} failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // Duplicate = a fresh deployment of the same app: bundle + settings (minus ports —
+  // reassigned server-side), no data. Server-confirmed: the row is added only from the
+  // response, and any port reassignment is surfaced as a notice.
+  async function duplicate(id: string) {
+    setDuplicating((m) => ({ ...m, [id]: true }));
+    setActionError(null);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/instances/${id}/duplicate`, { method: "POST" });
+      const body = await res.json().catch(() => ({})) as {
+        ok?: boolean;
+        view?: InstanceView;
+        bumps?: PortBump[];
+        error?: string;
+      };
+      if (res.ok && body.ok && body.view) {
+        const view = body.view;
+        setViews((vs) => vs.some((v) => v.instanceId === view.instanceId) ? vs : [...vs, view]);
+        if (body.bumps?.length) {
+          setNotice(
+            `Duplicated as ${view.instanceId} — host port reassigned: ` +
+              body.bumps.map((b) => `${b.name} ${b.from}→${b.to}`).join(", ") +
+              ". You can change it in Settings.",
+          );
+        }
+      } else {
+        setActionError(`duplicate ${id} failed: ${body.error ?? `HTTP ${res.status}`}`);
+      }
+    } catch (e) {
+      setActionError(`duplicate ${id} failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setDuplicating((m) => ({ ...m, [id]: false }));
     }
   }
 
@@ -402,6 +441,13 @@ export default function InstanceList(
             </p>
           )
           : null}
+        {notice
+          ? (
+            <p class="mb-3 rounded bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+              {notice}
+            </p>
+          )
+          : null}
 
         {rows.length === 0
           ? (
@@ -444,6 +490,19 @@ export default function InstanceList(
                           onDown={() => act(r.instanceId, "down")}
                           onInstall={() => install(r.instanceId)}
                         />
+                        <Tip label="Duplicate (same settings, new ports, no data)">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={!!duplicating[r.instanceId]}
+                            onClick={() => duplicate(r.instanceId)}
+                            aria-label="Duplicate"
+                          >
+                            {duplicating[r.instanceId]
+                              ? <LoaderCircle class="size-4 animate-spin" />
+                              : <Copy class="size-4" />}
+                          </Button>
+                        </Tip>
                         <Tip label="Delete">
                           <Button
                             variant="ghost"

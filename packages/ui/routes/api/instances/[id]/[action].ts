@@ -1,5 +1,6 @@
 import {
   down,
+  duplicateInstance,
   EngineClient,
   installInstance,
   type Instance,
@@ -15,6 +16,7 @@ import {
 } from "@compositz/core";
 import { join } from "@std/path";
 import { define } from "../../../../utils.ts";
+import { finalizeImport } from "../../../../lib/instance-view.ts";
 
 // SERVER-ONLY: imports @compositz/core (→ node:net). POST actions for an instance:
 //   up      build-if-needed + run, returns JSON
@@ -106,6 +108,16 @@ export const handler = define.handlers({
           }
           await removeInstanceDir(store, id);
           return Response.json({ ok: true });
+        }
+        case "duplicate": {
+          // Derive a fresh instance: bundle + Settings override (minus ports; data
+          // starts empty — the shared caches make its first boot fast), deconflict
+          // its DEFINED ports, and return the finished view. Server-confirmed: the
+          // island adds the row only from this response.
+          const instance = await loadById(id);
+          const dup = await duplicateInstance(store, instance.instanceId);
+          const { view, bumps } = await finalizeImport(store, dup);
+          return Response.json({ ok: true, view, bumps });
         }
         case "install":
           assertValidId(id);
