@@ -30,7 +30,7 @@ const COMMANDS: Record<string, { run: Command; help: string }> = {
   install: { run: install, help: "Build an instance's image" },
   up: { run: upCmd, help: "Build (if needed) and start an instance" },
   down: { run: downCmd, help: "Stop and remove an instance's container" },
-  rm: { run: rm, help: "Remove an instance (container + definition; data kept)" },
+  rm: { run: rm, help: "Remove an instance (container + image + definition; data kept)" },
   ps: { run: ps, help: "List Compositz-managed containers" },
   hello: { run: hello, help: "Run a full container round-trip against the engine" },
 };
