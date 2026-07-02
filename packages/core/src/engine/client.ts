@@ -142,6 +142,52 @@ export class EngineClient {
     await this.#call("DELETE", `/images/${ref}${q}`, { ok: [404] });
   }
 
+  /**
+   * GET /containers/{id}/archive — stream a path inside a container's filesystem as a
+   * tar archive. Works on a CREATED container (it need not be running), which is what
+   * makes volume export possible without executing anything. The returned stream OWNS
+   * the connection: consume it fully or `cancel()` it, or the socket leaks.
+   */
+  async archive(id: string, path: string): Promise<ReadableStream<Uint8Array>> {
+    const q = new URLSearchParams({ path });
+    const conn = await this.#open();
+    let handedOff = false;
+    try {
+      await writeRequest(conn, {
+        method: "GET",
+        path: this.#path(`/containers/${id}/archive?${q}`),
+      });
+      const res = await readResponse(conn);
+      if (res.status >= 300) {
+        throw new EngineHttpError(res.status, res.statusText, await readText(res));
+      }
+      const body = res.body;
+      const stream = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          try {
+            const { done, value } = await body.next();
+            if (done) {
+              controller.close();
+              conn.close();
+            } else {
+              controller.enqueue(value);
+            }
+          } catch (e) {
+            conn.close();
+            controller.error(e);
+          }
+        },
+        cancel() {
+          conn.close();
+        },
+      });
+      handedOff = true;
+      return stream;
+    } finally {
+      if (!handedOff) conn.close();
+    }
+  }
+
   /** GET /volumes — list volumes, optionally filtered (e.g. by exact name or label). */
   async listVolumes(
     opts: { filters?: Record<string, string[]> } = {},

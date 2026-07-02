@@ -125,23 +125,18 @@ export function resolveHostPorts(
   return out;
 }
 
-export function toCreateSpec(
+/**
+ * Derive the Docker mounts for the manifest's persisted `mounts:` — effective
+ * placement (override ▷ manifest) plus the derived source (named volume / data-root
+ * bind path). This is THE single mount-name → source derivation, shared by
+ * `toCreateSpec` and the data operations (export / data deletion) so they can never
+ * silently diverge on which volume or bind dir a mount name refers to.
+ */
+export function persistedMounts(
   m: Manifest,
   instanceId: string,
-  opts: ToSpecOptions = {},
-): ContainerCreateSpec {
-  // --- ports ---------------------------------------------------------------
-  // Keyed by container/proto; APPEND host bindings so two ports on the same
-  // container port publish to both host ports instead of one silently winning.
-  const exposed: Record<string, Record<string, never>> = {};
-  const bindings: Record<string, PortBinding[]> = {};
-  for (const p of m.ports) {
-    const key = `${p.container}/${p.protocol}`;
-    exposed[key] = {};
-    (bindings[key] ??= []).push({ HostPort: String(hostPortOf(p, opts)) });
-  }
-
-  // --- mounts (persisted) + caches → HostConfig.Mounts ---------------------
+  opts: { dataRoot?: string; placement?: Record<string, "bind" | "volume"> } = {},
+): Mount[] {
   const mounts: Mount[] = [];
   for (const mt of m.mounts) {
     const placement = opts.placement?.[mt.name] ?? mt.placement;
@@ -163,6 +158,27 @@ export function toCreateSpec(
       mounts.push({ Type: "volume", Source: volumeName(instanceId, mt.name), Target: mt.target });
     }
   }
+  return mounts;
+}
+
+export function toCreateSpec(
+  m: Manifest,
+  instanceId: string,
+  opts: ToSpecOptions = {},
+): ContainerCreateSpec {
+  // --- ports ---------------------------------------------------------------
+  // Keyed by container/proto; APPEND host bindings so two ports on the same
+  // container port publish to both host ports instead of one silently winning.
+  const exposed: Record<string, Record<string, never>> = {};
+  const bindings: Record<string, PortBinding[]> = {};
+  for (const p of m.ports) {
+    const key = `${p.container}/${p.protocol}`;
+    exposed[key] = {};
+    (bindings[key] ??= []).push({ HostPort: String(hostPortOf(p, opts)) });
+  }
+
+  // --- mounts (persisted) + caches → HostConfig.Mounts ---------------------
+  const mounts: Mount[] = persistedMounts(m, instanceId, opts);
 
   // --- env: keyed so managed cache/instance vars deterministically override a
   // colliding user var (a list with duplicate keys has undefined precedence). --

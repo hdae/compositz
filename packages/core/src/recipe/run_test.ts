@@ -4,6 +4,7 @@ import {
   instanceContainerName,
   instanceImageTag,
   mergeLaunch,
+  persistedMounts,
   resolveHostPorts,
   toCreateSpec,
   webEndpoints,
@@ -142,6 +143,34 @@ Deno.test("toCreateSpec: a placement override flips bind<->volume", () => {
 
 Deno.test("toCreateSpec: a bind mount without a dataRoot throws", () => {
   assertThrows(() => toCreateSpec(m, INST), Error, "bind mount but no dataRoot");
+});
+
+Deno.test("persistedMounts: the one mount-name → source derivation, shared with toCreateSpec", () => {
+  const mounts = persistedMounts(m, INST, { dataRoot: "/root" });
+  assertEquals(mounts, [
+    {
+      Type: "bind",
+      Source: "/root/comfyui-a1b2c3/output",
+      Target: "/out",
+      BindOptions: { CreateMountpoint: true },
+    },
+    { Type: "volume", Source: "compositz_comfyui-a1b2c3_models", Target: "/data" },
+  ]);
+  // Exactly what toCreateSpec attaches (before caches) — export/data-deletion resolve
+  // a mount name to the SAME volume/bind dir the container runs with, structurally.
+  assertEquals(
+    toCreateSpec(m, INST, { dataRoot: "/root" }).HostConfig?.Mounts?.slice(0, mounts.length),
+    mounts,
+  );
+});
+
+Deno.test("persistedMounts honors a placement override (resolves what the app ACTUALLY uses)", () => {
+  const mounts = persistedMounts(m, INST, { placement: { output: "volume" } });
+  assertEquals(mounts[0], {
+    Type: "volume",
+    Source: "compositz_comfyui-a1b2c3_output",
+    Target: "/out",
+  });
 });
 
 Deno.test("toCreateSpec withGpu:false omits DeviceRequests", () => {

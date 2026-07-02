@@ -3,8 +3,9 @@
 // up (GPU tri-state + host-port auto-increment), and tear it down. Everything keys
 // off the instance id (ADR-017).
 
-import { containerName, imageTag } from "../brand.ts";
+import { containerName, imageTag, label } from "../brand.ts";
 import { tarContext } from "../build.ts";
+import { CompositzError } from "../errors.ts";
 import type { EngineClient } from "../engine/client.ts";
 import type { BuildProgress } from "../engine/types.ts";
 import { defaultDataRoot } from "../storage.ts";
@@ -21,6 +22,7 @@ import {
   instanceImageTag,
   type LaunchConfig,
   mergeLaunch,
+  persistedMounts,
   resolveHostPorts,
   toCreateSpec,
 } from "./run.ts";
@@ -194,6 +196,112 @@ export async function deconflictHostPorts(
     await saveInstanceConfig(instance.dir, { ...override, hostPorts });
   }
   return bumps;
+}
+
+/** In-container path the export helper mounts the target data under. */
+const EXPORT_MOUNT_ROOT = "/compositz-export";
+
+/**
+ * Export one persisted mount's data as a tar stream (root dir = the mount name).
+ * Works whether or not the instance is running: a throwaway helper container is
+ * CREATED (never started) with only that mount attached read-only, the data is read
+ * via the archive API, and the helper is removed once the stream ends (or errors, or
+ * is cancelled). Requires the instance image locally — the helper reuses it so
+ * nothing external is pulled. Concurrent-safe with a running instance (a tar taken
+ * mid-write may catch a file in transit; re-export for a quiescent snapshot).
+ */
+export async function exportMount(
+  client: EngineClient,
+  instance: Instance,
+  mountName: string,
+): Promise<ReadableStream<Uint8Array>> {
+  const m = instance.manifest;
+  const mountIndex = m.mounts.findIndex((mt) => mt.name === mountName);
+  if (mountIndex < 0) {
+    const names = m.mounts.map((mt) => mt.name).join(", ") || "(none)";
+    throw new CompositzError(`no mount "${mountName}" in "${m.id}" — available: ${names}`);
+  }
+
+  // Same derivation as `up` (persistedMounts): the effective placement (override ▷
+  // manifest) decides WHICH data the app actually uses, so that is what exports.
+  const override = await loadInstanceConfig(instance.dir);
+  const source = persistedMounts(m, instance.instanceId, {
+    dataRoot: defaultDataRoot(),
+    placement: override.placement,
+  })[mountIndex];
+
+  // Fail loud on absent data rather than exporting a silently-empty tar: a missing
+  // volume would be auto-created empty at helper create (Docker semantics), so check
+  // it first (the name filter is a substring match — compare exactly). A missing
+  // bind source is rejected by the daemon at create (no CreateMountpoint here).
+  if (source.Type === "volume") {
+    const vols = await client.listVolumes({ filters: { name: [source.Source] } });
+    if (!vols.some((v) => v.Name === source.Source)) {
+      throw new CompositzError(
+        `mount "${mountName}" has no volume "${source.Source}" yet — nothing to export (never started?)`,
+      );
+    }
+  }
+
+  const image = instanceImageTag(m, instance.instanceId);
+  if (!(await client.imageExists(image))) {
+    throw new CompositzError(
+      `image ${image} is not available locally — install the instance first (the export helper reuses it)`,
+    );
+  }
+
+  const exportPath = `${EXPORT_MOUNT_ROOT}/${mountName}`;
+  const helperName = `${containerName(instance.instanceId)}-export-${
+    crypto.randomUUID().slice(0, 8)
+  }`;
+  const { Id } = await client.create({
+    Image: image,
+    // Never started — the Cmd only satisfies image configs without a default command.
+    Cmd: ["compositz-export-noop"],
+    Labels: {
+      [label("managed")]: "true",
+      [label("instance")]: instance.instanceId,
+      [label("role")]: "export-helper",
+    },
+    HostConfig: {
+      Mounts: [{ Type: source.Type, Source: source.Source, Target: exportPath, ReadOnly: true }],
+    },
+  }, helperName);
+  const cleanup = () => client.remove(Id, { force: true }).catch(() => {});
+
+  let inner: ReadableStream<Uint8Array>;
+  try {
+    inner = await client.archive(Id, exportPath);
+  } catch (e) {
+    await cleanup();
+    throw e;
+  }
+
+  // Hand the consumer a stream that tears the helper down however consumption ends.
+  // Cleanup MUST complete BEFORE the stream reports closed: a consumer awaiting
+  // `pipeTo` resolves on close, and a CLI process exits right after — closing first
+  // would race the helper's DELETE against process exit and leak the container.
+  const reader = inner.getReader();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          await cleanup();
+          controller.close();
+        } else {
+          controller.enqueue(value);
+        }
+      } catch (e) {
+        await cleanup();
+        controller.error(e);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason).catch(() => {});
+      await cleanup();
+    },
+  });
 }
 
 /** Stop and remove an instance's container (no-op if absent). Persisted mounts survive. */

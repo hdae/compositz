@@ -16,6 +16,7 @@ import { upCmd } from "./commands/up.ts";
 import { downCmd } from "./commands/down.ts";
 import { rm } from "./commands/rm.ts";
 import { ps } from "./commands/ps.ts";
+import { exportCmd } from "./commands/export.ts";
 
 type Command = (args: string[]) => Promise<number>;
 
@@ -31,6 +32,7 @@ const COMMANDS: Record<string, { run: Command; help: string }> = {
   up: { run: upCmd, help: "Build (if needed) and start an instance" },
   down: { run: downCmd, help: "Stop and remove an instance's container" },
   rm: { run: rm, help: "Remove an instance (container + image + definition; data kept)" },
+  export: { run: exportCmd, help: "Export a mount's data as a tar file (list mounts if omitted)" },
   ps: { run: ps, help: "List Compositz-managed containers" },
   hello: { run: hello, help: "Run a full container round-trip against the engine" },
 };

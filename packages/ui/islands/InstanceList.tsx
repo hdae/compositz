@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Download,
   ExternalLink,
+  FileDown,
   GitBranch,
   Globe,
   Hammer,
@@ -1213,19 +1214,39 @@ function SettingsPanel(
                     ? <p class="text-xs text-muted-foreground truncate">{m.description}</p>
                     : null}
                 </div>
-                <select
-                  value={placement[m.name] ?? m.manifestPlacement}
-                  onChange={(e) =>
-                    editPlace(
-                      m.name,
-                      (e.currentTarget as HTMLSelectElement).value as "bind" | "volume",
-                    )}
-                  aria-label={`Placement for ${m.name}`}
-                  class={cn(FIELD_CLASS, "w-28")}
-                >
-                  <option value="volume">volume</option>
-                  <option value="bind">bind</option>
-                </select>
+                <div class="flex shrink-0 items-center gap-2">
+                  <select
+                    value={placement[m.name] ?? m.manifestPlacement}
+                    onChange={(e) =>
+                      editPlace(
+                        m.name,
+                        (e.currentTarget as HTMLSelectElement).value as "bind" | "volume",
+                      )}
+                    aria-label={`Placement for ${m.name}`}
+                    class={cn(FIELD_CLASS, "w-28")}
+                  >
+                    <option value="volume">volume</option>
+                    <option value="bind">bind</option>
+                  </select>
+                  {
+                    /* Downloads via the OS default browser (the webview can't save files) —
+                      same escape hatch as the Services "Browser" button. */
+                  }
+                  <Tip label="Export this mount's data as a tar (downloads in your browser)">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        openInBrowser(
+                          `${location.origin}/api/instances/${instanceId}/export?mount=${
+                            encodeURIComponent(m.name)
+                          }`,
+                        )}
+                    >
+                      <FileDown class="size-4" />Export
+                    </Button>
+                  </Tip>
+                </div>
               </div>
             ))}
           </section>
