@@ -724,3 +724,48 @@ weights, 10+GB). `/workspace` shrinks to generated images. Deleting a venv-prese
 `venvs/<instanceId>` inside the shared volume — recorded in `docs/known-issues.md`, to be reclaimed
 by the Phase-3 GC. Existing instances keep the old layout until re-imported. Preset vars cannot be
 overridden from the Settings tab (precedence documented in `docs/limitations.md`).
+
+## ADR-025 — Instance deletion removes data volumes by default; export is the safety valve · ✅ Accepted
+
+Settled with the user (2026-07-03) in the feature-gap session, closing the "keep vs delete" open
+point recorded in known-issues.
+
+**Context:** deleting an instance kept its named volumes (a blanket-safe default), silently
+accumulating orphans that only `docker volume rm` could reclaim — and the volume names derive from
+the instance definition, so once the definition was gone the orphans became invisible. Meanwhile the
+CLI `rm` didn't even reclaim the per-instance image (the UI delete did — pure asymmetry).
+
+**Decisions:**
+
+- **Named volumes are removed BY DEFAULT on delete** (CLI `rm`, UI delete checkbox pre-checked).
+  Rationale (the user's own): data worth persisting belongs in a `bind` mount — host-browsable under
+  the data-root — so volumes hold reproducible/derived state. Opt-outs: `--keep-data` / the
+  unchecked box.
+- **The data-root bind dir is KEPT by default**; `--purge` / an opt-in checkbox removes
+  `<data-root>/<instanceId>` too. Bind data is exactly the "persist-worthy" class, so its default is
+  conservative. NOTE: removed with local fs APIs — correct for a local daemon; over a remote
+  `DOCKER_HOST` the files live on that host and stay.
+- **Volume names derive from the definition** (`manifest.mounts × volumeName`), for EVERY mount
+  regardless of current placement (a placement flip may have left data in both forms). Shared cache
+  volumes (`compositz_uv`/`_hf`/`_cache_*`) are structurally out of reach — different naming scheme,
+  never enumerated. Docker's volume name filter is a SUBSTRING match, so existence is confirmed by
+  exact-name comparison, never by filter hit alone.
+- **A volume that can't be removed (409, still mounted) is reported, never forced — and the instance
+  definition is KEPT** so a retry can re-derive the volume names. Removing the definition anyway
+  would manufacture invisible orphans, the exact failure class this ADR closes.
+- **Export before delete is the escape hatch** (same session): `compositz export <id> [mount]` / a
+  Settings-tab Export button streams one mount's data as a tar — via a **never-started helper
+  container** and `GET /containers/{id}/archive` (works on a created container; no code executes).
+  The mount-name → source derivation is shared with `toCreateSpec` (`persistedMounts`) so export
+  reads exactly what the app runs with. Absent volume ⇒ fail loud (no silently-empty tar). The UI
+  triggers the download through the OS default browser (`/api/open` path) — the webview can't save
+  files. Helper teardown completes BEFORE the stream reports closed (a consumer may exit the process
+  the moment `pipeTo` resolves — measured leak, fixed).
+- **CLI `rm` reclaims the per-instance image** (parity with the UI delete; `image`-based recipes'
+  shared images stay untouched, as before).
+
+**Consequences:** `EngineClient` gains `listVolumes` / `removeVolume` / `archive` — the base for the
+remaining Phase-3 volume work (`volumes prune` for pre-existing orphans, venv-subpath GC). `run.ts`
+gains `persistedMounts` (the single mount-source derivation). Live-verified on the real engine:
+default delete / `--keep-data` / busy-volume 409 → definition kept → retry; shared caches untouched
+throughout.

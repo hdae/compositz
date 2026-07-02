@@ -15,21 +15,15 @@ settled rationale belongs in [decisions.md](decisions.md).
 - **Fix direction:** include `installedTags` in the SSE `snapshot` payload (recompute `imageExists`
   per push), or add a lightweight image-event subscription. Deferred — low impact for a local tool.
 
-## Deleting an instance leaves its named volumes (no reclaim)
+## Already-orphaned volumes have no reclaim command
 
-- **What:** the UI Delete now removes the container **and the per-instance built image**
-  (`compositz/<instanceId>:<version>`, via `removeInstanceImage`), but still KEEPS the per-instance
-  named volumes (`compositz_<instanceId>_*`) and data-root dir — a deliberately safe default (never
-  silently destroy user data). `compositz rm` (CLI) does not yet remove the image. There is no
-  command to reclaim now-orphaned volumes.
-- **Fix direction (future):** two complementary pieces, both needing Engine **volume** endpoints
-  (`GET/DELETE /volumes`) the `EngineClient` does not implement yet — Phase-3 "volumes/GC": (a) a
-  **delete-time option** — `rm --with-data` / a UI delete checkbox — that removes the per-instance
-  volumes + data-root dir with the instance; (b) a `compositz volumes prune` / "reclaim unused data"
-  action for already-orphaned volumes. Open design point (user, 2026-07-03): the delete-time default
-  could even be **delete** rather than keep — data worth persisting belongs in a `bind` mount anyway
-  (browsable on the host); decide the default when designing, ideally alongside **volume export**
-  (roadmap Phase 3) as the safety valve.
+- **What:** deletion now removes an instance's data volumes **by default** (ADR-025; `--keep-data` /
+  a UI checkbox opts out, `--purge` adds the data-root bind dir) — but volumes orphaned BEFORE that
+  change, or kept deliberately and later regretted, are invisible to the instance list and there is
+  no `volumes prune` / "reclaim unused data" action.
+- **Fix direction:** enumerate `compositz_<id>_*` volumes against existing instances and prune on
+  explicit confirmation (Phase-3 "volumes/GC"; `EngineClient` volume endpoints exist now). The
+  venv-subpath variant is the entry below.
 
 ## Deleting a venv-preset instance leaves its venv inside the shared uv volume
 

@@ -93,14 +93,15 @@ De-risk the two load-bearing unknowns before building.
   overrides the image's own ENV; exercised live by `recipes/cocktail` (venv/HF/weights shared across
   re-imports). Remaining hardening (poisoning/threat model) tracked below and in
   [limitations.md](limitations.md).
-- ⏳ **Volume lifecycle & GC**: per-app named volumes; `gc --reclaim`; uv `repair` / `rebuild`
-  wrappers (uv has no venv-aware GC or verify — Compositz wraps it); **`rm --with-data`** + UI
-  delete option removing per-instance volumes/data-root (keep-vs-delete default open — the user
-  leans "delete is fine: persist-worthy data should be a `bind` mount"; see known-issues); needs
-  `EngineClient` volume endpoints (`GET/DELETE /volumes`).
-- ⏳ **Volume export** (user wish): export a data volume from the instance Settings (tar it out via
-  a helper container — there is no direct volume-read Engine API). Doubles as the safety valve
-  before destructive deletes, and as a poor-man's backup/migration path.
+- ✅ **Deletion data semantics + volume export** ([ADR-025](decisions.md)): `EngineClient` gained
+  volume endpoints (`GET/DELETE /volumes`) + `archive`; **export** ships as `compositz export` and a
+  Settings-tab button (tar via a never-started helper container + the archive API — the safety valve
+  before deletes); **delete removes data volumes by default** (`--keep-data` / UI checkbox keeps;
+  `--purge` / opt-in checkbox adds the data-root bind dir), and CLI `rm` now reclaims the
+  per-instance image (parity with the UI delete). Live-verified on the real engine.
+- ⏳ **Volume lifecycle & GC (rest)**: `volumes prune` for already-orphaned volumes (see
+  known-issues); `gc --reclaim` for venv-subpath orphans; uv `repair` / `rebuild` wrappers (uv has
+  no venv-aware GC or verify — Compositz wraps it).
 - ⏳ **In-place instance update** (user wish): re-ingest a new ref/commit into the SAME instance
   (`meta.source` already round-trips `github:owner/repo[/subdir][@ref]`) keeping instanceId /
   volumes / `config.yaml`, behind a **re-trust gate** (new code = new trust, ADR-020) + image
