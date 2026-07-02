@@ -93,7 +93,10 @@ removes data volumes by default** (`--keep-data`/checkbox; `--purge`/opt-in bind
 — bare TCP is useless, docker-proxy accepts it; warming 2s SSE poll; start→runtime log, build
 done→Settings, ready→Services with engaged-tab protection). A 5-lens adversarial review (14
 findings, all held) was folded in — incl. the HIGH `rm .`/`rm ..` store-wipe fix
-(`removeInstanceDir` now enforces `INSTANCE_ID_PATTERN` itself).
+(`removeInstanceDir` now enforces `INSTANCE_ID_PATTERN` itself). **User-verified 2026-07-03**
+(delete defaults / export / tab flow / engaged-tab protection / CLI all OK) — the one item still
+unchecked manually is the **GUI duplicate click-through** (settings inheritance + port notice + fast
+first boot; the route itself is machine-verified) — re-confirm casually next time it's used.
 
 **Next:** ► **update arc (案2, queued)**: provenance display (source/ref/age in ls + row) →
 **in-place update to a ref/commit** (re-ingest into the SAME instanceId keeping volumes/config,
