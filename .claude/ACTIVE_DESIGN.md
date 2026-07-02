@@ -84,14 +84,15 @@ Deferred: `target:` graft for env-deaf apps (needs self-sorted mounts — moby s
 venv-orphan GC (known-issues). **Live-verified on the GPU host**: the user deleted + re-imported
 cocktail — shared uv/HF/weights volumes survived, first boot was fast.
 
-**Next (sequenced):** the **RI-1..4 arc is complete** (RI-4 = `config.yaml` + Settings tab,
-ADR-022); remaining UI polish: ► **NOW: light/dark/auto mode selector** (additive), then a GUI
-**duplicate** action (core+CLI-only today; cheap first boot now that caches are shared); then
-**Phase 3 — Hardening** (volumes/GC + full data deletion + venv-orphan reclaim, GPU detection,
-versioning, shared-cache hardening per limitations.md threat model — the shared-cache live exercise
-itself is ✅ done via cocktail). Also queued: known-issues "first `up` looks stuck" readiness UX;
-idea logged for **remote sharing via tunnel** (cloudflared sidecar, roadmap Phase 4 — MUST carry an
-auth story before exposing anything).
+**Next:** ► **NOW: feature-gap review → proposal session** (the user asked for "what's missing"
+proposals; propose-first, no code until approval). Known candidates already queued — pick up and
+sweep for more: **`rm --with-data`** + UI delete option (keep-vs-delete default open — user leans
+"delete is fine, persist-worthy data should be bind"; known-issues), **volume export** from Settings
+(roadmap Phase 3, user wish), GUI **duplicate** action, light/dark/auto **mode selector**, "first
+`up` looks stuck" readiness UX (known-issues), venv-orphan reclaim, tunnel-sharing idea (roadmap
+Phase 4, auth story MUST). The RI-1..4 arc is complete; after the proposal round, **Phase 3 —
+Hardening** (volumes/GC + full data deletion, GPU detection, versioning, shared-cache hardening per
+limitations.md threat model — the live shared-cache exercise itself is ✅ done via cocktail).
 
 ## Decisions recently settled
 

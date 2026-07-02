@@ -22,10 +22,14 @@ settled rationale belongs in [decisions.md](decisions.md).
   named volumes (`compositz_<instanceId>_*`) and data-root dir — a deliberately safe default (never
   silently destroy user data). `compositz rm` (CLI) does not yet remove the image. There is no
   command to reclaim now-orphaned volumes.
-- **Fix direction (future):** a `compositz volumes prune` / "reclaim unused data" action that lists
-  volumes whose `<instanceId>` no longer exists and removes them on explicit confirmation. Needs
-  Engine **volume** endpoints (`GET/DELETE /volumes`) the `EngineClient` does not implement yet.
-  Part of Phase-3 "volumes/GC".
+- **Fix direction (future):** two complementary pieces, both needing Engine **volume** endpoints
+  (`GET/DELETE /volumes`) the `EngineClient` does not implement yet — Phase-3 "volumes/GC": (a) a
+  **delete-time option** — `rm --with-data` / a UI delete checkbox — that removes the per-instance
+  volumes + data-root dir with the instance; (b) a `compositz volumes prune` / "reclaim unused data"
+  action for already-orphaned volumes. Open design point (user, 2026-07-03): the delete-time default
+  could even be **delete** rather than keep — data worth persisting belongs in a `bind` mount anyway
+  (browsable on the host); decide the default when designing, ideally alongside **volume export**
+  (roadmap Phase 3) as the safety valve.
 
 ## Deleting a venv-preset instance leaves its venv inside the shared uv volume
 

@@ -94,7 +94,13 @@ De-risk the two load-bearing unknowns before building.
   re-imports). Remaining hardening (poisoning/threat model) tracked below and in
   [limitations.md](limitations.md).
 - ⏳ **Volume lifecycle & GC**: per-app named volumes; `gc --reclaim`; uv `repair` / `rebuild`
-  wrappers (uv has no venv-aware GC or verify — Compositz wraps it).
+  wrappers (uv has no venv-aware GC or verify — Compositz wraps it); **`rm --with-data`** + UI
+  delete option removing per-instance volumes/data-root (keep-vs-delete default open — the user
+  leans "delete is fine: persist-worthy data should be a `bind` mount"; see known-issues); needs
+  `EngineClient` volume endpoints (`GET/DELETE /volumes`).
+- ⏳ **Volume export** (user wish): export a data volume from the instance Settings (tar it out via
+  a helper container — there is no direct volume-read Engine API). Doubles as the safety valve
+  before destructive deletes, and as a poor-man's backup/migration path.
 - ⏳ **GPU runtime detection**: choose nvidia vs CDI from `/info` / `/version`.
 - ⏳ **s6-overlay v3** multi-daemon recipe pattern + an example recipe.
 - ⏳ **Strict isolation** opt-out per recipe (copy-mode cache, per-app cache) for troubleshooting.
