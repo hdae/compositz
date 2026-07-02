@@ -93,6 +93,8 @@ export {
   exportMount,
   installInstance,
   type PortBump,
+  type RemoveDataResult,
+  removeInstanceData,
   removeInstanceImage,
   up,
   type UpResult,

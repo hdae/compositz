@@ -83,6 +83,8 @@ export default function InstanceList(
   const [importing, setImporting] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [deleting, setDeleting] = useState<InstanceRow | null>(null); // delete-confirm target
+  const [deleteVolumes, setDeleteVolumes] = useState(true); // named volumes — default DELETE
+  const [deleteBind, setDeleteBind] = useState(false); // data-root files — default KEEP
   const [trust, setTrust] = useState<TrustPrompt | null>(null); // import → trust gate
   const [github, setGithub] = useState<GithubPrompt | null>(null); // GitHub import modal
   const [expanded, setExpanded] = useState<Record<string, boolean>>({}); // detail panel open
@@ -251,8 +253,14 @@ export default function InstanceList(
     await removeInstance(id);
   }
 
-  /** Delete an instance server-side (container + per-instance image + dir) and drop its row. */
-  async function removeInstance(id: string) {
+  /**
+   * Delete an instance server-side (container + per-instance image + dir; data
+   * volumes by default, data-root bind files only on opt-in) and drop its row.
+   */
+  async function removeInstance(
+    id: string,
+    opts: { volumes: boolean; bindData: boolean } = { volumes: true, bindData: false },
+  ) {
     setActionError(null);
     // Remove the row immediately so its panel (e.g. a "starting…" service while the
     // container is still up) doesn't linger through the delete round-trip; restore it
@@ -265,7 +273,11 @@ export default function InstanceList(
     setInstalling((m) => omit(m, id));
     setPending((m) => omit(m, id));
     try {
-      const res = await fetch(`/api/instances/${id}/delete`, { method: "POST" });
+      const res = await fetch(`/api/instances/${id}/delete`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(opts),
+      });
       if (!res.ok) {
         if (removed) setViews((vs) => [...vs, removed]);
         const body = await res.json().catch(() => ({})) as { error?: string };
@@ -437,7 +449,12 @@ export default function InstanceList(
                             variant="ghost"
                             size="icon"
                             class="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                            onClick={() => setDeleting(r)}
+                            onClick={() => {
+                              // Reset to the defaults each time the dialog opens.
+                              setDeleteVolumes(true);
+                              setDeleteBind(false);
+                              setDeleting(r);
+                            }}
                             aria-label="Delete"
                           >
                             <Trash2 class="size-4" />
@@ -503,8 +520,31 @@ export default function InstanceList(
             <AlertDialogTitle>Delete this instance?</AlertDialogTitle>
             <AlertDialogDescription>
               <span class="font-mono">{deleting?.instanceId}</span>{" "}
-              — the container and its image are removed. Persisted data (named volumes) is kept.
+              — the container and its image are removed. Need a copy of the data? Export it from the
+              Settings tab first.
             </AlertDialogDescription>
+            <div class="mt-3 space-y-2">
+              <label class="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={deleteVolumes}
+                  onChange={(e) => setDeleteVolumes((e.currentTarget as HTMLInputElement).checked)}
+                />
+                Delete data volumes{" "}
+                <span class="text-xs text-muted-foreground">(irreversible)</span>
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={deleteBind}
+                  onChange={(e) => setDeleteBind((e.currentTarget as HTMLInputElement).checked)}
+                />
+                Also delete host-browsable data{" "}
+                <span class="text-xs text-muted-foreground">
+                  (bind mounts under the data folder)
+                </span>
+              </label>
+            </div>
             <AlertDialogFooter>
               <AlertDialogClose render={<Button variant="outline" size="sm">Cancel</Button>} />
               <Button
@@ -512,7 +552,10 @@ export default function InstanceList(
                 size="sm"
                 onClick={() => {
                   if (deleting) {
-                    removeInstance(deleting.instanceId);
+                    removeInstance(deleting.instanceId, {
+                      volumes: deleteVolumes,
+                      bindData: deleteBind,
+                    });
                     setDeleting(null);
                   }
                 }}

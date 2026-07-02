@@ -7,6 +7,7 @@ import {
   instanceImageTag,
   instancesDir,
   loadInstance,
+  removeInstanceData,
   removeInstanceDir,
   removeInstanceImage,
   up,
@@ -75,14 +76,34 @@ export const handler = define.handlers({
           return Response.json({ ok: true });
         }
         case "delete": {
-          // Stop+remove the container, remove the per-instance built image, then delete
-          // the instance definition. Persisted data (named volumes + data-root) is KEPT,
-          // matching `compositz rm`. Load (best-effort) before removal to know the image
-          // tag; a missing/corrupt instance still gets its dir removed.
+          // Stop+remove the container, the per-instance built image, and (by default)
+          // the per-instance DATA VOLUMES — persist-worthy data belongs in a `bind`
+          // mount, kept unless `bindData` opts in. Matches `compositz rm`'s defaults.
+          // Load (best-effort) before removal to know the image tag + volume names; a
+          // missing/corrupt instance still gets its dir removed.
           assertValidId(id);
+          const body = await ctx.req.json().catch(() => ({})) as {
+            volumes?: boolean;
+            bindData?: boolean;
+          };
           const instance = await loadInstance(join(store, id)).catch(() => undefined);
           await down(client, id);
           if (instance) await removeInstanceImage(client, instance);
+          if (instance) {
+            const data = await removeInstanceData(client, instance, {
+              volumes: body.volumes ?? true,
+              bindData: body.bindData ?? false,
+            });
+            if (data.volumesFailed.length > 0) {
+              // Keep the definition: without it the volume names can't be re-derived
+              // for a retry, and the volumes would become invisible orphans.
+              const failed = data.volumesFailed.map((f) => `${f.name}: ${f.error}`).join("; ");
+              return Response.json({
+                ok: false,
+                error: `data volumes not removed (${failed}) — instance kept, retry delete`,
+              }, { status: 409 });
+            }
+          }
           await removeInstanceDir(store, id);
           return Response.json({ ok: true });
         }

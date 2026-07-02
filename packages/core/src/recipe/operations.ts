@@ -3,7 +3,8 @@
 // up (GPU tri-state + host-port auto-increment), and tear it down. Everything keys
 // off the instance id (ADR-017).
 
-import { containerName, imageTag, label } from "../brand.ts";
+import { join } from "@std/path";
+import { containerName, imageTag, label, volumeName } from "../brand.ts";
 import { tarContext } from "../build.ts";
 import { CompositzError } from "../errors.ts";
 import type { EngineClient } from "../engine/client.ts";
@@ -313,6 +314,64 @@ export async function down(
   const name = containerName(instanceId);
   await client.stop(name, opts.stopTimeout).catch(() => {});
   await client.remove(name, { force: true }).catch(() => {});
+}
+
+export interface RemoveDataResult {
+  /** Per-instance named volumes that existed and were removed. */
+  volumesRemoved: string[];
+  /** Volumes that could not be removed (e.g. still mounted — 409). Never forced. */
+  volumesFailed: Array<{ name: string; error: string }>;
+  /** The data-root bind dir removed (set only when `bindData` was requested and it existed). */
+  bindDirRemoved?: string;
+}
+
+/**
+ * Remove an instance's PERSISTED DATA — irreversible. Per-instance named volumes are
+ * removed for EVERY manifest mount regardless of its current placement (a placement
+ * flip may have left data in both forms); names derive from the definition
+ * (`volumeName(id, mount)`), so the shared cache volumes (`compositz_uv` / `_hf` /
+ * `_cache_*`) are structurally out of reach. With `bindData: true`, the instance's
+ * host-browsable data-root dir (`<data-root>/<instanceId>`) is removed too — kept by
+ * default (persist-worthy data lives there by convention). Call `down` first: a
+ * volume still mounted by a container fails (409) and is REPORTED, never forced.
+ * NOTE: the bind dir is removed with local fs APIs — correct for a local daemon (the
+ * standard setup); over a remote DOCKER_HOST the files live on that host and stay.
+ */
+export async function removeInstanceData(
+  client: EngineClient,
+  instance: Instance,
+  opts: { volumes?: boolean; bindData?: boolean; dataRoot?: string } = {},
+): Promise<RemoveDataResult> {
+  const result: RemoveDataResult = { volumesRemoved: [], volumesFailed: [] };
+
+  if (opts.volumes ?? true) {
+    for (const mt of instance.manifest.mounts) {
+      const name = volumeName(instance.instanceId, mt.name);
+      // Docker's name filter is a substring match — confirm exactly before counting
+      // a removal (a 404-tolerant delete alone couldn't tell "removed" from "absent").
+      const exists = (await client.listVolumes({ filters: { name: [name] } }))
+        .some((v) => v.Name === name);
+      if (!exists) continue;
+      try {
+        await client.removeVolume(name);
+        result.volumesRemoved.push(name);
+      } catch (e) {
+        result.volumesFailed.push({ name, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+  }
+
+  if (opts.bindData) {
+    const dir = join(opts.dataRoot ?? defaultDataRoot(), instance.instanceId);
+    try {
+      await Deno.remove(dir, { recursive: true });
+      result.bindDirRemoved = dir;
+    } catch (e) {
+      if (!(e instanceof Deno.errors.NotFound)) throw e;
+    }
+  }
+
+  return result;
 }
 
 /**
