@@ -76,18 +76,25 @@ must be absolute (start with `/`).
 
 ### Caches
 
-Opt-in, Compositz-managed. The **path is injected as an env var** — authors never set it. Cache
-volumes are shared across apps where it makes sense (uv/HF), giving cross-app dedup.
+Opt-in, Compositz-managed. The **path is injected as an env var** — authors never set it. The
+injection happens at container create, so it **overrides the image's own `ENV`**: declaring a preset
+forces the shared location even when the app's Dockerfile sets its own cache paths (carve-outs —
+build-time-baked paths, env-deaf apps — and the shared-cache threat model:
+[limitations.md](limitations.md), ADR-024). Cache volumes are shared across apps where it makes
+sense (uv/HF), giving cross-app dedup.
 
-| Entry                                 | Volume                   | In-container path         | Injects                                                                                        |
-| ------------------------------------- | ------------------------ | ------------------------- | ---------------------------------------------------------------------------------------------- |
-| `{ type: venv }`                      | `compositz_uv`           | `/compositz/uv`           | `UV_CACHE_DIR=/compositz/uv/cache`, `VIRTUAL_ENV=/compositz/uv/venvs/<instanceId>`             |
-| `{ type: huggingface }`               | `compositz_hf`           | `/compositz/hf`           | `HF_HOME=/compositz/hf`                                                                        |
-| `{ type: custom, name, env, scope? }` | `compositz_cache_<name>` | `/compositz/cache/<name>` | `<env>` = that path (`scope: shared`, default) or a `<instanceId>` subpath (`scope: instance`) |
+| Entry                                 | Volume                   | In-container path         | Injects                                                                                                                    |
+| ------------------------------------- | ------------------------ | ------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `{ type: venv }`                      | `compositz_uv`           | `/compositz/uv`           | `UV_CACHE_DIR=…/cache`, `VIRTUAL_ENV` + `UV_PROJECT_ENVIRONMENT` `=…/venvs/<instanceId>`, `UV_PYTHON_INSTALL_DIR=…/python` |
+| `{ type: huggingface }`               | `compositz_hf`           | `/compositz/hf`           | `HF_HOME=/compositz/hf`                                                                                                    |
+| `{ type: custom, name, env, scope? }` | `compositz_cache_<name>` | `/compositz/cache/<name>` | `<env>` = that path (`scope: shared`, default) or a `<instanceId>` subpath (`scope: instance`)                             |
 
-The `venv` preset keeps the uv venv **and** the uv cache on one volume so uv's hardlink dedup works
-([ADR-006](decisions.md#adr-006--uv-venv-hardlink-constraint--accepted)). At most one of each
-preset; `custom` is keyed by `name`.
+The `venv` preset keeps the uv venv, the uv cache **and** the managed interpreters on one volume so
+uv's hardlink dedup works and the venv never points across volumes
+([ADR-006](decisions.md#adr-006--uv-venv-hardlink-constraint--accepted), ADR-024). `VIRTUAL_ENV` and
+`UV_PROJECT_ENVIRONMENT` carry the same path because uv _project_ operations (`uv sync` / `uv run`)
+ignore `VIRTUAL_ENV` and only honor `UV_PROJECT_ENVIRONMENT`; apps that hard-code a `.venv`-relative
+path are incompatible with the preset. At most one of each preset; `custom` is keyed by `name`.
 
 ### Env
 
@@ -170,7 +177,7 @@ mounts:
     target: /app/models # placement omitted => managed volume
     description: Checkpoints / LoRAs.
 cache:
-  - type: venv # injects VIRTUAL_ENV + UV_CACHE_DIR
+  - type: venv # injects VIRTUAL_ENV + UV_PROJECT_ENVIRONMENT + UV_CACHE_DIR + UV_PYTHON_INSTALL_DIR
   - type: huggingface # injects HF_HOME
 env:
   - name: HF_TOKEN
@@ -215,6 +222,9 @@ The whole recipe directory (minus the manifest and dotfiles) is packed into a ta
 - Keep one container per recipe; use **s6-overlay v3** inside the image for multiple daemons.
 - Pin base and CUDA image tags (no `:latest`) — a versioning policy is coming (Phase 3).
 - Set `web: true` on every port with a browser UI; the desktop app / `up` open or embed it.
-- Don't bake Python packages or CUDA into the image — add `cache: [{ type: venv }]` and let uv
-  populate the shared venv/cache at runtime via `$VIRTUAL_ENV` / `$UV_CACHE_DIR` (a reference
-  entrypoint helper is planned).
+- Don't bake Python packages or CUDA into the image — add `cache: [{ type: venv }]` and let the
+  entrypoint populate the venv at runtime: a plain `uv sync --frozen` picks up the injected
+  `UV_PROJECT_ENVIRONMENT` / `UV_CACHE_DIR` automatically; `uv venv "$VIRTUAL_ENV"`-style
+  entrypoints work too. See `recipes/cocktail` for a worked example.
+- The image's own `ENV` cache paths are fine as standalone-run defaults — under Compositz the
+  declared presets override them at container create (ADR-024).

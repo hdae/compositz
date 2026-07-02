@@ -27,6 +27,16 @@ settled rationale belongs in [decisions.md](decisions.md).
   Engine **volume** endpoints (`GET/DELETE /volumes`) the `EngineClient` does not implement yet.
   Part of Phase-3 "volumes/GC".
 
+## Deleting a venv-preset instance leaves its venv inside the shared uv volume
+
+- **What:** the `venv` cache preset puts each instance's venv at `venvs/<instanceId>` **inside** the
+  shared `compositz_uv` volume (co-location is what makes uv's hardlink dedup work, ADR-006). Delete
+  keeps volumes (safe default, see above) — but unlike a per-instance named volume, an orphaned venv
+  _subpath_ is invisible to volume listing, and there is no tool to enumerate or reclaim it.
+- **Fix direction:** the ADR-006 `gc --reclaim` wrapper (Phase-3 "volumes/GC"): enumerate
+  `venvs/<id>` subpaths against existing instances (needs a helper container or volume inspection)
+  and remove orphans on explicit confirmation. Same phase as the volume-reclaim item above.
+
 ## Runtime-log tab can duplicate lines after an unexpected reconnect
 
 - **What:** the Runtime-log tab streams `/api/instances/:id/logs` (SSE) with a `tail=500` backfill.

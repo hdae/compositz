@@ -673,3 +673,51 @@ precedence cases; `sameOverride`; launched-marker independence) + CLI/real-engin
 (reassign 8090→8091→8092 persisted; restart-needed false→true→false across edit + relaunch).
 **Deferred:** hard-blocking `up` on an external port still occupied at launch (currently the
 safety-net bump or a Docker error).
+
+---
+
+## ADR-024 — Forced cache sharing: preset env injection beats the image's own layout · ✅ Accepted
+
+The cocktail dogfood surfaced the question: what happens when an app's own Dockerfile centralizes
+its caches under its data dir (`HF_HOME=/workspace/models`, `UV_CACHE_DIR=/workspace/.uv-cache`, …)?
+The user's call: **force sharing** — patching recipes / overriding env is acceptable.
+`docs/limitations.md` previously claimed presets would "split the cache in two" against such apps;
+that was wrong for env-driven apps and is retracted (narrowed to two carve-outs).
+
+**Decisions:**
+
+- **The forcing mechanism is the existing create-time env injection.** Measured on the live engine
+  (29.5.3): container-create `Env` overrides image `ENV`, and image `ENV` survives when no `Env` is
+  passed (both directions verified). cocktail is fully env-driven (pydantic-settings binds `HF_HOME`
+  / `WEIGHTS_DIR` / `IMAGES_DIR`; the entrypoint's `uv sync` reads `UV_*`), so declaring presets
+  suffices — no new mechanism. Carve-outs (build-time-baked paths; env-deaf apps) live in
+  `docs/limitations.md`.
+- **venv preset repaired: also inject `UV_PROJECT_ENVIRONMENT` (= `VIRTUAL_ENV`) and
+  `UV_PYTHON_INSTALL_DIR`.** Measured (uv 0.10.10 + official docs): uv _project_ operations
+  (`uv sync` / `uv run`) ignore `VIRTUAL_ENV` (warn, use `.venv`) and honor only
+  `UV_PROJECT_ENVIRONMENT` — the old preset silently lost persistence for every `uv sync`-style app
+  (no shipped recipe used it yet, so no damage occurred). Managed interpreters co-locate on the same
+  volume so the venv's `pyvenv.cfg home` never points across volumes. Honest caveats: shared
+  `UV_PYTHON_INSTALL_DIR` concurrency rests on uv's _implementation_ lock (`managed.rs`), not a
+  documented guarantee; apps that hard-code `.venv`-relative paths are incompatible (noted in the
+  schema description). The equivalent per-recipe fix (entrypoint
+  `export UV_PROJECT_ENVIRONMENT="$VIRTUAL_ENV"`) was rejected: the preset's contract is core's to
+  keep, and every uv-sync recipe would need the same wrapper.
+- **No global default-on injection.** Rejected not as unnecessary but as harmful: it would mount
+  shared writable volumes into every app unasked (widening the cache-poisoning channel — see the
+  threat model in `docs/limitations.md`) and inject `VIRTUAL_ENV` into non-uv apps (breaking
+  pip/poetry flows). Recipe-level declaration IS the forcing lever while recipes are first-party; a
+  per-instance user-side cache opt-in (a `config.yaml` extension) is the future path for third-party
+  recipes, not default-on.
+- **Deferred: `target:` graft for env-deaf apps** — mounting a shared cache volume at the app's own
+  path (nested mounts). Verified live: the engine mounts `/nest` + `/nest/inner` correctly
+  regardless of specification order — but that ordering is moby's `sortMounts` _implementation
+  behavior_, not API-guaranteed, so an implementation MUST sort mounts by target depth itself. Not
+  needed yet (cocktail is env-driven end to end).
+
+**Consequences:** cocktail declares `cache: [venv, huggingface, custom(cocktail-weights)]`; a
+duplicated instance re-downloads nothing on first boot (previously torch + Python + HF models +
+weights, 10+GB). `/workspace` shrinks to generated images. Deleting a venv-preset instance orphans
+`venvs/<instanceId>` inside the shared volume — recorded in `docs/known-issues.md`, to be reclaimed
+by the Phase-3 GC. Existing instances keep the old layout until re-imported. Preset vars cannot be
+overridden from the Settings tab (precedence documented in `docs/limitations.md`).
