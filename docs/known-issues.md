@@ -41,6 +41,47 @@ settled rationale belongs in [decisions.md](decisions.md).
   `venvs/<id>` subpaths against existing instances (needs a helper container or volume inspection)
   and remove orphans on explicit confirmation. Same phase as the volume-reclaim item above.
 
+## A crashed app is indistinguishable from a clean stop — and `up` destroys the evidence
+
+- **What:** the UI reduces container state to a boolean (`toInstanceRows` keeps only
+  `state === "running"`, [`lib/dashboard.ts:232`](../packages/ui/lib/dashboard.ts)), so an
+  OOM-killed or crashed app renders as plain "stopped" with a Start button — no crash signal, no
+  exit code. Worse, `up()` starts by force-removing the previous container
+  ([`operations.ts:76`](../packages/core/src/recipe/operations.ts)), so the restart a confused user
+  reaches for destroys the crashed container's logs and exit status before anyone can inspect them.
+- **Fix direction:** derive a distinct `crashed` status from the `state` the snapshot already
+  carries end-to-end (plus exit code via inspect) and render it on the row. MUST preserve the old
+  container's exit info before `up`'s force-remove, or the new status has nothing to show. Companion
+  knob: an opt-in manifest `restartPolicy` (roadmap Phase 3 — the `HostConfig.RestartPolicy` type
+  exists but `toCreateSpec` never sets it, so nothing survives a host/daemon restart either).
+
+## GPU `preferred` → CPU fallback is invisible in the UI
+
+- **What:** `up()` reports `usedGpu` and the CLI prints it
+  ([`up.ts:24`](../packages/cli/commands/up.ts)); the UI route returns it in the POST response
+  ([`[action].ts:68`](../packages/ui/routes/api/instances/%5Bid%5D/%5Baction%5D.ts)) but the island
+  never reads it — a `gpu: preferred` app whose driver broke silently runs the CPU path with no
+  indication.
+- **Fix direction:** surface a row badge/notification when `usedGpu === false` for a manifest that
+  prefers GPU (the data is already in the response; display-only).
+
+## Build logs are ephemeral island state (lost on reload)
+
+- **What:** the Build-log tab accumulates the install NDJSON in island memory only; a page reload or
+  app restart clears it, and nothing persists the build output on disk. After a failed overnight
+  build there may be nothing left to read.
+- **Fix direction:** persist the last build log per instance (a file under the instance dir, written
+  by `installInstance` consumers) and serve it as the tab's initial backfill.
+
+## `image:` recipe pulls show no layer progress
+
+- **What:** `installInstance` yields only two lines (`pulling…`/`pulled`) around `client.pull`,
+  whose `onProgress` callback ([`client.ts:64`](../packages/core/src/engine/client.ts)) no caller
+  uses — a multi-GB `image:` recipe install sits silent for minutes. Distinct from the run-phase
+  readiness issue below (this is the install phase).
+- **Fix direction:** thread pull layer progress into the install NDJSON stream the same way build
+  log lines flow.
+
 ## Runtime-log tab can duplicate lines after an unexpected reconnect
 
 - **What:** the Runtime-log tab streams `/api/instances/:id/logs` (SSE) with a `tail=500` backfill.

@@ -225,10 +225,10 @@ Still open for later increments:
   to a global `settings.yaml`); bind mounts toggle placement only (host path stays derived, no
   arbitrary directory); **`required` env is enforced only in the Settings UI** (Save is blocked
   until filled) — `up` itself does not yet hard-block a launch when a required env is unset (it
-  would launch with an empty value, the pre-RI-4 behavior). A "Save & restart" convenience is
-  deferred.
-- **Live cache exercise**: no shipped recipe uses `venv`/`huggingface` yet, so those volumes/env are
-  unit-tested but not yet machine-run end-to-end.
+  would launch with an empty value, the pre-RI-4 behavior). The "Save & restart" convenience has
+  since been effectively covered by ADR-023's conditional "Restart now" button.
+- ~~**Live cache exercise**~~ — done: `recipes/cocktail` declares `venv`/`huggingface`/`custom` and
+  the shared caches were exercised end-to-end on a real GPU host (ADR-024).
 - **Authoring helper**: a **reference entrypoint** (uv-sync boilerplate using `$VIRTUAL_ENV` /
   `$UV_CACHE_DIR`) so recipes don't reinvent it — recipe-format appendix (future).
 - **RI-3 GitHub — by-design first-cut limits** (ADR-021): **public repos only** (no auth); the spec

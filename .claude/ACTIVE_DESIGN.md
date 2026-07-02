@@ -84,15 +84,20 @@ Deferred: `target:` graft for env-deaf apps (needs self-sorted mounts — moby s
 venv-orphan GC (known-issues). **Live-verified on the GPU host**: the user deleted + re-imported
 cocktail — shared uv/HF/weights volumes survived, first boot was fast.
 
-**Next:** ► **NOW: feature-gap review → proposal session** (the user asked for "what's missing"
-proposals; propose-first, no code until approval). Known candidates already queued — pick up and
-sweep for more: **`rm --with-data`** + UI delete option (keep-vs-delete default open — user leans
-"delete is fine, persist-worthy data should be bind"; known-issues), **volume export** from Settings
-(roadmap Phase 3, user wish), GUI **duplicate** action, light/dark/auto **mode selector**, "first
-`up` looks stuck" readiness UX (known-issues), venv-orphan reclaim, tunnel-sharing idea (roadmap
-Phase 4, auth story MUST). The RI-1..4 arc is complete; after the proposal round, **Phase 3 —
-Hardening** (volumes/GC + full data deletion, GPU detection, versioning, shared-cache hardening per
-limitations.md threat model — the live shared-cache exercise itself is ✅ done via cocktail).
+**Next:** ► **NOW: deletion/duplicate arc — user-approved 2026-07-03** (the feature-gap sweep ran:
+58 candidates → 30 kept, new finds recorded in roadmap Phase 3 + known-issues). Phases: ① CLI `rm`
+removes the per-instance image (parity with UI delete) → ② `EngineClient` volume endpoints
+(GET/DELETE `/volumes`) → ③ **volume export** (Settings + CLI; tar via the archive API on a
+_created_ container — no helper execution) → ④ **`rm --with-data` / UI delete option** — approved
+defaults: named volumes **DELETE by default**, bind data-root **KEPT by default** (opt-in delete),
+shared cache volumes NEVER touched (structural: `compositz_<id>_*` vs `compositz_uv` naming) → ⑤
+**GUI duplicate** — `duplicateInstance` gains config.yaml inheritance (env/placement inherited,
+hostPorts dropped → add-time `deconflictHostPorts`), server-confirmed UI → ⑥ **action-driven tab
+auto-switch** (user request: add→build log (as-is), build done→Settings, starting→runtime log,
+ready→Services; manual picks respected between transitions). Build cache stays ON by default;
+`--no-cache` is opt-in and lands with the NEXT arc: **in-place update** (provenance display →
+update-to-ref with re-trust + rebuild → user-facing build args — roadmap Phase 3). Then Phase 3
+hardening proper.
 
 ## Decisions recently settled
 

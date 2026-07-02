@@ -101,6 +101,34 @@ De-risk the two load-bearing unknowns before building.
 - ⏳ **Volume export** (user wish): export a data volume from the instance Settings (tar it out via
   a helper container — there is no direct volume-read Engine API). Doubles as the safety valve
   before destructive deletes, and as a poor-man's backup/migration path.
+- ⏳ **In-place instance update** (user wish): re-ingest a new ref/commit into the SAME instance
+  (`meta.source` already round-trips `github:owner/repo[/subdir][@ref]`) keeping instanceId /
+  volumes / `config.yaml`, behind a **re-trust gate** (new code = new trust, ADR-020) + image
+  rebuild. Companions: show provenance first (below), user-facing **build args** (cocktail's
+  `COCKTAIL_REF` pin is edit-manifest-only today; needs a "rebuild needed" state next to ADR-023's
+  "restart needed"), and an opt-in `--no-cache` rebuild action (build cache stays ON by default —
+  user decision 2026-07-03; `BuildOptions.noCache` is wired in core but nothing sets it).
+- ⏳ **CLI parity — `config` + `logs`**: the RI-4 override (ports/env/placement) is UI-only and log
+  streaming is UI-only; core has everything (`load/saveInstanceConfig`, `client.logs`) — headless
+  Linux needs thin `compositz config` / `compositz logs [-f]` wrappers.
+- ⏳ **Instance label + provenance display**: `meta.source`/`createdAt` are persisted but shown only
+  in the trust dialog; `ls` and the UI row show neither, and duplicates are distinguishable only by
+  the random id suffix. Add an optional user `label` to `InstanceMeta` + surface source/ref/age in
+  `ls` and the row — the display prerequisite for in-place update.
+- ⏳ **Manifest expressiveness for AI workloads**: `shmSize` (Docker's 64 MB `/dev/shm` default
+  OOM-kills multi-worker PyTorch DataLoaders — the most common local-AI footgun; `ipc: host` as the
+  alternative is **rejected**: it punches an isolation hole), `healthcheck`/readiness probe (the
+  declarative fix for the "first `up` looks stuck" issue; drives Docker health so Services badges
+  read real state), `stopGracePeriod`/`stopSignal` (`down` SIGKILLs after Docker's 10 s default —
+  deadly mid-checkpoint; `stopTimeout` plumbing exists with zero callers), opt-in `restartPolicy`
+  (nothing survives a host reboot today), `secret: true` env flag (presentation-only: masked
+  Settings input + excluded from future export/share — gated-model tokens like `HF_TOKEN` /
+  `CIVITAI_TOKEN` are first-class in local AI; OS-keychain integration is NOT planned), memory/CPU
+  limits (speculative — only on demand).
+- ⏳ **Ops visibility**: crashed≠stopped status + GPU-fallback badge + pull layer progress +
+  persistent build logs (all in [known-issues.md](known-issues.md)); a read-only **disk-usage view**
+  (images / volumes / shared caches — tens of GB with cocktail-class apps) staged BEFORE any
+  destructive reclaim UI.
 - ⏳ **GPU runtime detection**: choose nvidia vs CDI from `/info` / `/version`.
 - ⏳ **s6-overlay v3** multi-daemon recipe pattern + an example recipe.
 - ⏳ **Strict isolation** opt-out per recipe (copy-mode cache, per-app cache) for troubleshooting.

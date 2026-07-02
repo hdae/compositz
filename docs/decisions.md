@@ -616,7 +616,10 @@ form, and the Settings view-model types in `lib/dashboard.ts`. Verified: core un
 (parse/serialize/load/save/merge) + a real-engine smoke (a saved `config.yaml` host-port remap is
 published by `up`) + the route data-path on a real instance. **Deferred** (see
 [recipe-ingestion.md](recipe-ingestion.md#open-details)): editable `dataRoot`, arbitrary bind host
-paths, hard-blocking `up` on an unset required env, and a "Save & restart" convenience.
+paths, hard-blocking `up` on an unset required env, and a "Save & restart" convenience — the last
+has since been effectively covered by ADR-023's conditional "Restart now" button (shown only when a
+restart would change something); what remains is a literal one-button save+restart, negligible
+polish.
 
 ## ADR-023 — Definition-driven ports: add-time deconfliction + display precedence · ✅ Accepted
 
