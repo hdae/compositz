@@ -1,0 +1,73 @@
+name: Release
+
+# On a version tag, build the Windows installers and attach them to a DRAFT
+# GitHub release for manual review before publishing. Installers are unsigned
+# (see desktop-artifact.yml) — SmartScreen will warn until signing is added.
+on:
+  push:
+    tags:
+      - v*
+
+permissions:
+  # Creating/updating the release and uploading assets requires write access to
+  # repository contents.
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and attach installers
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      # tauri-action runs the desktop crate's beforeBuildCommand
+      # (pnpm -C ../../frontend build), which needs frontend/node_modules.
+      - name: Install frontend dependencies
+        run: pnpm -C frontend install --frozen-lockfile
+
+      # Pin the Tauri CLI. With no package.json at projectPath, tauri-action
+      # otherwise falls back to `npm install -g @tauri-apps/cli@v2` — an
+      # unpinned floating CLI on every run. Installing an exact version here and
+      # pointing tauriScript at the resulting global `tauri` binary makes the
+      # action skip its own install and use this pinned CLI instead.
+      - name: Install Tauri CLI (pinned)
+        run: npm i -g @tauri-apps/cli@2.11.4
+
+      # With tagName set, tauri-action creates (or reuses) the release and
+      # uploads the installers to it. releaseDraft keeps it unpublished for
+      # manual review. __VERSION__ is substituted with the app version from
+      # tauri.conf.json.
+      - name: Build and release Tauri app
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: crates/desktop
+          tauriScript: tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: Compositz __VERSION__
+          releaseDraft: true

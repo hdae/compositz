@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least-privilege default: CI only reads the repo. No job here creates
+# releases or writes contents.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust (fmt / clippy / test)
+    runs-on: ubuntu-latest
+    env:
+      # ubuntu-latest ships a running Docker daemon on the unix socket, so the
+      # core integration tests (env-gated on COMPOSITZ_DOCKER_HOST) run for
+      # real. They are strictly read-only (ping/version/list/inspect/logs/
+      # events) — see the core crate's engine module.
+      COMPOSITZ_DOCKER_HOST: unix:///var/run/docker.sock
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      # Format and lint the whole workspace (all crates, incl. desktop, are
+      # checked for formatting — fmt needs no compilation).
+      - name: cargo fmt
+        run: cargo fmt --all --check
+
+      # Lint only the default members (core + cli). The desktop crate links
+      # webkit2gtk/dbus which are absent on ubuntu runners, so it is not built
+      # here — it is compiled by the windows-latest artifact/release jobs.
+      - name: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test
+
+  frontend:
+    name: Frontend (lint / test / build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm -C frontend install --frozen-lockfile
+
+      # Invoke the project-local (catalog-pinned) vp via package scripts so CI
+      # uses the same toolchain version as the lockfile, not an ambient global.
+      - name: Check (vp check)
+        run: pnpm -C frontend run check
+
+      - name: Test (vp test)
+        run: pnpm -C frontend run test
+
+      - name: Build
+        run: pnpm -C frontend run build

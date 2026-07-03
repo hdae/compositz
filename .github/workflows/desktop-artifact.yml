@@ -1,0 +1,87 @@
+name: Desktop artifact
+
+# Build the unsigned Windows installers (NSIS + MSI) so a maintainer can
+# download and manually verify the desktop app. Signing is intentionally
+# omitted for Phase 0, so SmartScreen will warn on first run — that is expected
+# and accepted.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - crates/**
+      - frontend/**
+      - Cargo.toml
+      - Cargo.lock
+      - .github/workflows/desktop-artifact.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-artifact-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Windows installers
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          # The Tauri app lives in crates/desktop; scope the cache there.
+          workspaces: . -> target
+
+      # tauri-action runs the desktop crate's beforeBuildCommand
+      # (pnpm -C ../../frontend build), which needs frontend/node_modules.
+      - name: Install frontend dependencies
+        run: pnpm -C frontend install --frozen-lockfile
+
+      # Pin the Tauri CLI. With no package.json at projectPath, tauri-action
+      # otherwise falls back to `npm install -g @tauri-apps/cli@v2` — an
+      # unpinned floating CLI on every run. Installing an exact version here and
+      # pointing tauriScript at the resulting global `tauri` binary makes the
+      # action skip its own install and use this pinned CLI instead.
+      - name: Install Tauri CLI (pinned)
+        run: npm i -g @tauri-apps/cli@2.11.4
+
+      # Build only (no tagName) — produces the NSIS + MSI installers declared in
+      # crates/desktop/tauri.conf.json.
+      - name: Build Tauri app
+        id: tauri
+        uses: tauri-apps/tauri-action@v1
+        with:
+          projectPath: crates/desktop
+          tauriScript: tauri
+
+      # artifactPaths is a JSON-stringified array of file paths
+      # (JSON.stringify(artifacts.map(a => a.path))). fromJSON parses it back to
+      # an array, and join newline-separates the paths — upload-artifact treats
+      # the multi-line value as a list of files. The separator is a real newline
+      # produced by YAML's "\n" double-quote escape (GitHub expression string
+      # literals do NOT interpret "\n" themselves), placed inside the join()
+      # separator argument's single quotes.
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: compositz-windows-installers
+          path: "${{ join(fromJSON(steps.tauri.outputs.artifactPaths), '\n') }}"
+          if-no-files-found: error
