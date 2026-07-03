@@ -25,11 +25,11 @@ compositz/
 ├── crates/
 │   ├── core/               # bollard engine 層 + manifest/ingest/instance/run/operations
 │   ├── cli/                # clap。static binary (Linux headless 配布が単一バイナリ化)
-│   └── desktop/            # Tauri 2 app。tauri.conf.json はここ (× root "desktop/" — .gitignore 地雷)
+│   └── desktop/            # Tauri 2 app。tauri.conf.json はここ (root "desktop/" は使わない)
 ├── frontend/               # pnpm 独立プロジェクト (root に package.json を置かない)
 │   └── (vp + React 19 + Tailwind v4 + shadcn Base UI)
 ├── packages/               # 既存 Deno (凍結・並存 → Phase 5 で退役)
-└── .github/workflows/      # PR: Windows artifact / release: tauri-action
+└── .github/workflows/      # main-push/manual: Windows artifact / release: tauri-action
 ```
 
 - **IPC**: request/response = Tauri commands、ストリーム (logs/install progress/snapshot) =
@@ -44,17 +44,17 @@ compositz/
 
 ## 技術選定（調査済み）
 
-| 領域               | 採用                                                                                         | 備考                                                                                                                      |
-| ------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Docker client      | bollard                                                                                      | npipe/TCP/unix、全 API 1:1。version は Phase 0 で確定（0.19.4 で TCP 検証済 / 最新 0.21 は feature 構成を要確認）         |
-| YAML               | serde_norway                                                                                 | RustSec 推奨の serde_yaml 後継 fork、drop-in。serde-saphyr は 1.0 到達時に再訪。serde_yml は RUSTSEC-2025-0068 につき禁止 |
-| JSON Schema        | schemars 1.0                                                                                 | zod + gen_schema.ts の後継。境界は serde `deny_unknown_fields` で fail-loud                                               |
-| Archive            | tar-rs + flate2 (**MultiGzDecoder**) + zip (CVE-2025-29787 修正版)                           | 展開時 zip-slip 検査。tokio-tar/async-tar は TARmageddon につき禁止。ingestion は spawn_blocking                          |
-| HTTP               | reqwest 0.13 + rustls                                                                        | 単一 Client 再利用、read_timeout、bytes_stream                                                                            |
-| Error              | thiserror (crates) / anyhow (bins) / serde tagged enum (Tauri 境界 → TS discriminated union) |                                                                                                                           |
-| その他             | tracing / tempfile `NamedTempFile::persist`(new_in + sync_all) / directories / dunce         | **config.yaml 非atomic write の既知問題は移植で構造的に解消**                                                             |
-| 型付き IPC         | tauri-specta `=2.0.0-rc.25` (exact pin)                                                      | Rust 型 → TS 生成で二重定義ゼロ。RC のため exact pin + upgrade 時 smoke test                                              |
-| Frontend toolchain | **vp 0.2.2 (Beta)**                                                                          | tauri.conf は `pnpm dev`/`pnpm build` 間接参照 → vp⇄Vite 乗換コスト = Tauri 側ゼロ                                        |
+| 領域               | 採用                                                                                         | 備考                                                                                                                                                                                                                              |
+| ------------------ | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Docker client      | bollard                                                                                      | npipe/TCP/unix、全 API 1:1。version は Phase 0 で確定（0.19.4 で TCP 検証済 / 最新 0.21 は feature 構成を要確認）                                                                                                                 |
+| YAML               | serde_norway                                                                                 | RustSec 推奨の serde_yaml 後継 fork、drop-in。serde-saphyr は 1.0 到達時に再訪。serde_yml は RUSTSEC-2025-0068 につき禁止                                                                                                         |
+| JSON Schema        | schemars 1.0                                                                                 | zod + gen_schema.ts の後継。境界は serde `deny_unknown_fields` で fail-loud                                                                                                                                                       |
+| Archive            | tar-rs + flate2 (**MultiGzDecoder**) + zip (CVE-2025-29787 修正版)                           | 展開時 zip-slip 検査。tokio-tar/async-tar は TARmageddon につき禁止。ingestion は spawn_blocking                                                                                                                                  |
+| HTTP               | reqwest 0.13 + rustls                                                                        | 単一 Client 再利用、read_timeout、bytes_stream                                                                                                                                                                                    |
+| Error              | thiserror (crates) / anyhow (bins) / serde tagged enum (Tauri 境界 → TS discriminated union) |                                                                                                                                                                                                                                   |
+| その他             | tracing / tempfile `NamedTempFile::persist`(new_in + sync_all) / directories / dunce         | **config.yaml 非atomic write の既知問題は移植で構造的に解消**                                                                                                                                                                     |
+| 型付き IPC         | tauri-specta `=2.0.0-rc.25` (exact pin)                                                      | Rust 型 → TS 生成で二重定義ゼロ。RC のため exact pin + upgrade 時 smoke test                                                                                                                                                      |
+| Frontend toolchain | **vp (vite-plus 0.1.24 系で統一)**                                                           | 0.2.x は `@voidzero-dev/vite-plus-test` に bin 未同梱で `vp test` 不能 → 0.1.24 が最新の整合セット（catalog で pin、test 0.2.x が出たら再訪）。tauri.conf は `pnpm dev`/`pnpm build` 間接参照 → vp⇄Vite 乗換コスト = Tauri 側ゼロ |
 
 ### 実機検証で判明した注意点（must-fix、Phase 0 に組込）
 
@@ -63,14 +63,21 @@ compositz/
 2. **tsconfig**: TS 6.0 では `baseUrl` 禁止（TS5101）。`paths {"@/*":["./src/*"]}` のみを両 tsconfig
    に。
 3. **shadcn init は `--preset` 明示必須**（非対話）。`--base base --preset nova` を検証済。
-4. **.gitignore**: `/target/` 追加、frontend dist 追加。root `desktop/` は既存 `/desktop/`
-   エントリに飲まれるため使わない。
+4. **.gitignore**: `/target/` 追加、frontend dist 追加。root `desktop/`
+   は使わない（レイアウト一貫性。 当初根拠の「既存 `/desktop/` エントリに飲まれる」は誤りと判明 —
+   その行は行内コメント付きで gitignore 的に何にもマッチしない死にエントリ。Deno
+   ツリー退役時に整理）。
 5. **root deno.json** の fmt/lint exclude に `crates/`・`frontend/`
    を追加（新旧ツールチェーンの喧嘩防止）。
 6. `.vscode/settings.json`: `rust-analyzer.check.workspace: false`（default-members を IDE flycheck
    が無視するため）。
 7. vitest は happy-dom（jsdom は WebCrypto 欠落で mockIPC が死ぬ）。`@tauri-apps/api` exact pin +
    「Channel が mockIPC 下で届く」smoke test（実装挙動依存のため regression 検知を仕込む）。
+8. **tauri.conf の hook は object 形式 + 明示 cwd 必須**: 文字列形式の beforeDev/BuildCommand は CLI
+   が自動解決した frontend dir を cwd にする。crates/desktop 配下に package.json が無い本構成では
+   crates/ にフォールバックし `../../frontend` がリポジトリ外へ逃げて Windows CI が cargo 実行前に
+   死ぬ（実 CLI で再現・修正検証済み）。`{ "script": "pnpm build", "cwd": "../../frontend" }` 形式を
+   使う。NOTE: tauri-cli 実装挙動依存（仕様保証ではない）— CLI 更新時に要再確認。
 
 ## 開発ループ（この headless 環境で）
 
@@ -81,9 +88,9 @@ compositz/
   注入。
 - **desktop crate と installer は CI (windows-latest) のみ**。cargo-xwin は WSL 固有バグ (#13829)
   につき不使用。
-- CI 2 本: (a) PR/manual = tauri-action@v1 で tagName 省略 + `artifactPaths` → upload-artifact
-  （ユーザーが NSIS/MSI を DL して手動確認。未署名なので SmartScreen 警告は仕様）、(b) release = tag
-  付き。
+- CI 2 本: (a) main-push(paths filter)/manual = tauri-action@v1 で tagName 省略 + `artifactPaths` →
+  upload-artifact（ユーザーが NSIS/MSI を DL して手動確認。未署名なので SmartScreen 警告は仕様。
+  main 直コミット運用のため PR trigger は置かない）、(b) release = tag 付き。
 
 ## フェーズ
 
