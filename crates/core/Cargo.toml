@@ -9,6 +9,12 @@ license.workspace = true
 name = "compositz_core"
 path = "src/lib.rs"
 
+[features]
+# Derive `specta::Type` on the view-model + manifest types so the desktop crate
+# can generate their TypeScript via `tauri-specta`. Off by default: the CLI links
+# core without it, so `specta` is never compiled for `cargo build`/`test` locally.
+specta = ["dep:specta"]
+
 [dependencies]
 bollard.workspace = true
 thiserror.workspace = true
@@ -26,6 +32,7 @@ chrono.workspace = true
 ureq.workspace = true
 bytes.workspace = true
 async-stream.workspace = true
+specta = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

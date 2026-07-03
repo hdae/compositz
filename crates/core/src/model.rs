@@ -70,9 +70,10 @@ pub fn format_port(port: &PortSummary) -> String {
 }
 
 /// The protocol string for a port, defaulting to `tcp` when the engine omits it
-/// or reports the empty variant. Shared by [`format_port`] and the dual-stack
-/// dedup key so the two never disagree on what "the same port" means.
-fn port_proto(port: &PortSummary) -> String {
+/// or reports the empty variant. Shared by [`format_port`], the dual-stack dedup
+/// key, and [`crate::view::to_container_statuses`] so they never disagree on what
+/// "the same port" means.
+pub(crate) fn port_proto(port: &PortSummary) -> String {
     port.typ
         .as_ref()
         .map(|t| t.to_string())

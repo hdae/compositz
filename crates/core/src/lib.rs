@@ -17,11 +17,13 @@ mod error;
 mod model;
 pub mod recipe;
 pub mod storage;
+pub mod view;
 
 pub use endpoint::{Endpoint, parse_docker_host};
 pub use engine::{BuildProgress, EngineVersion, VolumeSummary};
 pub use error::Error;
 pub use model::{ContainerSummary, format_port};
+pub use recipe::config::{Override, same_override};
 pub use recipe::github::{
     GithubIngestOpts, GithubSpec, github_source, github_tarball_url, ingest_github,
     parse_github_spec,
@@ -31,10 +33,11 @@ pub use recipe::ingest::{
     random_instance_id,
 };
 pub use recipe::instance::{
-    Instance, is_valid_instance_id, list_instances, load_instance, remove_instance_dir,
+    Instance, InstanceMeta, is_valid_instance_id, list_instances, load_instance,
+    load_instance_config, load_launched_config, remove_instance_dir, save_instance_config,
 };
 pub use recipe::manifest::{
-    MANIFEST_VERSION, Manifest, is_valid_recipe_id, manifest_json_schema, parse_manifest,
+    MANIFEST_VERSION, Manifest, Placement, is_valid_recipe_id, manifest_json_schema, parse_manifest,
 };
 pub use recipe::operations::{
     BindDirFailure, PortBump, RemoveDataOpts, RemoveDataResult, UpResult, VolumeFailure,
@@ -44,6 +47,11 @@ pub use recipe::operations::{
 pub use recipe::run::{
     LaunchConfig, WebEndpoint, effective_host_port, instance_container_name, instance_image_tag,
     merge_launch, persisted_mounts, resolve_host_ports, to_create_spec, web_endpoints, web_url,
+};
+pub use view::{
+    ContainerStatus, EngineSnapshot, EnvSetting, InstanceRow, InstanceSettings, InstanceView,
+    MountSetting, PortSetting, PublishedPort, Service, WebPort, build_settings, instance_services,
+    to_container_statuses, to_instance_rows, to_instance_view,
 };
 
 use bollard::Docker;
