@@ -15,7 +15,9 @@ use crate::Error;
 use crate::recipe::manifest::Placement;
 
 /// The persisted per-instance override — a strict subset of `run.rs`'s launch config.
+/// Crosses the IPC boundary as the `set_config` INPUT, so it is a `specta::Type`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Override {
     /// Host-port remap, keyed by port `name`.
@@ -61,6 +63,14 @@ pub fn serialize_override(overrides: &Override) -> Result<String, Error> {
 /// sections (used to tell whether a restart is needed to apply edited settings).
 pub fn same_override(a: &Override, b: &Override) -> bool {
     normalize(a) == normalize(b)
+}
+
+/// Validate an override's values (the host-port range check) — for the desktop
+/// `set_config` path, where the override arrives already-deserialized (serde) and so
+/// bypasses [`parse_override`]'s validation. Env/placement are checked structurally
+/// by serde; this adds the only value constraint parse enforces.
+pub fn validate_override(overrides: &Override) -> Result<(), Error> {
+    validate(overrides)
 }
 
 /// Reject host ports outside the valid range (the only value constraint; env and

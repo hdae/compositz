@@ -66,10 +66,13 @@ async-stream = "0.3"
 # Rust type → TypeScript reflection for the desktop IPC contract (Phase 3), wired
 # to `tauri-specta` in the desktop crate. Core needs only the `Type` derive + serde
 # attribute compat, so it stays an OPTIONAL dep behind core's `specta` feature (the
-# CLI never compiles it). Flexible on the rc line so it unifies with the exact
-# `tauri-specta` pin. `derive` = the `specta::Type` macro; `serde` = honor
-# `#[serde(rename_all/rename)]` in generated TS.
-specta = { version = "2.0.0-rc", default-features = false, features = ["derive", "serde"] }
+# CLI never compiles it). PINNED EXACT to rc.22 — the version `tauri-specta`
+# =2.0.0-rc.21 requires (rc.23+ overhauled the feature flags: `serde`/`derive`
+# were dropped, and rc.23+ also raise the MSRV past our toolchain). An exact pin
+# makes core + desktop unify on rc.22 on ANY toolchain (CI's newer rustc would
+# otherwise let a flexible req jump to rc.25 and conflict with tauri-specta).
+# `derive` = the `specta::Type` macro; `serde` = honor `#[serde(rename_all/rename)]`.
+specta = { version = "=2.0.0-rc.22", default-features = false, features = ["derive", "serde"] }
 
 [profile.release]
 strip = true

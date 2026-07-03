@@ -25,7 +25,7 @@ pub use engine::{BuildProgress, EngineVersion, VolumeSummary};
 pub use error::Error;
 pub use model::{ContainerSummary, format_port};
 pub use probe::{SnapshotPush, build_snapshot, enrich_with_probes, probe_host};
-pub use recipe::config::{Override, same_override};
+pub use recipe::config::{Override, same_override, validate_override};
 pub use recipe::github::{
     GithubIngestOpts, GithubSpec, github_source, github_tarball_url, ingest_github,
     parse_github_spec,

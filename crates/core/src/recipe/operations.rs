@@ -227,7 +227,10 @@ async fn resolve_ports(
 // --- deconfliction (engine-free) -------------------------------------------
 
 /// A host port reassigned away from a collision: `name`'s desired `from` → `to`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Serialized to the desktop trust prompt (which notifies the user of any
+/// reassignment), so it crosses the IPC boundary as a `specta::Type`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct PortBump {
     pub name: String,
     pub from: u32,

@@ -24,8 +24,21 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-compositz-core = { path = "../core" }
+compositz-core = { path = "../core", features = ["specta"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tokio.workspace = true
 futures-util.workspace = true
+serde.workspace = true
+# URL parse for the `open_service_url` localhost allowlist (a security check — a
+# hand-rolled parse would be the wrong place to cut corners). Already in the tree
+# via tauri, so it adds nothing to the closure.
+url = "2"
+# Rust type + command → TypeScript binding generation. tauri-specta rc.21 is the
+# newest rc pinned to specta rc.22 (rc.22+ of tauri-specta pull specta rc.24/rc.25,
+# which drop the `serde`/`derive` features core relies on and raise the MSRV past
+# our toolchain). Exact pins so the CI (newer rustc) resolves the SAME graph the
+# lockfile fixes here. specta itself comes from the workspace (shared with core).
+tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
+specta.workspace = true
+specta-typescript = "=0.0.9"
