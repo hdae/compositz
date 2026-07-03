@@ -490,6 +490,63 @@ fn create_spec_serializes_to_the_docker_api_wire_shape() {
     );
 }
 
+#[test]
+fn env_collision_keeps_the_user_vars_position_and_trailing_vars_after() {
+    // Closes a gap the presence-only collision test misses: a cache var that
+    // overrides a colliding user var must keep that var's ORIGINAL position, and a
+    // later user var must still follow it. This is the JS `Map.set` semantic the
+    // `OrderedEnv` reproduces — an order regression would silently reshuffle `Env`.
+    let m = parse_manifest(
+        r#"
+manifestVersion: 2
+id: x
+name: X
+version: "1"
+build: {}
+cache:
+  - type: huggingface
+env:
+  - name: HF_HOME
+    default: /wrong
+  - name: LATER
+    default: zzz
+"#,
+    )
+    .unwrap();
+    let spec = to_create_spec(&m, "x-1", &LaunchConfig::default(), None).unwrap();
+    assert_eq!(
+        spec.env,
+        Some(vec![
+            "HF_HOME=/compositz/hf".to_string(), // updated in place at position 0
+            "LATER=zzz".to_string(),
+            "COMPOSITZ_INSTANCE=x-1".to_string(),
+        ])
+    );
+}
+
+#[test]
+fn with_gpu_true_attaches_a_gpu_even_on_a_gpu_none_manifest() {
+    // Parity of `opts.withGpu ?? (m.gpu !== "none")`: an explicit override wins over
+    // the manifest default in BOTH directions (false omits — already tested; true
+    // attaches despite gpu:none).
+    let none =
+        parse_manifest("manifestVersion: 2\nid: x\nname: X\nversion: '1'\nbuild: {}\ngpu: none")
+            .unwrap();
+    let spec = to_create_spec(&none, "x-1", &LaunchConfig::default(), Some(true)).unwrap();
+    assert!(host_config(&spec).device_requests.is_some());
+}
+
+#[test]
+fn resolve_host_ports_can_use_65535_when_free_but_errors_when_taken() {
+    // Boundary: 65535 is a valid host port (no off-by-one excluding it), but once
+    // taken there is nowhere to bump to.
+    assert_eq!(
+        resolve_host_ports(&[("ui", 65535)], &HashSet::new()).unwrap(),
+        BTreeMap::from([("ui".to_string(), 65535)])
+    );
+    assert!(resolve_host_ports(&[("ui", 65535)], &HashSet::from([65535])).is_err());
+}
+
 // --- merge_launch (persisted override ⊕ in-memory overlay) ------------------
 
 #[test]
