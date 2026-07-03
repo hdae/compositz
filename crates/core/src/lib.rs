@@ -10,6 +10,7 @@
 //! bollard's platform-local default (Windows named pipe / unix socket).
 
 pub mod brand;
+pub mod build;
 mod endpoint;
 mod error;
 mod model;

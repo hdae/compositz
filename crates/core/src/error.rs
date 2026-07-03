@@ -23,4 +23,23 @@ pub enum Error {
     /// var — `USERPROFILE` on Windows, else `HOME` — was unset).
     #[error("cannot resolve home directory ({0} unset)")]
     HomeDirUnresolved(String),
+
+    /// A per-instance override (`config.yaml`) failed to parse or validate. The
+    /// message carries the `config.<path> …` prefixes (mirrors the Deno text).
+    #[error("{0}")]
+    Config(String),
+
+    /// A recipe bundle could not be loaded (missing manifest, or a declared
+    /// Dockerfile absent from the build context).
+    #[error("{0}")]
+    Recipe(String),
+
+    /// An instance-store operation was given an invalid argument (a malformed
+    /// instance id or directory), refused before touching the filesystem.
+    #[error("{0}")]
+    Instance(String),
+
+    /// An underlying filesystem operation failed.
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
 }

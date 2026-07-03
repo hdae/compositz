@@ -34,6 +34,9 @@ schemars = "1"
 # Charset validation for manifest fields (recipe id, names, image tags, …),
 # porting the Zod regexes 1:1. Compiled once via LazyLock at the parse boundary.
 regex = "1"
+# Atomic instance-store writes (temp file in the same dir → fsync → rename),
+# structurally resolving the Deno tree's non-atomic config.yaml write.
+tempfile = "3"
 
 [profile.release]
 strip = true
