@@ -85,14 +85,13 @@ impl EngineHandle {
         Ok(())
     }
 
-    /// Remove a container. `force` kills a running one first; volumes anonymously
-    /// attached to the container are removed alongside it (`v`) so a delete does
-    /// not silently leak per-container anonymous volumes.
+    /// Remove a container. `force` kills a running one first. Anonymous volumes are
+    /// NOT removed (`v` stays false, matching the Deno `client.remove(name,
+    /// {force})`): a recipe's `VOLUME`-declared anon volume must survive a
+    /// `down`/restart — only [`Self::remove_volume`], driven by the explicit delete
+    /// path, reclaims per-instance data.
     pub async fn remove_container(&self, name: &str, force: bool) -> Result<(), crate::Error> {
-        let options = RemoveContainerOptionsBuilder::new()
-            .force(force)
-            .v(true)
-            .build();
+        let options = RemoveContainerOptionsBuilder::new().force(force).build();
         self.docker().remove_container(name, Some(options)).await?;
         Ok(())
     }
