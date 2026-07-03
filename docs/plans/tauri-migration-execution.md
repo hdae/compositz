@@ -165,9 +165,10 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
       description で handle 非依存)。敵対的2視点レビュー(parity+correctness / safety+rename)
       = rename 完全・破壊系は全て compositz-* 命名で安全。doctor/ps/ls/hello/import/duplicate/
       export一覧/rm/★境界拒否を実機検証。全 test 緑 + Deno 160 無傷。
-      **要判断(F1, 未対応): core `duplicate_instance` は id を path join するが自己防御なし
-      (remove_instance_dir と非対称)。現状 CLI guard で安全だが Phase 3 desktop handler の
-      footgun 予防に remove_instance_dir 同様の自己 validate を入れるか要承認。**
+      **F1 ✅解決(e1c8747, ユーザー承認): core `duplicate_instance` に is_valid_instance_id 自己
+      検証を追加(remove_instance_dir/ADR-025 と対称化)。fault-injection テスト(store 外 victim を
+      `../victim` で複製→拒否+store無変更、ガード撤去で fail を実証)。破壊系 path-touching core sink
+      は remove_instance_dir と duplicate_instance の両方が自己防御に。**
       parity 差(受容): ps=Phase 0 table / clap arg エラー=exit 2 / hello の色分け・pull 進捗簡略。
 - [ ] Phase 3 — desktop backend（+ Windows 実機確認 #2）
 - [ ] Phase 4 — React UI
