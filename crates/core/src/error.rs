@@ -18,4 +18,9 @@ pub enum Error {
     /// the `manifest.<path> …` prefixes (mirrors the Deno `CompositzError` text).
     #[error("{0}")]
     Manifest(String),
+
+    /// The host home directory could not be resolved (the platform's home env
+    /// var — `USERPROFILE` on Windows, else `HOME` — was unset).
+    #[error("cannot resolve home directory ({0} unset)")]
+    HomeDirUnresolved(String),
 }

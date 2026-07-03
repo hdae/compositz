@@ -9,10 +9,12 @@
 //! The connection target follows `COMPOSITZ_DOCKER_HOST` when set, else
 //! bollard's platform-local default (Windows named pipe / unix socket).
 
+pub mod brand;
 mod endpoint;
 mod error;
 mod model;
 pub mod recipe;
+pub mod storage;
 
 pub use endpoint::{Endpoint, parse_docker_host};
 pub use error::Error;
@@ -35,10 +37,6 @@ use std::collections::HashMap;
 /// fallback is a later-phase decision. When unset, bollard's local default is
 /// used.
 const DOCKER_HOST_ENV: &str = "COMPOSITZ_DOCKER_HOST";
-
-/// The Docker label whose *presence* marks a container as Compositz-managed
-/// (`io.compositz.instance`; see `packages/core/src/brand.ts`).
-const MANAGED_LABEL: &str = "io.compositz.instance";
 
 /// A live handle to the Docker engine. Cheap to clone (bollard's `Docker` is an
 /// `Arc` internally), so a single handle can back many concurrent streams.
@@ -112,7 +110,8 @@ fn connect_endpoint(endpoint: Endpoint) -> Result<Docker, Error> {
 pub async fn list_instances(handle: &EngineHandle) -> Result<Vec<ContainerSummary>, Error> {
     let mut filters: HashMap<String, Vec<String>> = HashMap::new();
     // `label=<key>` matches on presence of the key regardless of value.
-    filters.insert("label".to_string(), vec![MANAGED_LABEL.to_string()]);
+    // `brand::label` is the single source of truth for the managed-object marker.
+    filters.insert("label".to_string(), vec![brand::label("instance")]);
 
     let options = ListContainersOptionsBuilder::new()
         .all(true)
