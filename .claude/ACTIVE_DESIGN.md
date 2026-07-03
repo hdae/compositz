@@ -49,6 +49,9 @@
 
 ## Resume point
 
-Phase 1 未着手。再開手順: memory index → execution 計画 → 対象モジュールの Deno 現物
-（`packages/core/src/recipe/manifest.ts` から）を読む。進捗は execution 計画末尾のチェックリストと
-memory `tauri-migration-decision` を更新すること。
+**Phase 1（core 移植）完了**（1a〜1h、175 tests + E2E round-trip を実エンジンで緑・teardown リーク0
+実機確認 + Deno 160 無傷）。移植知見: serde 構造 + 手書き validate / bollard 書込面は async_stream で
+`'static` 化 / HTTP は ureq+ring(ADR-027) / zip 無し(tar/tar.gz のみ) / 各節を敵対的レビューで検証。
+**NEXT: Phase 2 — CLI 移植（clap, 11 コマンド）。★CLI は instance_id を境界で検証してから
+down/up/remove_* を呼ぶこと（レビュー申し送り）。** 再開手順: memory index → execution 計画 Phase 2 →
+`packages/cli/` の現物を読む。進捗は execution 計画のチェックリストと memory を更新。

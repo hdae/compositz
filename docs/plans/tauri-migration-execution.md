@@ -149,16 +149,15 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
 ## 進捗（実装セッションが更新すること）
 
 - [x] Phase 0 — 足場 + walking skeleton（2026-07-03、Windows 実機検証済み）
-- [ ] Phase 1 — core 移植（1a〜1f ✅ / **1g operations + 1h engine書込面 ✅（実装+レビュー修正済み、
-      175緑）**。残: **★E2E round-trip(import→install→up→down→rm)を実エンジンで実行して Phase 1 完了
-      判定**（`COMPOSITZ_E2E=1` gate、実行前に申告）。1g/1h 実績: bollard 書込面を async_stream で
+- [x] **Phase 1 — core 移植 完了**（1a〜1h 全済み。175 tests(mode A/B) + E2E round-trip を実エンジンで
+      緑(8.13s, teardown リーク0 実機確認) + Deno 160 無傷）。1g/1h: bollard 書込面を async_stream で
       `'static` 化・operations は engine-free deconflict のみ unit test で他は E2E 検証・敵対的3視点
       レビュー(destructive-scope 安全 全4 holds)で4件修正(remove_image を unforced へ安全ガード復元 /
       pull_image tag 既定 latest / remove_volume 404許容 / bind_dir_failed 型)。zip無し。DoS は
       limitations 記録。bollard版注意=MountType/exposed_ports=Vec→object serde。
       **★Phase 2/3 必須(レビュー F5): CLI/desktop は instance_id を境界で検証してから down/up/
       remove_instance_* を呼ぶこと**（core 関数は parity で raw &str を受ける — Deno UI routes 同様に
-      呼ぶ側が検証。export_mount の cancel 時 helper leak は sweep が backstop の既知差）。）
+      呼ぶ側が検証。export_mount の cancel 時 helper leak は sweep が backstop の既知差）。
 - [ ] Phase 2 — CLI
 - [ ] Phase 3 — desktop backend（+ Windows 実機確認 #2）
 - [ ] Phase 4 — React UI
