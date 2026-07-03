@@ -3,6 +3,22 @@
 Open / being-worked problems. By-design constraints belong in [limitations.md](limitations.md);
 settled rationale belongs in [decisions.md](decisions.md).
 
+## GitHub spec: a repo named `..` (via `owner/…​.git`) emits `/../` into the codeload URL
+
+- **What:** `parseGithubSpec` accepts `repo == ".."`. The repo charset (`REPO_RE =
+  /^[A-Za-z0-9._-]{1,100}$/`) allows dots, and the `.git`-suffix strip turns `owner/...git` into
+  `repo = ".."` — so `githubTarballUrl` builds `https://codeload.github.com/owner/../tar.gz/HEAD`,
+  a URL carrying a real dot-segment. Present identically in the Deno original
+  (`packages/core/src/recipe/github.ts`) and the Rust port (`crates/core/src/recipe/github.rs`) —
+  found by the Phase-1d adversarial review.
+- **Scope:** low blast radius — the host is a fixed literal (`owner`/`repo` can't inject a `/` past
+  their charsets, so no host swap / SSRF), and any RFC 3986 / WHATWG client (`reqwest` via `url`,
+  Deno `fetch`) normalizes `/owner/../tar.gz/HEAD` → `/tar.gz/HEAD` before sending, which 404s. It
+  fetches a wrong path, never traverses the host filesystem. The provenance string would also record
+  a nonsense `owner/..`.
+- **Fix direction:** reject `repo == "." || repo == ".."` (and an all-dots repo) after the `.git`
+  strip, in both trees. Deferred as a parity item — a security hardening rather than a live exploit.
+
 ## UI: `installed` badge can go stale until reload
 
 - **What:** the SSE `snapshot` event ([`routes/api/events.ts`](../packages/ui/routes/api/events.ts))

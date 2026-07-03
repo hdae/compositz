@@ -61,7 +61,7 @@
 | 1b | `brand.ts`, `storage.ts`                                     | 61+80+64            | brand 定数 + label()。storage は directories crate（per-OS パス）+ dunce。thiserror 階層（Phase 3 の tagged enum に載る形を意識）                                                                                                                                              |
 | 1c | `recipe/instance.ts`, `recipe/config.ts`, `recipe/loader.ts` | 167+80+62 (+176+86) | instance store。**atomic write = tempfile `NamedTempFile::new_in`(同一 dir)+`sync_all`+`persist`**（known-issue の構造的解消）。**id 検証を store 関数自身が強制**（`rm .` store 破壊事故の再発防止 — ADR-025）                                                                |
 | 1d | `recipe/github.ts`                                           | 154+193             | reqwest 単一 Client + rustls + read_timeout。codeload tar.gz。`owner/repo[/subdir][@ref]` パース（ADR-021）                                                                                                                                                                    |
-| 1e | `recipe/ingest.ts`                                           | 325+383             | tar-rs + flate2 **MultiGzDecoder** + zip（CVE-2025-29787 修正版）。**zip-slip / path traversal 検査**。`spawn_blocking`。ディスクへストリーミング・サイズ上限なし（ADR-017）。tokio-tar/async-tar 禁止                                                                         |
+| 1e | `recipe/ingest.ts` + `github.ts` の `ingestGithub`           | 325+383 / 154の残   | tar-rs + flate2 **MultiGzDecoder** + zip（CVE-2025-29787 修正版）。**zip-slip / path traversal 検査**。`spawn_blocking`。ディスクへストリーミング・サイズ上限なし（ADR-017）。tokio-tar/async-tar 禁止。**★1d申し送り: `safeRelSubdir`（normalize + `\`→`/` + `..`/絶対パス拒否）を必ず移植** — パーサ側の subdir 検証は仕様上わざと緩く（`/`区切りしか見ず `a\..\b`・NUL・`con` を通す）、実防御はここ。抜けると Windows で `owner/repo/a\..\b` が traversal になる。**`ingest_github`＋reqwest 単一Client+rustls+read_timeout はここへ統合**（1d で純粋 spec 層のみ移植済み）                                     |
 | 1f | `recipe/run.ts`                                              | 275+314             | container spec 生成: persistedMounts / **cache env 注入は create 時**（ADR-024: `UV_PROJECT_ENVIRONMENT` `UV_PYTHON_INSTALL_DIR` 等）/ ports は **`deconflictHostPorts`**（定義ベース衝突解決 ADR-023）/ labels（instance/recipe）/ `.launched.yaml`（再起動要否判定）         |
 | 1g | `recipe/operations.ts`                                       | 420+89              | up/down/install/delete/export/duplicate。**pitfalls チェックリスト**: 削除 = volume デフォルト削除 + export 安全弁（未起動 helper + archive API、teardown 順序厳守）/ duplicate = config 継承 minus hostPorts → deconflict / install = tar context から build + 進捗ストリーム |
 | 1h | engine 追補                                                  | —                   | bollard で不足が出た API を core に追加（volume create/rm・archive get/put・build 等は 1:1 確認済みだが実装時に照合）                                                                                                                                                          |
@@ -149,7 +149,9 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
 ## 進捗（実装セッションが更新すること）
 
 - [x] Phase 0 — 足場 + walking skeleton（2026-07-03、Windows 実機検証済み）
-- [ ] Phase 1 — core 移植
+- [ ] Phase 1 — core 移植（1a manifest / 1b brand+storage / 1c instance store / **1d github 純粋
+      spec 層** ✅ 済み。**残: 1e ingest+ingestGithub → 1f run → 1g operations → 1h engine追補**。
+      1d レビュー申し送り: 1e で `safeRelSubdir` 必須（上表）／ repo=".." は known-issues 済み）
 - [ ] Phase 2 — CLI
 - [ ] Phase 3 — desktop backend（+ Windows 実機確認 #2）
 - [ ] Phase 4 — React UI
