@@ -67,8 +67,12 @@ export default defineConfig({
     // Match the webview each target platform ships; Windows/WebView2 tracks
     // Chrome, macOS tracks Safari. Falls back to a modern baseline for `vp dev`.
     target: process.env.TAURI_ENV_PLATFORM === "windows" ? "chrome105" : "safari13",
-    // Debug builds keep readable output; release strips it.
-    minify: process.env.TAURI_ENV_DEBUG ? false : "esbuild",
+    // Debug builds keep readable output; release minifies. MUST be "oxc": the
+    // vp/rolldown toolchain ships no esbuild — "esbuild" only appeared to work
+    // on vite-plus 0.1.24 because its esbuild-transpile plugin is gated off by
+    // the rolldown default `esbuild: false`; newer cores hard-error and demand
+    // a separately-installed esbuild.
+    minify: process.env.TAURI_ENV_DEBUG ? false : "oxc",
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },
 
