@@ -48,6 +48,13 @@ flate2 = "1"
 getrandom = "0.2"
 # ISO-8601 timestamps for instance provenance (meta.json `createdAt` default).
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# GitHub codeload download (Phase 1e-2): ONE blocking Agent, rustls over RING
+# (reuses bollard's provider — no second crypto backend, no aws-lc-rs C build, no
+# openssl), redirect-follow, per-read timeout. Chosen over reqwest because reqwest
+# 0.13's rustls path pulls aws-lc-rs; ureq keeps the whole tree on ring. `tls` =
+# rustls+ring+webpki-roots; gzip is intentionally NOT enabled — the tar.gz payload
+# is gunzipped by ingest, not by HTTP content-encoding.
+ureq = { version = "2", default-features = false, features = ["tls"] }
 
 [profile.release]
 strip = true

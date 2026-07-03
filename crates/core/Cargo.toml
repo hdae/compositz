@@ -23,6 +23,7 @@ tar.workspace = true
 flate2.workspace = true
 getrandom.workspace = true
 chrono.workspace = true
+ureq.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

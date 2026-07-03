@@ -22,8 +22,11 @@
 //! ends. An optional `github:` scheme prefix is accepted (it mirrors `meta.source`).
 
 use std::sync::LazyLock;
+use std::time::Duration;
 
 use crate::Error;
+use crate::recipe::ingest::{BundleSource, IngestOpts, ingest_bundle};
+use crate::recipe::instance::Instance;
 use regex::Regex;
 
 /// Optional scheme prefix; also the prefix [`github_source`] emits for provenance.
@@ -134,6 +137,77 @@ pub fn github_tarball_url(spec: &GithubSpec) -> String {
 /// [`parse_github_spec`].
 pub fn github_source(spec: &GithubSpec) -> String {
     format!("{GITHUB_SCHEME}{}", format_spec(spec))
+}
+
+/// Per-read timeout for the codeload download — bounds a stalled connection
+/// without capping a large-but-progressing transfer (a total timeout would).
+const DOWNLOAD_READ_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Fetch a recipe from GitHub and create an instance. Downloads the codeload
+/// tarball with one blocking rustls client and streams the response body straight
+/// into [`ingest_bundle`] (never buffered whole in RAM); `spec.subdir` narrows
+/// ingestion to a path inside the repo. Public repos only.
+///
+/// This is BLOCKING (the whole extract pipeline is sync); async callers wrap it in
+/// `spawn_blocking`. It is the download half deferred from Phase 1d, landing here
+/// with `ingest_bundle` so the fetch → gunzip → untar → locate pipeline is one unit.
+pub fn ingest_github(
+    input: &str,
+    instances_dir: &str,
+    opts: GithubIngestOpts,
+) -> Result<Instance, Error> {
+    let spec = parse_github_spec(input)?;
+    let url = github_tarball_url(&spec);
+    let described = format_spec(&spec);
+
+    // One Agent = one pooled client (rustls/ring, redirect-follow by default).
+    let agent = ureq::AgentBuilder::new()
+        .user_agent(concat!("compositz/", env!("CARGO_PKG_VERSION")))
+        .timeout_read(DOWNLOAD_READ_TIMEOUT)
+        .build();
+
+    let response = match agent.get(&url).call() {
+        Ok(response) => response,
+        // ureq treats a non-2xx as an error. A 404 is by far the most common
+        // failure (typo'd repo / ref, or a private repo we can't see) — name it.
+        Err(ureq::Error::Status(code, _)) => {
+            let hint = if code == 404 {
+                " (repo or ref not found; private repos are not supported)"
+            } else {
+                ""
+            };
+            return Err(Error::Github(format!(
+                "GitHub download failed for {described}: {code}{hint}"
+            )));
+        }
+        Err(ureq::Error::Transport(transport)) => {
+            return Err(Error::Github(format!(
+                "failed to reach GitHub for {described}: {transport}"
+            )));
+        }
+    };
+
+    // `into_reader` streams the body (per-read timeout applies), so an arbitrarily
+    // large tarball is never buffered whole — it flows straight into extraction.
+    let reader: Box<dyn std::io::Read + Send> = Box::new(response.into_reader());
+    ingest_bundle(
+        BundleSource::Archive {
+            reader,
+            subdir: spec.subdir.clone(),
+        },
+        instances_dir,
+        IngestOpts {
+            source: Some(github_source(&spec)),
+            created_at: opts.created_at,
+        },
+    )
+}
+
+/// Options for a GitHub ingest (mirrors the Deno `opts`; `source` is fixed to the
+/// spec's provenance string, so only `created_at` is caller-overridable).
+#[derive(Debug, Default, Clone)]
+pub struct GithubIngestOpts {
+    pub created_at: Option<String>,
 }
 
 /// Human-readable `owner/repo[/subdir][@ref]` (no scheme) for messages + provenance.

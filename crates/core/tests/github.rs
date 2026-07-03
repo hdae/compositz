@@ -4,9 +4,11 @@
 //! call `ingestGithub`, which streams into `ingestBundle` (Phase 1e); they arrive
 //! there with the download glue, since neither passes without the untar pipeline.
 
+use compositz_core::recipe::github::{GithubIngestOpts, ingest_github};
 use compositz_core::recipe::github::{
     GithubSpec, github_source, github_tarball_url, parse_github_spec,
 };
+use tempfile::TempDir;
 
 /// Terser construction for the expected specs.
 fn spec(owner: &str, repo: &str, subdir: Option<&str>, git_ref: Option<&str>) -> GithubSpec {
@@ -203,4 +205,49 @@ fn url_percent_encodes_reserved_ref_bytes_and_keeps_unreserved() {
         github_tarball_url(&parsed),
         "https://codeload.github.com/owner/repo/tar.gz/a%2Bb~c"
     );
+}
+
+// --- integration: real codeload (opt-in) ------------------------------------
+//
+// Proves the fetch → gunzip → untar → locate pipeline reaches GitHub end-to-end.
+// `#[ignore]` keeps them out of a plain `cargo test`; the env guard means even
+// `cargo test -- --ignored` is a no-op unless the network run is opted into:
+//   COMPOSITZ_NET_TESTS=1 cargo test -p compositz-core --test github -- --ignored
+
+fn net_enabled() -> bool {
+    std::env::var("COMPOSITZ_NET_TESTS").as_deref() == Ok("1")
+}
+
+#[test]
+#[ignore = "network; run with COMPOSITZ_NET_TESTS=1 and --ignored"]
+fn ingest_github_downloads_a_real_repo_and_rejects_it_for_no_manifest() {
+    if !net_enabled() {
+        return;
+    }
+    // octocat/Hello-World has no compositz.yaml, so a successful download must fail
+    // at bundle location — confirming the network glue without needing a recipe repo.
+    let store = TempDir::new().unwrap();
+    let err = ingest_github(
+        "octocat/Hello-World",
+        store.path().to_str().unwrap(),
+        GithubIngestOpts::default(),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("no compositz.yaml"), "got: {err}");
+}
+
+#[test]
+#[ignore = "network; run with COMPOSITZ_NET_TESTS=1 and --ignored"]
+fn ingest_github_surfaces_a_clear_404_for_a_missing_repo() {
+    if !net_enabled() {
+        return;
+    }
+    let store = TempDir::new().unwrap();
+    let err = ingest_github(
+        "octocat/no-such-repo-xyz-123",
+        store.path().to_str().unwrap(),
+        GithubIngestOpts::default(),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("404"), "got: {err}");
 }
