@@ -222,6 +222,47 @@ fn duplicate_copies_only_app_and_mints_a_new_id() {
 }
 
 #[test]
+fn duplicate_rejects_a_path_shaped_source_id_before_touching_the_filesystem() {
+    // Fault injection: a real, LOADABLE instance sits one level ABOVE the store. Without
+    // the self-guard, `duplicate_instance(store, "../victim")` would resolve to it and
+    // copy it INTO the store (cross-instance disclosure). The guard must reject the id
+    // first — like `remove_instance_dir` (ADR-025) — so the traversal target is never
+    // read and nothing is created. This is non-tautological precisely because the
+    // target is a valid instance that WOULD duplicate if the join were reached.
+    let root = store();
+    let store_dir = root.path().join("store");
+    fs::create_dir(&store_dir).unwrap();
+    let victim_app = root.path().join("victim/app");
+    fs::create_dir_all(&victim_app).unwrap();
+    fs::write(victim_app.join("compositz.yaml"), MANIFEST).unwrap();
+    fs::write(victim_app.join("Dockerfile"), DOCKERFILE).unwrap();
+
+    let store_str = store_dir.to_str().unwrap();
+    for bad in [
+        "../victim",
+        "..",
+        ".",
+        "a/b",
+        "a\\b",
+        "",
+        "UPPER",
+        "has space",
+    ] {
+        let err = duplicate_instance(store_str, bad).unwrap_err().to_string();
+        assert!(
+            err.contains("invalid instance id"),
+            "id {bad:?} must be rejected by the id guard, got: {err}"
+        );
+    }
+    // Prove the guard short-circuited before any staging/copy: the store is untouched.
+    assert_eq!(
+        fs::read_dir(&store_dir).unwrap().count(),
+        0,
+        "no traversal attempt may create anything in the store"
+    );
+}
+
+#[test]
 fn duplicate_does_not_carry_over_data_launch_state_or_ports() {
     let store = store();
     let a = ingest_bundle(archive(valid_tar()), s(&store), IngestOpts::default()).unwrap();

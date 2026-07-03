@@ -29,8 +29,8 @@ use crate::Error;
 use crate::brand;
 use crate::recipe::config::Override;
 use crate::recipe::instance::{
-    APP_SUBDIR, Instance, InstanceMeta, META_FILE, load_instance, load_instance_config,
-    save_instance_config, write_meta,
+    APP_SUBDIR, Instance, InstanceMeta, META_FILE, is_valid_instance_id, load_instance,
+    load_instance_config, save_instance_config, write_meta,
 };
 use crate::recipe::loader::load_recipe;
 use crate::recipe::norm_dir;
@@ -152,6 +152,16 @@ pub fn ingest_bundle(
 /// DROPPED from the inherited override: a copy must claim its own ports — callers
 /// deconflict against the definitions right after (`deconflict_host_ports`).
 pub fn duplicate_instance(instances_dir: &str, src_instance_id: &str) -> Result<Instance, Error> {
+    // Validate the source id HERE, not only at callers (mirrors `remove_instance_dir`,
+    // ADR-025): `src_instance_id` is joined into a filesystem path below, so a
+    // path-shaped id (`.`, `..`, `a/b`, `a\b`) must never reach the join — that would
+    // read a directory OUTSIDE the store (cross-instance disclosure). The one core
+    // path-touching duplicate/copy sink is now self-defending, like the delete sink.
+    if !is_valid_instance_id(src_instance_id) {
+        return Err(Error::Instance(format!(
+            "invalid instance id: \"{src_instance_id}\""
+        )));
+    }
     let instances_dir = norm_dir(instances_dir);
     let src_dir = Path::new(&instances_dir).join(src_instance_id);
     let src_app = src_dir.join(APP_SUBDIR);
