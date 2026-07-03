@@ -7,6 +7,12 @@
   ],
   "$comment_nodeModulesDir": "Required by the packages/ui Vite member (Fresh 2 needs a real node_modules). nodeModulesDir is a workspace-root-only setting, so it applies to every member; `auto` lets Deno auto-materialize the shared root node_modules (incl. transitive type deps like @types/node) for the pure-Deno packages without hand-listing them.",
   "nodeModulesDir": "auto",
+  "$comment_exclude": "crates/ + frontend/ belong to the Rust/pnpm toolchains (Tauri migration) — Deno fmt/lint/test MUST NOT touch them.",
+  "exclude": [
+    "crates/",
+    "frontend/",
+    "target/"
+  ],
   "imports": {
     "@std/fmt/colors": "jsr:@std/fmt@^1.0.3/colors",
     "@std/assert": "jsr:@std/assert@^1.0.8",

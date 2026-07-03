@@ -13,10 +13,17 @@ node_modules/
 *.dll
 denort*
 
+# Rust (Cargo workspace: crates/*)
+/target/
+
+# Frontend (Tauri SPA — pnpm project independent of the Deno tree)
+/frontend/dist/
+
 # Editor / OS
 .idea/
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
 .DS_Store
 Thumbs.db
 
