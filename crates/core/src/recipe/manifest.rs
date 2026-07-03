@@ -85,6 +85,16 @@ pub enum Protocol {
     Udp,
 }
 
+impl Protocol {
+    /// The lowercase wire form used in Docker port keys (`<container>/<proto>`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Protocol::Tcp => "tcp",
+            Protocol::Udp => "udp",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Placement {

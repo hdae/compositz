@@ -8,6 +8,7 @@ pub mod ingest;
 pub mod instance;
 pub mod loader;
 pub mod manifest;
+pub mod run;
 
 /// Normalize a directory path the way the Deno tree did: forward-slash separators
 /// with no trailing slash. Instance ids are the last path segment, and the build

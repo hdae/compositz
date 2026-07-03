@@ -31,6 +31,10 @@ pub use recipe::ingest::{
 pub use recipe::manifest::{
     MANIFEST_VERSION, Manifest, is_valid_recipe_id, manifest_json_schema, parse_manifest,
 };
+pub use recipe::run::{
+    LaunchConfig, WebEndpoint, effective_host_port, instance_container_name, instance_image_tag,
+    merge_launch, persisted_mounts, resolve_host_ports, to_create_spec, web_endpoints, web_url,
+};
 
 use bollard::Docker;
 use bollard::query_parameters::{
