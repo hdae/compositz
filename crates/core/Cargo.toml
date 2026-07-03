@@ -24,6 +24,8 @@ flate2.workspace = true
 getrandom.workspace = true
 chrono.workspace = true
 ureq.workspace = true
+bytes.workspace = true
+async-stream.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

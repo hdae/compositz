@@ -12,12 +12,14 @@
 pub mod brand;
 pub mod build;
 mod endpoint;
+mod engine;
 mod error;
 mod model;
 pub mod recipe;
 pub mod storage;
 
 pub use endpoint::{Endpoint, parse_docker_host};
+pub use engine::{BuildProgress, VolumeSummary};
 pub use error::Error;
 pub use model::{ContainerSummary, format_port};
 pub use recipe::github::{
@@ -28,8 +30,14 @@ pub use recipe::ingest::{
     BundleSource, IngestOpts, duplicate_instance, extract_archive_to, ingest_bundle,
     random_instance_id,
 };
+pub use recipe::instance::Instance;
 pub use recipe::manifest::{
     MANIFEST_VERSION, Manifest, is_valid_recipe_id, manifest_json_schema, parse_manifest,
+};
+pub use recipe::operations::{
+    PortBump, RemoveDataOpts, RemoveDataResult, UpResult, VolumeFailure, deconflict_host_ports,
+    defined_host_ports, down, export_mount, install_instance, remove_instance_data,
+    remove_instance_image, up,
 };
 pub use recipe::run::{
     LaunchConfig, WebEndpoint, effective_host_port, instance_container_name, instance_image_tag,

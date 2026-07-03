@@ -55,6 +55,14 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 # rustls+ring+webpki-roots; gzip is intentionally NOT enabled — the tar.gz payload
 # is gunzipped by ingest, not by HTTP content-encoding.
 ureq = { version = "2", default-features = false, features = ["tls"] }
+# The container tar-download surface yields `bytes::Bytes` chunks (bollard uses
+# `bytes` internally but does not re-export it, so name it directly).
+bytes = "1"
+# Async generators for the engine build/download streams: bollard's `build_image`
+# / `download_from_container` return `impl Stream + '_` (borrowing `&self`), so a
+# `'static` stream must OWN a cloned `Docker` in its body — an `async_stream`
+# generator does exactly that with zero runtime coupling (vs a spawn+channel).
+async-stream = "0.3"
 
 [profile.release]
 strip = true
