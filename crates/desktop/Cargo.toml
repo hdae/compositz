@@ -3,6 +3,7 @@ name = "compositz-desktop"
 edition.workspace = true
 version.workspace = true
 repository.workspace = true
+license.workspace = true
 description = "Compositz desktop app (Tauri 2)"
 
 [lib]

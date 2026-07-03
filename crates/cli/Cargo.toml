@@ -3,6 +3,7 @@ name = "compositz-cli"
 edition.workspace = true
 version.workspace = true
 repository.workspace = true
+license.workspace = true
 
 [[bin]]
 name = "compositz"

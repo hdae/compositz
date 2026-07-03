@@ -11,6 +11,7 @@ resolver = "3"
 edition = "2024"
 version = "0.1.0"
 repository = "https://github.com/hdae/compositz"
+license = "MIT"
 
 [workspace.dependencies]
 # Docker client. 0.21 is the latest published 0.x; its default features

@@ -3,6 +3,7 @@ name = "compositz-core"
 edition.workspace = true
 version.workspace = true
 repository.workspace = true
+license.workspace = true
 
 [lib]
 name = "compositz_core"
