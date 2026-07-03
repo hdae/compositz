@@ -3,6 +3,7 @@
 //! lifecycle operations ported from `packages/core/src/recipe/`.
 
 pub mod config;
+pub mod github;
 pub mod instance;
 pub mod loader;
 pub mod manifest;

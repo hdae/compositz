@@ -39,6 +39,11 @@ pub enum Error {
     #[error("{0}")]
     Instance(String),
 
+    /// A GitHub source spec (`owner/repo[/subdir][@ref]`) was malformed. The
+    /// message mirrors the Deno `CompositzError` text (`invalid GitHub spec …`).
+    #[error("{0}")]
+    Github(String),
+
     /// An underlying filesystem operation failed.
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
