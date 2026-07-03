@@ -158,7 +158,17 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
       **★Phase 2/3 必須(レビュー F5): CLI/desktop は instance_id を境界で検証してから down/up/
       remove_instance_* を呼ぶこと**（core 関数は parity で raw &str を受ける — Deno UI routes 同様に
       呼ぶ側が検証。export_mount の cancel 時 helper leak は sweep が backstop の既知差）。
-- [ ] Phase 2 — CLI
+- [x] **Phase 2 — CLI 移植 完了**（fe4f7f4。11 コマンド clap 化。core 追補: engine
+      ping/version/wait_container/create_container_simple + store系 re-export + engine
+      list_instances→list_managed_containers 改名。★F5 境界検証を全破壊パスに適用。
+      doctor は unix connect の eager 失敗で診断出力を失う不具合を修正(resolved_endpoint_
+      description で handle 非依存)。敵対的2視点レビュー(parity+correctness / safety+rename)
+      = rename 完全・破壊系は全て compositz-* 命名で安全。doctor/ps/ls/hello/import/duplicate/
+      export一覧/rm/★境界拒否を実機検証。全 test 緑 + Deno 160 無傷。
+      **要判断(F1, 未対応): core `duplicate_instance` は id を path join するが自己防御なし
+      (remove_instance_dir と非対称)。現状 CLI guard で安全だが Phase 3 desktop handler の
+      footgun 予防に remove_instance_dir 同様の自己 validate を入れるか要承認。**
+      parity 差(受容): ps=Phase 0 table / clap arg エラー=exit 2 / hello の色分け・pull 進捗簡略。
 - [ ] Phase 3 — desktop backend（+ Windows 実機確認 #2）
 - [ ] Phase 4 — React UI
 - [ ] Phase 5 — parity + docs + 退役（+ Windows 実機確認 #3）

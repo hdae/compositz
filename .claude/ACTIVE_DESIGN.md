@@ -5,7 +5,7 @@
 
 ## Current focus
 
-**Tauri 全面移行 — Phase 1（core 移植）から実装中。** 計画:
+**Tauri 全面移行 — Phase 1（core）+ Phase 2（CLI）完了。次は Phase 3（desktop backend）。** 計画:
 [docs/plans/tauri-migration.md](../docs/plans/tauri-migration.md)（承認済み親計画）+
 [docs/plans/tauri-migration-execution.md](../docs/plans/tauri-migration-execution.md)
 （**実行詳細・例外時対応 — 実装セッションはこちらに従う**）。
@@ -49,9 +49,14 @@
 
 ## Resume point
 
-**Phase 1（core 移植）完了**（1a〜1h、175 tests + E2E round-trip を実エンジンで緑・teardown リーク0
-実機確認 + Deno 160 無傷）。移植知見: serde 構造 + 手書き validate / bollard 書込面は async_stream で
-`'static` 化 / HTTP は ureq+ring(ADR-027) / zip 無し(tar/tar.gz のみ) / 各節を敵対的レビューで検証。
-**NEXT: Phase 2 — CLI 移植（clap, 11 コマンド）。★CLI は instance_id を境界で検証してから
-down/up/remove_* を呼ぶこと（レビュー申し送り）。** 再開手順: memory index → execution 計画 Phase 2 →
-`packages/cli/` の現物を読む。進捗は execution 計画のチェックリストと memory を更新。
+**Phase 1（core）+ Phase 2（CLI）完了**。Phase 2(fe4f7f4): 11 コマンド clap 化。core 追補
+= engine ping/version/wait_container/create_container_simple + store系 re-export + engine
+`list_instances`→`list_managed_containers` 改名(store 版に名前を明け渡す)。★F5 境界検証を全破壊
+パスに適用(down/duplicate は inline、他は resolve_instance)。doctor は unix connect の eager 失敗
+で診断出力を失う不具合を修正(`resolved_endpoint_description` で handle 非依存)。実機検証: doctor/ps/
+ls/hello/import/duplicate/export一覧/rm/境界拒否。敵対的2視点レビュー済み。
+**要判断(F1): core `duplicate_instance` を remove_instance_dir 同様に自己 validate させるか(現状 CLI
+guard で安全・Phase 3 desktop の footgun 予防)。**
+**NEXT: Phase 3 — desktop backend（commands + Channels、+ Windows 実機確認 #2）。** 現 API route
+= `packages/ui/routes/api/` の現物が仕様(execution 計画の対応表)。tauri-specta 導入・stream lifecycle
+解消・single-instance plugin 最初に登録。再開手順: memory index → execution 計画 Phase 3 → route 現物。
