@@ -33,9 +33,13 @@ ureq.workspace = true
 bytes.workspace = true
 async-stream.workspace = true
 specta = { workspace = true, optional = true }
+# `spawn_blocking` for the readiness probe (`probe.rs`): the blocking ureq HTTP
+# probe runs off the async runtime while `build_snapshot` orchestrates it. `rt` is
+# the only runtime piece core needs; multi-thread + macros come from the shared
+# workspace features (harmless — the CLI/desktop pull them anyway).
+tokio.workspace = true
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 futures-util.workspace = true
 tempfile.workspace = true
 # The ingest tests craft tar / tar.gz fixtures (incl. malicious ustar entries).

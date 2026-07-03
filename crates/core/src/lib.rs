@@ -15,6 +15,7 @@ mod endpoint;
 mod engine;
 mod error;
 mod model;
+pub mod probe;
 pub mod recipe;
 pub mod storage;
 pub mod view;
@@ -23,6 +24,7 @@ pub use endpoint::{Endpoint, parse_docker_host};
 pub use engine::{BuildProgress, EngineVersion, VolumeSummary};
 pub use error::Error;
 pub use model::{ContainerSummary, format_port};
+pub use probe::{SnapshotPush, build_snapshot, enrich_with_probes, probe_host};
 pub use recipe::config::{Override, same_override};
 pub use recipe::github::{
     GithubIngestOpts, GithubSpec, github_source, github_tarball_url, ingest_github,
@@ -67,7 +69,7 @@ use std::collections::HashMap;
 /// same env slot during the migration. Whether to also honor `DOCKER_HOST` as a
 /// fallback is a later-phase decision. When unset, bollard's local default is
 /// used.
-const DOCKER_HOST_ENV: &str = "COMPOSITZ_DOCKER_HOST";
+pub(crate) const DOCKER_HOST_ENV: &str = "COMPOSITZ_DOCKER_HOST";
 
 /// A live handle to the Docker engine. Cheap to clone (bollard's `Docker` is an
 /// `Arc` internally), so a single handle can back many concurrent streams.

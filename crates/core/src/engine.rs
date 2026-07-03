@@ -128,6 +128,23 @@ impl EngineHandle {
             .collect())
     }
 
+    /// Managed containers (running + stopped) as RAW bollard summaries — the
+    /// dashboard snapshot ([`crate::probe::build_snapshot`]) needs the container
+    /// labels and the structured port mappings that the display-oriented
+    /// [`crate::ContainerSummary`] flattens away. Filtered by the managed
+    /// (`io.compositz.instance`) label, so it never reads unmanaged containers.
+    pub async fn list_managed_raw(
+        &self,
+    ) -> Result<Vec<bollard::models::ContainerSummary>, crate::Error> {
+        let mut filters: HashMap<String, Vec<String>> = HashMap::new();
+        filters.insert("label".to_string(), vec![crate::brand::label("instance")]);
+        let options = ListContainersOptionsBuilder::new()
+            .all(true)
+            .filters(&filters)
+            .build();
+        Ok(self.docker().list_containers(Some(options)).await?)
+    }
+
     /// Every host port currently published by a RUNNING container, as a set — the
     /// launch-time collision basis for `resolve_host_ports`. Reads the raw port
     /// mappings, which the display-oriented [`crate::ContainerSummary`] flattens
