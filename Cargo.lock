@@ -648,6 +648,7 @@ dependencies = [
  "anyhow",
  "clap",
  "compositz-core",
+ "futures-util",
  "tokio",
 ]
 

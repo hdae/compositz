@@ -1,14 +1,25 @@
-//! `compositz` CLI — Phase 0 walking skeleton.
+//! `compositz` CLI — the Linux-first control surface (and the desktop app's
+//! debugging tool). Eleven subcommands over the ported core; one binary.
 //!
-//! One subcommand, `ps`, listing Compositz-managed containers as an aligned
-//! table. Errors go to stderr and exit non-zero.
+//! Each subcommand handler returns the process exit code (`Result<i32>`): `Ok(0)`
+//! on success, `Ok(1)` for a handled business failure that already printed its own
+//! message, and `Err` for an unexpected error `main` renders as `error: …`. clap
+//! handles `--help`/`--version` and argument-shape errors (exiting 2, its default —
+//! the Phase 0 convention carried forward).
+
+mod cli;
+mod commands;
+mod style;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use compositz_core::{ContainerSummary, connect, list_instances};
 
 #[derive(Parser)]
-#[command(name = "compositz", version, about = "Compositz container manager")]
+#[command(
+    name = "compositz",
+    version,
+    about = "run local-AI apps as isolated Docker containers"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -16,133 +27,167 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// List Compositz-managed containers (running and stopped).
+    /// Check that the Docker engine is reachable.
+    Doctor,
+    /// Import a recipe (tar/tar.gz/dir/github:owner/repo) → create an instance.
+    Import {
+        /// A tar/tar.gz archive, a directory, or `github:owner/repo[/subdir][@ref]`.
+        source: String,
+    },
+    /// List instances in the store.
+    Ls,
+    /// Derive a fresh instance from an existing one.
+    Duplicate { instance_id: String },
+    /// Build an instance's image.
+    Install { instance_id: String },
+    /// Build (if needed) and start an instance.
+    Up { instance_id: String },
+    /// Stop and remove an instance's container.
+    Down { instance_id: String },
+    /// Remove an instance incl. data volumes.
+    Rm {
+        /// Keep the data volumes (the old safe behavior).
+        #[arg(long, conflicts_with = "purge")]
+        keep_data: bool,
+        /// Also remove the host-browsable data-root dir.
+        #[arg(long)]
+        purge: bool,
+        /// One or more instance ids.
+        #[arg(required = true)]
+        instance_ids: Vec<String>,
+    },
+    /// Export a mount's data as a tar file (list mounts if omitted).
+    Export {
+        instance_id: String,
+        mount: Option<String>,
+        out_file: Option<String>,
+    },
+    /// List Compositz-managed containers.
     Ps,
+    /// Run a full container round-trip against the engine.
+    Hello,
 }
 
 #[tokio::main]
 async fn main() {
-    if let Err(err) = run().await {
-        // `{err:#}` prints the whole anyhow context chain.
-        eprintln!("error: {err:#}");
-        std::process::exit(1);
-    }
+    let code = match run().await {
+        Ok(code) => code,
+        Err(err) => {
+            // `{err:#}` prints the whole anyhow context chain.
+            eprintln!("{}", style::red(&format!("error: {err:#}")));
+            1
+        }
+    };
+    std::process::exit(code);
 }
 
-async fn run() -> Result<()> {
+async fn run() -> Result<i32> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Ps => ps().await,
+        Command::Doctor => commands::doctor::run().await,
+        Command::Import { source } => commands::import::run(source).await,
+        Command::Ls => commands::ls::run().await,
+        Command::Duplicate { instance_id } => commands::duplicate::run(instance_id).await,
+        Command::Install { instance_id } => commands::install::run(instance_id).await,
+        Command::Up { instance_id } => commands::up::run(instance_id).await,
+        Command::Down { instance_id } => commands::down::run(instance_id).await,
+        Command::Rm {
+            keep_data,
+            purge,
+            instance_ids,
+        } => commands::rm::run(keep_data, purge, instance_ids).await,
+        Command::Export {
+            instance_id,
+            mount,
+            out_file,
+        } => commands::export::run(instance_id, mount, out_file).await,
+        Command::Ps => commands::ps::run().await,
+        Command::Hello => commands::hello::run().await,
     }
-}
-
-async fn ps() -> Result<()> {
-    let handle = connect()?;
-    let instances = list_instances(&handle).await?;
-    print!("{}", render_table(&instances));
-    Ok(())
-}
-
-/// Render the summaries as a left-aligned NAME/STATE/IMAGE/PORTS table. Column
-/// widths flex to the widest cell (header included). Kept pure for testability.
-fn render_table(instances: &[ContainerSummary]) -> String {
-    const HEADERS: [&str; 4] = ["NAME", "STATE", "IMAGE", "PORTS"];
-
-    let rows: Vec<[String; 4]> = instances
-        .iter()
-        .map(|c| {
-            [
-                c.name.clone(),
-                c.state.clone(),
-                c.image.clone(),
-                c.ports.join(", "),
-            ]
-        })
-        .collect();
-
-    let mut widths = HEADERS.map(str::len);
-    for row in &rows {
-        for (i, cell) in row.iter().enumerate() {
-            widths[i] = widths[i].max(cell.len());
-        }
-    }
-
-    let mut out = String::new();
-    push_row(&mut out, &HEADERS.map(String::from), &widths);
-    for row in &rows {
-        push_row(&mut out, row, &widths);
-    }
-    out
-}
-
-/// Append one padded row (columns joined by two spaces, no trailing padding on
-/// the last column, one trailing newline).
-fn push_row(out: &mut String, cells: &[String; 4], widths: &[usize; 4]) {
-    for (i, cell) in cells.iter().enumerate() {
-        if i > 0 {
-            out.push_str("  ");
-        }
-        if i == cells.len() - 1 {
-            out.push_str(cell);
-        } else {
-            out.push_str(cell);
-            for _ in cell.len()..widths[i] {
-                out.push(' ');
-            }
-        }
-    }
-    out.push('\n');
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::CommandFactory;
 
-    fn summary(name: &str, state: &str, image: &str, ports: &[&str]) -> ContainerSummary {
-        ContainerSummary {
-            id: format!("id-{name}"),
-            name: name.to_string(),
-            state: state.to_string(),
-            image: image.to_string(),
-            ports: ports.iter().map(|p| p.to_string()).collect(),
+    /// clap's own structural invariants (unique ids, valid arg relations). Cheap
+    /// insurance that the derive stays well-formed as commands are added.
+    #[test]
+    fn cli_definition_is_well_formed() {
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn rm_rejects_keep_data_and_purge_together() {
+        let result = Cli::try_parse_from(["compositz", "rm", "--keep-data", "--purge", "x"]);
+        assert!(
+            result.is_err(),
+            "--keep-data and --purge must be mutually exclusive"
+        );
+    }
+
+    #[test]
+    fn rm_requires_at_least_one_id() {
+        assert!(Cli::try_parse_from(["compositz", "rm"]).is_err());
+        assert!(Cli::try_parse_from(["compositz", "rm", "--purge"]).is_err());
+    }
+
+    #[test]
+    fn rm_collects_multiple_ids_with_flags() {
+        let cli = Cli::try_parse_from(["compositz", "rm", "--purge", "a", "b", "c"])
+            .expect("valid rm invocation");
+        match cli.command {
+            Command::Rm {
+                keep_data,
+                purge,
+                instance_ids,
+            } => {
+                assert!(!keep_data);
+                assert!(purge);
+                assert_eq!(instance_ids, vec!["a", "b", "c"]);
+            }
+            _ => panic!("expected rm"),
         }
     }
 
     #[test]
-    fn table_has_header_row_even_when_empty() {
-        let out = render_table(&[]);
-        assert_eq!(out, "NAME  STATE  IMAGE  PORTS\n");
+    fn import_requires_a_source() {
+        assert!(Cli::try_parse_from(["compositz", "import"]).is_err());
     }
 
     #[test]
-    fn columns_align_to_widest_cell() {
-        let rows = vec![
-            summary(
-                "comfyui-a1b2c3",
-                "running",
-                "compositz/comfyui:0.1.0",
-                &["8188->8188/tcp"],
-            ),
-            summary("web-x", "exited", "nginx", &[]),
-        ];
-        let out = render_table(&rows);
-        let lines: Vec<&str> = out.lines().collect();
-        assert_eq!(lines.len(), 3);
-        // Every line's STATE column starts at the same offset (name width = 14).
-        let name_width = "comfyui-a1b2c3".len();
-        for line in &lines {
-            assert_eq!(&line[name_width..name_width + 2], "  ");
+    fn export_takes_optional_mount_and_outfile() {
+        let cli = Cli::try_parse_from(["compositz", "export", "app-abc123"])
+            .expect("mount and outfile are optional");
+        match cli.command {
+            Command::Export {
+                instance_id,
+                mount,
+                out_file,
+            } => {
+                assert_eq!(instance_id, "app-abc123");
+                assert_eq!(mount, None);
+                assert_eq!(out_file, None);
+            }
+            _ => panic!("expected export"),
         }
     }
 
     #[test]
-    fn multiple_ports_joined_with_comma() {
-        let out = render_table(&[summary(
-            "multi",
-            "running",
-            "img",
-            &["80->80/tcp", "443->443/tcp"],
-        )]);
-        assert!(out.contains("80->80/tcp, 443->443/tcp"));
+    fn commands_with_no_args_parse() {
+        for cmd in [
+            vec!["compositz", "doctor"],
+            vec!["compositz", "ls"],
+            vec!["compositz", "ps"],
+            vec!["compositz", "hello"],
+        ] {
+            assert!(Cli::try_parse_from(&cmd).is_ok(), "{cmd:?} should parse");
+        }
+    }
+
+    #[test]
+    fn unknown_command_is_rejected() {
+        assert!(Cli::try_parse_from(["compositz", "frobnicate"]).is_err());
     }
 }

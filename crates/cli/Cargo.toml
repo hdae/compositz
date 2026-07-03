@@ -14,3 +14,4 @@ compositz-core = { path = "../core" }
 clap.workspace = true
 anyhow.workspace = true
 tokio.workspace = true
+futures-util.workspace = true

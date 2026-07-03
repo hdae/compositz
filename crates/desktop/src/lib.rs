@@ -22,7 +22,7 @@ struct AppState {
 /// List Compositz-managed containers (running and stopped).
 #[tauri::command]
 async fn list_containers(state: State<'_, AppState>) -> Result<Vec<ContainerSummary>, String> {
-    compositz_core::list_instances(&state.engine)
+    compositz_core::list_managed_containers(&state.engine)
         .await
         .map_err(|e| e.to_string())
 }

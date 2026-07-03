@@ -5,7 +5,7 @@
 //! set, they perform ONLY read-only calls (ping / version / label-filtered list)
 //! — never create/start/stop/build/pull/prune anything.
 
-use compositz_core::{connect, list_instances};
+use compositz_core::{connect, list_managed_containers};
 
 fn engine_configured() -> bool {
     std::env::var("COMPOSITZ_DOCKER_HOST")
@@ -29,7 +29,7 @@ async fn ping_and_version_succeed() {
 }
 
 #[tokio::test]
-async fn list_instances_returns_without_error() {
+async fn list_managed_containers_returns_without_error() {
     if !engine_configured() {
         eprintln!("skip: COMPOSITZ_DOCKER_HOST unset (no engine to reach)");
         return;
@@ -37,9 +37,9 @@ async fn list_instances_returns_without_error() {
     let handle = connect().expect("connect");
     // The list may legitimately be empty (no managed containers here); we only
     // assert the call resolves and every returned summary is label-managed.
-    let instances = list_instances(&handle)
+    let instances = list_managed_containers(&handle)
         .await
-        .expect("list managed instances");
+        .expect("list managed containers");
     for instance in &instances {
         assert!(!instance.id.is_empty(), "each summary has an id");
     }

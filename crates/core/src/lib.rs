@@ -19,7 +19,7 @@ pub mod recipe;
 pub mod storage;
 
 pub use endpoint::{Endpoint, parse_docker_host};
-pub use engine::{BuildProgress, VolumeSummary};
+pub use engine::{BuildProgress, EngineVersion, VolumeSummary};
 pub use error::Error;
 pub use model::{ContainerSummary, format_port};
 pub use recipe::github::{
@@ -30,7 +30,9 @@ pub use recipe::ingest::{
     BundleSource, IngestOpts, duplicate_instance, extract_archive_to, ingest_bundle,
     random_instance_id,
 };
-pub use recipe::instance::Instance;
+pub use recipe::instance::{
+    Instance, is_valid_instance_id, list_instances, load_instance, remove_instance_dir,
+};
 pub use recipe::manifest::{
     MANIFEST_VERSION, Manifest, is_valid_recipe_id, manifest_json_schema, parse_manifest,
 };
@@ -76,15 +78,55 @@ impl EngineHandle {
 /// Connect to the Docker engine.
 ///
 /// Uses `COMPOSITZ_DOCKER_HOST` when set (tcp/unix/npipe), otherwise bollard's
-/// platform-local defaults. The client is created eagerly but bollard does not
-/// open a socket until the first request, so a bad endpoint surfaces on the
-/// first call, not here.
+/// platform-local defaults. NOTE: connecting is NOT uniformly lazy — a `tcp`
+/// endpoint defers the socket until the first request, but bollard's `unix`
+/// helper eagerly checks the socket path exists and fails here if it doesn't. So
+/// callers that want to report a reachability failure gracefully (e.g. `doctor`)
+/// must treat a `connect()` error the same as a first-request error, and derive
+/// the endpoint label from [`resolved_endpoint_description`] rather than a handle.
 pub fn connect() -> Result<EngineHandle, Error> {
     let docker = match std::env::var(DOCKER_HOST_ENV) {
         Ok(raw) if !raw.is_empty() => connect_endpoint(parse_docker_host(&raw)?)?,
         _ => Docker::connect_with_local_defaults()?,
     };
     Ok(EngineHandle { docker })
+}
+
+/// The resolved engine endpoint as a `DOCKER_HOST`-style string, WITHOUT connecting
+/// — so `doctor` can print it even when the engine is unreachable (the case where
+/// `connect` itself fails on a missing unix socket). Reads the same env
+/// [`connect`] does: `COMPOSITZ_DOCKER_HOST` when set, else the platform local
+/// default. An unparseable value is echoed verbatim (connect surfaces the real
+/// error). Mirrors the Deno `EngineClient.endpoint` describe.
+pub fn resolved_endpoint_description() -> String {
+    match std::env::var(DOCKER_HOST_ENV) {
+        Ok(raw) if !raw.is_empty() => match parse_docker_host(&raw) {
+            Ok(endpoint) => describe_endpoint(&endpoint),
+            Err(_) => raw,
+        },
+        _ => local_default_endpoint(),
+    }
+}
+
+/// Render an [`Endpoint`] as a `DOCKER_HOST`-style string (mirrors the Deno
+/// `describeEndpoint`), for the `doctor` diagnostic.
+fn describe_endpoint(endpoint: &Endpoint) -> String {
+    match endpoint {
+        Endpoint::Unix { path } => format!("unix://{path}"),
+        Endpoint::Npipe { path } => format!("npipe://{path}"),
+        Endpoint::Tcp { host, port } => format!("tcp://{host}:{port}"),
+    }
+}
+
+/// Describe bollard's platform local default (used when `COMPOSITZ_DOCKER_HOST` is
+/// unset). The exact target bollard picks isn't exposed, so this reports the
+/// platform's conventional socket/pipe with a `(local default)` marker.
+fn local_default_endpoint() -> String {
+    if cfg!(windows) {
+        "npipe:////./pipe/docker_engine (local default)".to_string()
+    } else {
+        "unix:///var/run/docker.sock (local default)".to_string()
+    }
 }
 
 fn connect_endpoint(endpoint: Endpoint) -> Result<Docker, Error> {
@@ -128,7 +170,14 @@ fn connect_endpoint(endpoint: Endpoint) -> Result<Docker, Error> {
 
 /// List Compositz-managed containers (running and stopped), filtered by the
 /// presence of the `io.compositz.instance` label, mapped to [`ContainerSummary`].
-pub async fn list_instances(handle: &EngineHandle) -> Result<Vec<ContainerSummary>, Error> {
+///
+/// NOTE: this lists CONTAINERS (the `ps`/`ls` engine view), not store instances —
+/// [`list_instances`] (re-exported from `recipe::instance`) reads the on-disk
+/// instance definitions. The two are deliberately distinct (Deno: `client.ps` vs
+/// `listInstances`).
+pub async fn list_managed_containers(
+    handle: &EngineHandle,
+) -> Result<Vec<ContainerSummary>, Error> {
     let mut filters: HashMap<String, Vec<String>> = HashMap::new();
     // `label=<key>` matches on presence of the key regardless of value.
     // `brand::label` is the single source of truth for the managed-object marker.

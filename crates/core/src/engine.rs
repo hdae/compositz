@@ -47,6 +47,20 @@ pub struct VolumeSummary {
     pub name: String,
 }
 
+/// The engine's self-reported version, distilled from bollard's `SystemVersion`.
+///
+/// An owned view (every field `Option`, matching the daemon's optional response)
+/// so the `doctor` diagnostic never depends on bollard's model surface. Mirrors the
+/// Deno `EngineClient.version()`'s `{ Version, ApiVersion, MinAPIVersion, Os, Arch }`.
+#[derive(Debug, Clone)]
+pub struct EngineVersion {
+    pub version: Option<String>,
+    pub api_version: Option<String>,
+    pub min_api_version: Option<String>,
+    pub os: Option<String>,
+    pub arch: Option<String>,
+}
+
 impl EngineHandle {
     /// Create a container from a fully-formed spec, returning its id.
     ///
@@ -286,6 +300,66 @@ impl EngineHandle {
                 yield item.map_err(crate::Error::from);
             }
         })
+    }
+
+    /// Ping the engine (`GET /_ping`). Returns the daemon's ping payload (`"OK"` on a
+    /// healthy engine). The first call that actually opens the socket, so a bad
+    /// endpoint surfaces here — used by `doctor` as the reachability probe.
+    pub async fn ping(&self) -> Result<String, crate::Error> {
+        Ok(self.docker().ping().await?)
+    }
+
+    /// The engine's version info (`GET /version`), as the owned [`EngineVersion`]
+    /// view. Backs the `doctor` diagnostic's version/platform lines.
+    pub async fn version(&self) -> Result<EngineVersion, crate::Error> {
+        let v = self.docker().version().await?;
+        Ok(EngineVersion {
+            version: v.version,
+            api_version: v.api_version,
+            min_api_version: v.min_api_version,
+            os: v.os,
+            arch: v.arch,
+        })
+    }
+
+    /// Block until a container exits, returning its exit status code (mirrors the
+    /// Deno `client.wait(id).StatusCode`).
+    ///
+    /// The `/wait` endpoint (default condition `not-running`) returns immediately
+    /// with the exit code if the container has already stopped — so `hello`'s
+    /// "stream logs to EOF, then wait" ordering reads the real exit code without
+    /// racing. The stream yields one terminal response; we return its `status_code`
+    /// (0 if the daemon somehow yielded nothing, which it does not in practice).
+    pub async fn wait_container(&self, name: &str) -> Result<i64, crate::Error> {
+        let mut stream = self.docker().wait_container(name, None);
+        let mut status = 0i64;
+        while let Some(item) = stream.next().await {
+            status = item?.status_code;
+        }
+        Ok(status)
+    }
+
+    /// Create a container from a MINIMAL owned spec (image + cmd + labels, no TTY).
+    ///
+    /// For diagnostics/round-trips (`hello`) that don't need the full launch
+    /// machinery of [`crate::to_create_spec`]. Keeps the caller free of bollard's
+    /// model surface — the same boundary [`Self::create_container`]'s callers get
+    /// via the higher-level `up` path.
+    pub async fn create_container_simple(
+        &self,
+        image: &str,
+        cmd: &[&str],
+        labels: HashMap<String, String>,
+        name: &str,
+    ) -> Result<String, crate::Error> {
+        let spec = bollard::models::ContainerCreateBody {
+            image: Some(image.to_string()),
+            cmd: Some(cmd.iter().map(|s| s.to_string()).collect()),
+            tty: Some(false),
+            labels: Some(labels),
+            ..Default::default()
+        };
+        self.create_container(spec, name).await
     }
 }
 
