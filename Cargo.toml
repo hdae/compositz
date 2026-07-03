@@ -1,0 +1,29 @@
+[workspace]
+members = ["crates/*"]
+# The desktop crate links webkit2gtk/dbus, which are absent in this headless
+# dev environment — it compiles only in CI (windows-latest). Excluding it from
+# default-members keeps `cargo build`/`test`/`clippy` green locally while it
+# still stays a first-class workspace member (metadata/tree resolve it).
+default-members = ["crates/core", "crates/cli"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+repository = "https://github.com/hdae/compositz"
+
+[workspace.dependencies]
+# Docker client. 0.21 is the latest published 0.x; its default features
+# ("http", "pipe") already cover TCP + unix socket + Windows named pipe, and the
+# rustls TLS provider is opt-in via "ssl" (rustls/ring) — no openssl anywhere.
+bollard = { version = "0.21", default-features = false, features = ["http", "pipe", "ssl"] }
+thiserror = "2"
+anyhow = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+futures-util = "0.3"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+strip = true

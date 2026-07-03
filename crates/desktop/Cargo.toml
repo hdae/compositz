@@ -1,0 +1,30 @@
+[package]
+name = "compositz-desktop"
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+description = "Compositz desktop app (Tauri 2)"
+
+[lib]
+# Tauri's mobile/desktop entry convention: the app logic lives in a lib so the
+# same `run()` can be driven from `main.rs` (desktop) and a generated mobile
+# entry point. `_lib` avoids clashing with the `compositz-desktop` bin name.
+name = "compositz_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+# Distinct from the cli crate's `compositz` binary: both land in the shared
+# workspace `target/`, so a Phase 2 CI job that builds cli + desktop together
+# would otherwise clobber one artifact with the other.
+name = "compositz-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+compositz-core = { path = "../core" }
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tokio.workspace = true
+futures-util.workspace = true

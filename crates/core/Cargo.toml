@@ -1,0 +1,19 @@
+[package]
+name = "compositz-core"
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+
+[lib]
+name = "compositz_core"
+path = "src/lib.rs"
+
+[dependencies]
+bollard.workspace = true
+thiserror.workspace = true
+futures-util.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+futures-util.workspace = true

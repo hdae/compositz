@@ -1,0 +1,15 @@
+[package]
+name = "compositz-cli"
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "compositz"
+path = "src/main.rs"
+
+[dependencies]
+compositz-core = { path = "../core" }
+clap.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
