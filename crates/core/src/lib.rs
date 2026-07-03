@@ -21,6 +21,10 @@ pub use endpoint::{Endpoint, parse_docker_host};
 pub use error::Error;
 pub use model::{ContainerSummary, format_port};
 pub use recipe::github::{GithubSpec, github_source, github_tarball_url, parse_github_spec};
+pub use recipe::ingest::{
+    BundleSource, IngestOpts, duplicate_instance, extract_archive_to, ingest_bundle,
+    random_instance_id,
+};
 pub use recipe::manifest::{
     MANIFEST_VERSION, Manifest, is_valid_recipe_id, manifest_json_schema, parse_manifest,
 };

@@ -4,6 +4,7 @@
 
 pub mod config;
 pub mod github;
+pub mod ingest;
 pub mod instance;
 pub mod loader;
 pub mod manifest;

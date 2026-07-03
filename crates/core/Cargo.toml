@@ -19,8 +19,14 @@ serde_json.workspace = true
 schemars.workspace = true
 regex.workspace = true
 tempfile.workspace = true
+tar.workspace = true
+flate2.workspace = true
+getrandom.workspace = true
+chrono.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 futures-util.workspace = true
 tempfile.workspace = true
+# The ingest tests craft tar / tar.gz fixtures (incl. malicious ustar entries).
+flate2.workspace = true

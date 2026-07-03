@@ -37,6 +37,17 @@ regex = "1"
 # Atomic instance-store writes (temp file in the same dir → fsync → rename),
 # structurally resolving the Deno tree's non-atomic config.yaml write.
 tempfile = "3"
+# Recipe-bundle ingestion (Phase 1e): stream-extract a tar / tar.gz archive to
+# disk entry-by-entry. tar-rs is SYNC (extraction runs under spawn_blocking at the
+# async edges) — async-tar / tokio-tar are intentionally NOT used. flate2's
+# MultiGzDecoder gunzips (multi-member safe). The recipe archive format is
+# tar/tar.gz ONLY — the Deno source has no zip path, so neither does this port.
+tar = "0.4"
+flate2 = "1"
+# OS CSPRNG for the instance-id random suffix (parity with crypto.getRandomValues).
+getrandom = "0.2"
+# ISO-8601 timestamps for instance provenance (meta.json `createdAt` default).
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [profile.release]
 strip = true
