@@ -15,9 +15,11 @@
 
 use std::fs;
 
+use std::collections::HashMap;
+
 use compositz_core::{
     BundleSource, IngestOpts, Instance, LaunchConfig, RemoveDataOpts, connect, down, ingest_bundle,
-    install_instance, remove_instance_data, remove_instance_image, up,
+    install_instance, instance_image_tag, remove_instance_data, remove_instance_image, up,
 };
 use futures_util::StreamExt;
 use tempfile::TempDir;
@@ -107,4 +109,25 @@ async fn full_lifecycle_roundtrip_on_the_real_engine() {
         remove_data.volumes_removed
     );
     remove_image.expect("remove_instance_image should succeed");
+
+    // Prove EXACT cleanup — nothing this instance created is left in the engine.
+    let mut label_filter: HashMap<String, Vec<String>> = HashMap::new();
+    label_filter.insert(
+        "label".to_string(),
+        vec![format!("io.compositz.instance={}", instance.instance_id)],
+    );
+    let remaining = engine
+        .list_containers(true, label_filter)
+        .await
+        .expect("list containers");
+    assert!(
+        remaining.is_empty(),
+        "container leaked: {:?}",
+        remaining.iter().map(|c| &c.name).collect::<Vec<_>>()
+    );
+    let built = instance_image_tag(&instance.manifest, &instance.instance_id);
+    assert!(
+        !engine.image_exists(&built).await.expect("image_exists"),
+        "built image leaked: {built}"
+    );
 }
