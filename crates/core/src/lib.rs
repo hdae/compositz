@@ -12,10 +12,14 @@
 mod endpoint;
 mod error;
 mod model;
+pub mod recipe;
 
 pub use endpoint::{Endpoint, parse_docker_host};
 pub use error::Error;
 pub use model::{ContainerSummary, format_port};
+pub use recipe::manifest::{
+    MANIFEST_VERSION, Manifest, is_valid_recipe_id, manifest_json_schema, parse_manifest,
+};
 
 use bollard::Docker;
 use bollard::query_parameters::{

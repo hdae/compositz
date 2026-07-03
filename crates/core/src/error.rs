@@ -13,4 +13,9 @@ pub enum Error {
     /// `COMPOSITZ_DOCKER_HOST` had an unrecognized scheme or malformed authority.
     #[error("unsupported COMPOSITZ_DOCKER_HOST: {0}")]
     UnsupportedDockerHost(String),
+
+    /// A recipe manifest failed to parse or validate. The message already carries
+    /// the `manifest.<path> …` prefixes (mirrors the Deno `CompositzError` text).
+    #[error("{0}")]
+    Manifest(String),
 }
