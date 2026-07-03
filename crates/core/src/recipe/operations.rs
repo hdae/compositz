@@ -476,13 +476,22 @@ pub struct VolumeFailure {
     pub error: String,
 }
 
+/// The data-root bind dir could not be removed (typically EACCES — a root-owned
+/// tree the app wrote). Carries the PATH (not a volume name), matching the Deno
+/// `{ path, error }` shape so a future IPC serialization stays contract-faithful.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BindDirFailure {
+    pub path: String,
+    pub error: String,
+}
+
 /// The result of removing an instance's persisted data.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RemoveDataResult {
     pub volumes_removed: Vec<String>,
     pub volumes_failed: Vec<VolumeFailure>,
     pub bind_dir_removed: Option<String>,
-    pub bind_dir_failed: Option<VolumeFailure>,
+    pub bind_dir_failed: Option<BindDirFailure>,
 }
 
 /// Remove an instance's PERSISTED DATA — irreversible. Per-instance named volumes are
@@ -553,8 +562,8 @@ pub async fn remove_instance_data(
             // Report instead of throwing: the volume removals above already happened
             // irreversibly — a throw here would discard that fact from the report.
             Err(e) => {
-                result.bind_dir_failed = Some(VolumeFailure {
-                    name: dir,
+                result.bind_dir_failed = Some(BindDirFailure {
+                    path: dir,
                     error: e.to_string(),
                 })
             }

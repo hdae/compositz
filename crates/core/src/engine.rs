@@ -136,12 +136,23 @@ impl EngineHandle {
     ///
     /// We only care about success/failure here (progress is not surfaced to
     /// callers on this path), so any stream item that is an `Err` aborts the
-    /// pull; otherwise draining to the end means the pull finished. The
-    /// `image` reference is passed whole via `from_image` — the daemon parses the
-    /// optional `:tag`/`@digest` itself, so there is no need to pre-split it.
+    /// pull; otherwise draining to the end means the pull finished.
+    ///
+    /// The ref is split into name + tag ([`split_image_ref`], mirroring the Deno
+    /// `splitImageRef`): a bare `from_image` with no `tag` makes `POST /images/create`
+    /// pull EVERY tag of the repository, so an untagged ref (e.g. `image: python`,
+    /// valid per the manifest regex) must default to `:latest`.
     pub async fn pull_image(&self, image: &str) -> Result<(), crate::Error> {
-        let options = CreateImageOptionsBuilder::new().from_image(image).build();
-        let mut stream = self.docker().create_image(Some(options), None, None);
+        let (name, tag) = split_image_ref(image);
+        let builder = CreateImageOptionsBuilder::new().from_image(name);
+        let builder = if tag.is_empty() {
+            builder // digest-pinned (`@sha256:…`): the digest travels inside `name`
+        } else {
+            builder.tag(tag)
+        };
+        let mut stream = self
+            .docker()
+            .create_image(Some(builder.build()), None, None);
         while let Some(item) = stream.next().await {
             // Propagate the first transport/daemon error; ignore the progress
             // payload on success.
@@ -203,10 +214,13 @@ impl EngineHandle {
         }
     }
 
-    /// Remove an image, forcing removal even if it is tagged/referenced so a
-    /// cleanup does not stall on lingering tags.
+    /// Remove an image — UNFORCED (matching the Deno `client.removeImage(tag)`).
+    /// An unforced delete leaves the image intact if a container still references it,
+    /// so a stale/running instance is never left pointing at a vanished image; the
+    /// delete path calls `down` first. Forcing here would untag it out from under a
+    /// live container — the safety guard this port must NOT drop.
     pub async fn remove_image(&self, image: &str) -> Result<(), crate::Error> {
-        let options = RemoveImageOptionsBuilder::new().force(true).build();
+        let options = RemoveImageOptionsBuilder::new().build();
         self.docker()
             .remove_image(image, Some(options), None)
             .await?;
@@ -234,14 +248,22 @@ impl EngineHandle {
     }
 
     /// Remove a volume by name (no force — a volume still in use should fail loudly
-    /// rather than be yanked out from under a running container).
+    /// rather than be yanked out from under a running container). A 404 is tolerated
+    /// as success (matching the Deno `removeVolume`'s `{ ok: [404] }`): the delete
+    /// path checks existence first, so a 404 here means the volume vanished in a
+    /// TOCTOU race — which is exactly the "already gone" outcome we wanted.
     pub async fn remove_volume(&self, name: &str) -> Result<(), crate::Error> {
         // bollard's `None` option arm is generic (`Option<impl Into<…>>`), so the
         // element type is unconstrained without an explicit build of an empty
         // options value; pass a defaulted options struct instead of a bare `None`.
         let options = RemoveVolumeOptionsBuilder::new().build();
-        self.docker().remove_volume(name, Some(options)).await?;
-        Ok(())
+        match self.docker().remove_volume(name, Some(options)).await {
+            Ok(()) => Ok(()),
+            Err(bollard::errors::Error::DockerResponseServerError {
+                status_code: 404, ..
+            }) => Ok(()),
+            Err(other) => Err(crate::Error::from(other)),
+        }
     }
 
     /// Stream a tar archive of `path` inside container `id` as raw byte chunks.
@@ -270,13 +292,56 @@ impl EngineHandle {
 /// Map one bollard `BuildInfo` record into the owned [`BuildProgress`] view.
 ///
 /// Without the `buildkit` feature (this workspace builds bollard with
-/// `http`/`pipe`/`ssl` only), `aux` is an `ImageId` whose `id` is the built
-/// image reference. The failure text comes from `error_detail.message` — bollard
-/// exposes no flat `error` string on `BuildInfo` in this version.
+/// `http`/`pipe`/`ssl` only), `aux` is an `ImageId` whose `id` is the built image
+/// reference. NOTE: a hard build failure surfaces as a stream `Err` (bollard folds
+/// it before this maps a record), so consumers MUST treat a stream `Err` as failure;
+/// `error` here is only a best-effort inline `error_detail.message` and is usually
+/// `None`.
 fn build_progress_from_bollard(info: bollard::models::BuildInfo) -> BuildProgress {
     BuildProgress {
         stream: info.stream,
         aux_id: info.aux.and_then(|aux| aux.id),
         error: info.error_detail.and_then(|detail| detail.message),
+    }
+}
+
+/// Split an image reference into `(name, tag)`, mirroring the Deno `splitImageRef`.
+/// A digest-pinned ref (`repo@sha256:…`) keeps the whole ref as `name` with an empty
+/// tag; a `repo:tag` splits on the LAST colon after the last `/` (so a registry-port
+/// `host:5000/repo` is not mistaken for a tag); a bare `repo` defaults to `latest`.
+fn split_image_ref(image_ref: &str) -> (&str, &str) {
+    if image_ref.contains('@') {
+        return (image_ref, ""); // digest-pinned
+    }
+    let slash = image_ref.rfind('/');
+    match image_ref.rfind(':') {
+        // The colon is a tag only when it follows the last path separator.
+        Some(colon) if slash.is_none_or(|s| colon > s) => {
+            (&image_ref[..colon], &image_ref[colon + 1..])
+        }
+        _ => (image_ref, "latest"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_image_ref;
+
+    #[test]
+    fn split_image_ref_defaults_and_edges() {
+        assert_eq!(split_image_ref("python"), ("python", "latest"));
+        assert_eq!(split_image_ref("python:3.11"), ("python", "3.11"));
+        assert_eq!(
+            split_image_ref("ollama/ollama:0.6.0"),
+            ("ollama/ollama", "0.6.0")
+        );
+        // A registry-port colon before the last `/` is NOT a tag.
+        assert_eq!(split_image_ref("reg:5000/img"), ("reg:5000/img", "latest"));
+        assert_eq!(split_image_ref("reg:5000/img:v2"), ("reg:5000/img", "v2"));
+        // Digest-pinned: whole ref as name, empty tag.
+        assert_eq!(
+            split_image_ref("python@sha256:abc"),
+            ("python@sha256:abc", "")
+        );
     }
 }

@@ -35,9 +35,9 @@ pub use recipe::manifest::{
     MANIFEST_VERSION, Manifest, is_valid_recipe_id, manifest_json_schema, parse_manifest,
 };
 pub use recipe::operations::{
-    PortBump, RemoveDataOpts, RemoveDataResult, UpResult, VolumeFailure, deconflict_host_ports,
-    defined_host_ports, down, export_mount, install_instance, remove_instance_data,
-    remove_instance_image, up,
+    BindDirFailure, PortBump, RemoveDataOpts, RemoveDataResult, UpResult, VolumeFailure,
+    deconflict_host_ports, defined_host_ports, down, export_mount, install_instance,
+    remove_instance_data, remove_instance_image, up,
 };
 pub use recipe::run::{
     LaunchConfig, WebEndpoint, effective_host_port, instance_container_name, instance_image_tag,
