@@ -39,3 +39,19 @@ What genuinely remains out of reach:
   consumer mounts + manager-driven prefetch, per-app volume keying, content verification.
 - **Corruption is likewise shared:** a broken shared cache degrades every app using it (uv/HF
   recover by re-downloading; the remedy is wiping the cache volume, never partial in-place edits).
+
+## Bundle extraction has no size cap (a decompression bomb can fill the disk)
+
+- **What:** `ingest_bundle` streams every archive entry to disk with NO size cap
+  ([`ingest.ts`](../packages/core/src/recipe/ingest.ts) / `crates/core/src/recipe/ingest.rs`) — a
+  gzip bomb or a petabyte-sized tar entry fills the local disk. Extraction is otherwise fully
+  contained (no path escape / no link planting — proven by a differential fuzz in Phase 1e), so the
+  worst case is a **recoverable local disk-fill**, never a traversal.
+- **Threat model (accepted, but narrowing):** the module doc declares resource-exhaustion bombs out
+  of scope because recipes were first-party and trust-gated at import (ADR-020). **RI-3 GitHub
+  ingestion widened this** — `import github:some/repo` streams an *untrusted third party's* tarball
+  through the same uncapped path, so a malicious repo is a disk-fill vector against the user's
+  machine. The same exposure exists in the Deno original (parity), so the Rust port did not change it.
+- **Fix direction (deferred, needs a decision):** a configurable extracted-size / entry-count cap
+  that aborts and cleans the staging dir, surfaced as a clear error. Parallels the shared-cache
+  "revisit before third-party recipes" caveat above; both are the same third-party-trust theme.

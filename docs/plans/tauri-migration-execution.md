@@ -149,9 +149,11 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
 ## 進捗（実装セッションが更新すること）
 
 - [x] Phase 0 — 足場 + walking skeleton（2026-07-03、Windows 実機検証済み）
-- [ ] Phase 1 — core 移植（1a manifest / 1b brand+storage / 1c instance store / **1d github 純粋
-      spec 層** ✅ 済み。**残: 1e ingest+ingestGithub → 1f run → 1g operations → 1h engine追補**。
-      1d レビュー申し送り: 1e で `safeRelSubdir` 必須（上表）／ repo=".." は known-issues 済み）
+- [ ] Phase 1 — core 移植（1a manifest / 1b brand+storage / 1c instance store / 1d github spec /
+      **1e ingest(tar/tar.gz+safeRelSubdir, 1e-1)+ingest_github(ureq/ring, ADR-027, 1e-2)** ✅ 済み。
+      **残: 1f run → 1g operations → 1h engine追補**。1e 実績: 142緑・codeload 実DL検証済み・抽出は
+      900k差分fuzzで脱出0/atomic-publish正当性確認。zip無し(現物=tar/tar.gzのみ)。tarContext は 1g。
+      サイズ上限なしDoS(untrusted GitHub)は limitations 記録・要判断）
 - [ ] Phase 2 — CLI
 - [ ] Phase 3 — desktop backend（+ Windows 実機確認 #2）
 - [ ] Phase 4 — React UI

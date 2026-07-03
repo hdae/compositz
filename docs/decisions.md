@@ -809,3 +809,27 @@ runtime log opens on start. Residual: an https-only or non-HTTP "web" UI would n
 (none exist; the product's service URLs are http) — the Phase-3 manifest `healthcheck` field stays
 the declarative escape hatch. The Settings "Restart now" also lands on the runtime log (it IS a
 start) — flagged for user feedback.
+
+## ADR-027 — GitHub codeload download uses ureq (rustls/ring), not reqwest · ✅ Accepted
+
+Decided during the Tauri migration's Phase 1e (user-approved, 2026-07-04). The Rust port needs a
+blocking HTTP client for the codeload tarball download (`ingest_github`); the migration plan named
+`reqwest`.
+
+**The blocker:** `reqwest` 0.13 removed the cheap rustls-over-**ring** path — its `rustls` feature
+now pulls **aws-lc-rs**, a second C-built crypto backend. The rest of the stack is deliberately on
+**rustls + ring, no extra C / no openssl** (bollard is configured exactly so; the lock already has
+ring 0.17, aws-lc-rs absent). Adding reqwest would have meant either a second crypto backend
+alongside ring, or a fragile `rustls-no-provider` + manual provider-install dance.
+
+**Decision:** use **`ureq` (2.x, `default-features=false`, `features=["tls"]`)** — rustls over ring
+(reuses bollard's existing rustls 0.23), webpki bundled roots, blocking-native (no tokio runtime to
+spin up), redirect-follow, per-read timeout. It satisfies every requirement the plan attached to
+reqwest (blocking / rustls / no-openssl / redirect / read-timeout) while keeping the whole tree on a
+single crypto provider.
+
+**Consequences:** one HTTP client dep (`ureq` + `webpki-roots`), zero new crypto backends, no
+openssl, no aws-lc-rs C build. `ingest_github` matches on `ureq::Error::{Status, Transport}` (ureq
+treats a non-2xx as an error, so a 404 is a clean match). The download is verified end-to-end against
+real codeload (opt-in `COMPOSITZ_NET_TESTS=1`). Supersedes the migration plan's `reqwest` line for
+this use; a later need for an async multi-request client (unlikely in core) would reopen the choice.
