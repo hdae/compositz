@@ -6,7 +6,10 @@
 
 ## Current focus
 
-**Phase 3 update アーク実装済み（2026-07-05, ADR-029）— Windows 実機確認待ち。**
+**Phase 3 update アーク完了（2026-07-05, ADR-029）— Windows 実機確認済み。**
+フィードバック反映済み: duplicate は origin source を継承（複製も update 可、
+lineage=meta.duplicatedFrom）/ 表示時刻は常に localtime（保存は UTC）/ disabled
+メニューに理由は出さない（provenance 行で判別、file/upload は将来 re-upload update）。
 Slice A = provenance 表示（source/createdAt/updatedAt を view/row/ls へ）+ Rename UI
 （`set_instance_name`、空欄/brand 同名は override 解除=manifest 追従）。Slice B =
 in-place update（prepare→再trust→commit の2段 staging、GitHub 由来のみ、appId 不変
@@ -14,8 +17,9 @@ MUST、id/volumes/config.yaml 維持、旧 image 回収は旧 manifest 基準）
 3視点 → high 0・med 4 全修正（load_instance の .old-app 自己修復 / commit 前 ping /
 fetching 中 Cancel+identity ガード / staged version 照合）。
 
-**NEXT: Windows 実機確認（update フロー★主眼）→ Slice C（user-facing build args +
---no-cache）or roadmap Phase 3 の他項目（volumes GC / manifest 表現力）。**
+**NEXT（要ユーザー選択・要計画承認）: Slice C（user-facing build args + --no-cache）
+or roadmap Phase 3 の他項目（volumes GC / manifest 表現力 / engine 接続設定）。
+軽量候補: bindings/schema の CI 鮮度ゲート（以前 user 合意で後回し）。**
 **wslc は microsoft/WSL#40976 が動くまで保留**（プロジェクトの根幹の賭け —
 memory [[wsl-containers-recon]]）。
 
