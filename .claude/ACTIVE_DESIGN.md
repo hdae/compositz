@@ -59,11 +59,21 @@ tauri-specta は **=2.0.0-rc.21 / specta =2.0.0-rc.22 / specta-typescript =0.0.9
 照合、検出ブロッカーは修正 or feature-unification による false alarm と実証）。詳細は execution
 計画の進捗欄。
 
-**未実施: Windows 実機確認 #2**（3d/3e を push → Desktop artifact 実行 → 起動確認。旧 Phase 0
-frontend は削除済みコマンドを叩くため UI は非機能=想定内、Phase 4 で再構築）。
+**Windows 実機確認 #2 ✅ 実施済み**（ユーザー確認）: Desktop artifact(windows) 緑・app 起動OK・
+二重起動で既存ウィンドウ focus（single-instance 動作）。**ただし起動時に
+`Command stream_events not found` エラー** — これは **旧 Phase 0 skeleton frontend
+(`frontend/src/`)** が 3c で削除した Phase 0 コマンド（`list_containers`/`stream_logs`/
+`stream_events`、`frontend/src/ipc/index.ts`）を叩くため=**想定内・backend バグではない**。
+DevTools 不可のため新コマンドの直接検証は未。**このエラーの修正 = Phase 4 の frontend 再構築
+（★Phase 4 の最初のタスク）。**
 
-**NEXT: Phase 4 — React UI。** `packages/ui/islands/InstanceList.tsx`(1,434 行モノリス)を分解
-再構築。tauri-specta 生成の `frontend/src/ipc/bindings.ts`（desktop dev 起動で生成）を型付き
-IPC 層として使う。挙動 parity は各 ADR（execution 計画 Phase 4 節のチェックリスト）。楽観的更新
-は禁止。shadcn は CLI 追加のみ(`--base base`)。再開手順: memory index → execution 計画 Phase 4
-→ InstanceList.tsx + 各 ADR。
+**NEXT: Phase 4 — React UI。** 旧 `frontend/src/`（Phase 0 skeleton: App.tsx / ipc/{index,mock,
+types}.ts / components / store — 全て throwaway）を破棄し、新スタックで再構築。仕様は Deno
+`packages/ui/islands/InstanceList.tsx`(1,434 行モノリス)の分解。tauri-specta 生成の
+`frontend/src/ipc/bindings.ts`（desktop の dev 起動 `if cfg!(debug_assertions)` で生成）を型付き
+IPC 層として使う。新コマンド= list_instance_rows / instance_up/down/delete/duplicate /
+get_config/set_config / import_recipe/import_github / export_mount / open_service_url +
+push-stream(subscribe_instances/stream_logs/instance_install/unsubscribe)。挙動 parity は各 ADR
+（execution 計画 Phase 4 節のチェックリスト）。楽観的更新は禁止。shadcn は CLI 追加のみ
+(`--base base`)。再開手順: memory index → execution 計画 Phase 4 → InstanceList.tsx + bindings.ts
++ 各 ADR。
