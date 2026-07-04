@@ -50,19 +50,6 @@ fn specta_builder() -> Builder<tauri::Wry> {
 pub fn run() {
     let builder = specta_builder();
 
-    // Regenerate the frontend's typed bindings on every dev run (never in release).
-    // A runtime `cfg!` (not `#[cfg]`) so the export code is still COMPILED in the
-    // release artifact build — the only CI job that builds this crate — and cannot
-    // silently rot; it just doesn't run outside a debug build.
-    if cfg!(debug_assertions) {
-        builder
-            .export(
-                specta_typescript::Typescript::default(),
-                "../../frontend/src/ipc/bindings.ts",
-            )
-            .expect("export typescript bindings");
-    }
-
     tauri::Builder::default()
         // single-instance MUST be registered FIRST — its guard aborts a second
         // launch before the rest of setup runs; a second launch focuses the
@@ -79,14 +66,14 @@ pub fn run() {
         .invoke_handler(builder.invoke_handler())
         .on_window_event(|window, event| {
             // Window teardown stops every live pump so none outlives the webview.
-            if matches!(event, WindowEvent::Destroyed) {
-                if let Some(state) = window.try_state::<AppState>() {
-                    state
-                        .streams
-                        .lock()
-                        .expect("stream registry mutex poisoned")
-                        .abort_all();
-                }
+            if matches!(event, WindowEvent::Destroyed)
+                && let Some(state) = window.try_state::<AppState>()
+            {
+                state
+                    .streams
+                    .lock()
+                    .expect("stream registry mutex poisoned")
+                    .abort_all();
             }
         })
         .setup(move |app| {
@@ -106,4 +93,22 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running Compositz");
+}
+
+#[cfg(test)]
+mod tests {
+    /// Regenerate the frontend's typed IPC bindings from the SAME commands the
+    /// app registers — the canonical tauri-specta workflow, run as a test so it
+    /// is reproducible in the Nix build shell where this crate compiles (the
+    /// headless dev container cannot link webkit outside that shell) and so CI
+    /// can assert the committed bindings are fresh.
+    #[test]
+    fn export_bindings() {
+        super::specta_builder()
+            .export(
+                specta_typescript::Typescript::default(),
+                "../../frontend/src/ipc/bindings.ts",
+            )
+            .expect("export typescript bindings");
+    }
 }

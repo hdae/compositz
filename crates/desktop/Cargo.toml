@@ -52,4 +52,9 @@ url = "2"
 # lockfile fixes here. specta itself comes from the workspace (shared with core).
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 specta.workspace = true
+
+[dev-dependencies]
+# TypeScript emitter, used only by the `export_bindings` test that regenerates
+# frontend/src/ipc/bindings.ts. tauri-specta already pulls it in transitively
+# (its `typescript` feature), so this only makes the direct use explicit.
 specta-typescript = "=0.0.9"

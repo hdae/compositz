@@ -132,10 +132,10 @@ pub async fn instance_install(
         while let Some(item) = stream.next().await {
             match item {
                 Ok(progress) => {
-                    if let Some(line) = progress.stream {
-                        if on_progress.send(InstallEvent::Log { line }).is_err() {
-                            return; // receiver gone
-                        }
+                    if let Some(line) = progress.stream
+                        && on_progress.send(InstallEvent::Log { line }).is_err()
+                    {
+                        return; // receiver gone
                     }
                     if let Some(error) = progress.error {
                         let _ = on_progress.send(InstallEvent::Error { error });
