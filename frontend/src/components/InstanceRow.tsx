@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, ExternalLink, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
@@ -8,6 +8,7 @@ import type { RowVM } from "@/store/instances";
 import { ActionButton } from "./ActionButton";
 import { BuildLogPanel } from "./BuildLogPanel";
 import { StatusPill } from "./StatusPill";
+import { Tip } from "./Tip";
 
 type Props = { vm: RowVM; engineOnline: boolean };
 
@@ -19,11 +20,13 @@ function serviceState(service: Service, running: boolean): { dot: string; label:
 }
 
 export const InstanceRow = ({ vm, engineOnline }: Props) => {
-  const { row, busy, buildLog, expanded } = vm;
+  const { row, busy, duplicating, deleting, buildLog, expanded } = vm;
   const up = useInstancesStore((s) => s.up);
   const down = useInstancesStore((s) => s.down);
   const install = useInstancesStore((s) => s.install);
   const open = useInstancesStore((s) => s.open);
+  const duplicate = useInstancesStore((s) => s.duplicate);
+  const requestDelete = useInstancesStore((s) => s.requestDelete);
   const toggleExpanded = useInstancesStore((s) => s.toggleExpanded);
 
   const hasBuildLog = (buildLog?.length ?? 0) > 0;
@@ -69,15 +72,38 @@ export const InstanceRow = ({ vm, engineOnline }: Props) => {
           )}
         </TableCell>
         <TableCell className="text-right">
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex items-center justify-end gap-1.5">
             <ActionButton
               row={row}
               busy={busy}
-              engineOnline={engineOnline}
+              engineOnline={engineOnline && !deleting}
               onUp={() => void up(row.instanceId)}
               onDown={() => void down(row.instanceId)}
               onInstall={() => void install(row.instanceId)}
             />
+            <Tip label="Duplicate (same settings, new ports, no data)">
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Duplicate"
+                disabled={duplicating || deleting}
+                onClick={() => void duplicate(row.instanceId)}
+              >
+                {duplicating ? <Loader2 className="animate-spin" /> : <Copy />}
+              </Button>
+            </Tip>
+            <Tip label="Delete">
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Delete"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={deleting}
+                onClick={() => requestDelete(row)}
+              >
+                {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
+              </Button>
+            </Tip>
             <Button
               size="icon-sm"
               variant="ghost"
