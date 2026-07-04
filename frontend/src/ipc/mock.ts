@@ -50,7 +50,8 @@ const DEFS: Def[] = [
     appId: "comfyui",
     name: "ComfyUI",
     version: "0.3.1",
-    description: "Node-based Stable Diffusion UI.",
+    description:
+      "The most powerful and modular diffusion model GUI, with a graph/nodes interface for designing and executing advanced Stable Diffusion pipelines — supports SD1.x/SD2.x/SDXL/Flux, ControlNet, LoRAs, and fully offline local inference.",
     webPorts: [webPort("web", 8188, 8188)],
   },
   {
@@ -312,7 +313,8 @@ export function installBrowserMock(): () => void {
           bumps.push({ name: wp.name, from: wp.host, to });
           return { ...wp, host: to };
         });
-        const dupDef: Def = { ...src, instanceId: dupId, webPorts };
+        // Mirror the core: a duplicate's display name is the source's "<name> (copy)".
+        const dupDef: Def = { ...src, instanceId: dupId, name: `${src.name} (copy)`, webPorts };
         DEFS.push(dupDef);
         state[dupId] = { installed: false, running: false, accepting: false };
         return { view: viewOf(dupDef), bumps } satisfies ImportView;

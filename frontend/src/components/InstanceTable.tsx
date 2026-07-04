@@ -24,13 +24,17 @@ export const InstanceTable = () => {
 
   return (
     <div className="rounded-lg border border-border">
-      <Table>
+      {/* table-fixed so a long description/URL wraps within its column instead of
+          widening the table and forcing horizontal scroll (table-auto sizes to
+          max-content). Column widths bound Status/Services/Actions; Instance takes
+          the remainder. */}
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow>
             <TableHead className="pl-4">Instance</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Services</TableHead>
-            <TableHead className="pr-4 text-right">Actions</TableHead>
+            <TableHead className="w-24">Status</TableHead>
+            <TableHead className="w-56">Services</TableHead>
+            <TableHead className="w-48 pr-4 text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

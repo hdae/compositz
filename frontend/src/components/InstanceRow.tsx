@@ -7,6 +7,7 @@ import { useInstancesStore } from "@/store/instances";
 import type { RowVM } from "@/store/instances";
 import { ActionButton } from "./ActionButton";
 import { BuildLogPanel } from "./BuildLogPanel";
+import { CopyId } from "./CopyId";
 import { StatusPill } from "./StatusPill";
 import { Tip } from "./Tip";
 
@@ -36,11 +37,17 @@ export const InstanceRow = ({ vm, engineOnline }: Props) => {
     <>
       <TableRow>
         <TableCell>
-          <div className="flex flex-col">
-            <span className="font-medium">{row.name}</span>
-            <span className="text-xs text-muted-foreground">
-              {row.appId} · v{row.version}
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="truncate font-medium">{row.name}</span>
+            <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+              <span className="shrink-0">v{row.version} ·</span>
+              <CopyId id={row.instanceId} className="text-muted-foreground/80" />
             </span>
+            {row.description !== "" && (
+              <span className="line-clamp-1 text-xs break-words text-muted-foreground/70">
+                {row.description}
+              </span>
+            )}
           </div>
         </TableCell>
         <TableCell>
@@ -120,10 +127,10 @@ export const InstanceRow = ({ vm, engineOnline }: Props) => {
 
       {expanded && (
         <TableRow>
-          <TableCell colSpan={4} className="bg-muted/30">
+          <TableCell colSpan={4} className="bg-muted/30 whitespace-normal">
             <div className="flex flex-col gap-3 py-1">
               {row.description !== "" && (
-                <p className="text-sm text-muted-foreground">{row.description}</p>
+                <p className="text-sm break-words text-muted-foreground">{row.description}</p>
               )}
               {hasBuildLog && <BuildLogPanel lines={buildLog ?? []} />}
               {row.services.length > 0 && (
