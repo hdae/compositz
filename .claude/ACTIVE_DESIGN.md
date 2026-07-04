@@ -5,7 +5,8 @@
 
 ## Current focus
 
-**Tauri 全面移行 — Phase 1（core）+ Phase 2（CLI）完了。次は Phase 3（desktop backend）。** 計画:
+**Tauri 全面移行 — Phase 1（core）+ Phase 2（CLI）+ Phase 3（desktop backend）完了。次は
+Phase 4（React UI）。** 計画:
 [docs/plans/tauri-migration.md](../docs/plans/tauri-migration.md)（承認済み親計画）+
 [docs/plans/tauri-migration-execution.md](../docs/plans/tauri-migration-execution.md)
 （**実行詳細・例外時対応 — 実装セッションはこちらに従う**）。
@@ -49,14 +50,20 @@
 
 ## Resume point
 
-**Phase 1（core）+ Phase 2（CLI）完了**。Phase 2(fe4f7f4): 11 コマンド clap 化。core 追補
-= engine ping/version/wait_container/create_container_simple + store系 re-export + engine
-`list_instances`→`list_managed_containers` 改名(store 版に名前を明け渡す)。★F5 境界検証を全破壊
-パスに適用(down/duplicate は inline、他は resolve_instance)。doctor は unix connect の eager 失敗
-で診断出力を失う不具合を修正(`resolved_endpoint_description` で handle 非依存)。実機検証: doctor/ps/
-ls/hello/import/duplicate/export一覧/rm/境界拒否。敵対的2視点レビュー済み。
-**要判断(F1): core `duplicate_instance` を remove_instance_dir 同様に自己 validate させるか(現状 CLI
-guard で安全・Phase 3 desktop の footgun 予防)。**
-**NEXT: Phase 3 — desktop backend（commands + Channels、+ Windows 実機確認 #2）。** 現 API route
-= `packages/ui/routes/api/` の現物が仕様(execution 計画の対応表)。tauri-specta 導入・stream lifecycle
-解消・single-instance plugin 最初に登録。再開手順: memory index → execution 計画 Phase 3 → route 現物。
+**Phase 1（core）+ Phase 2（CLI）+ Phase 3（desktop backend）完了。** Phase 3 は 3a〜3e:
+view-model 導出 + probe/snapshot を core へ移植（ローカル全検証）→ desktop に非 streaming
+11 コマンド + push-stream 4 コマンド + AppError(serde tagged) + plugin 群を配線（CI 専用）。
+tauri-specta は **=2.0.0-rc.21 / specta =2.0.0-rc.22 / specta-typescript =0.0.9** の三つ組
+（plan の rc.25 は feature 激変で不採用）。★F5 境界検証を全 id コマンドに適用。desktop の
+コンパイル検証は CI(Desktop artifact/windows) + 敵対的レビュー（3c/3d/3e で計 3 回、実ソース
+照合、検出ブロッカーは修正 or feature-unification による false alarm と実証）。詳細は execution
+計画の進捗欄。
+
+**未実施: Windows 実機確認 #2**（3d/3e を push → Desktop artifact 実行 → 起動確認。旧 Phase 0
+frontend は削除済みコマンドを叩くため UI は非機能=想定内、Phase 4 で再構築）。
+
+**NEXT: Phase 4 — React UI。** `packages/ui/islands/InstanceList.tsx`(1,434 行モノリス)を分解
+再構築。tauri-specta 生成の `frontend/src/ipc/bindings.ts`（desktop dev 起動で生成）を型付き
+IPC 層として使う。挙動 parity は各 ADR（execution 計画 Phase 4 節のチェックリスト）。楽観的更新
+は禁止。shadcn は CLI 追加のみ(`--base base`)。再開手順: memory index → execution 計画 Phase 4
+→ InstanceList.tsx + 各 ADR。

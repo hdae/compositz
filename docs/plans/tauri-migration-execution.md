@@ -170,6 +170,30 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
       `../victim` で複製→拒否+store無変更、ガード撤去で fail を実証)。破壊系 path-touching core sink
       は remove_instance_dir と duplicate_instance の両方が自己防御に。**
       parity 差(受容): ps=Phase 0 table / clap arg エラー=exit 2 / hello の色分け・pull 進捗簡略。
-- [ ] Phase 3 — desktop backend（+ Windows 実機確認 #2）
+- [x] **Phase 3 — desktop backend 完了**（3a〜3e。**Windows 実機確認 #2 は未実施** —
+      要 push + artifact 実行）。
+      - 3a(3816790): core `view` モジュール（dashboard.ts/instance-view.ts の純導出を移植、
+        Deno 19 相当 + build_settings 2 = 21 テスト緑）。specta optional feature 導入
+        （view 型 + Placement に cfg_attr）。config file-IO 再エクスポート。withOptimisticAction
+        は不採用（Phase 4 判断）。
+      - 3b(fe721b5): core `probe` + `build_snapshot`（probe.ts + events.ts doPush 移植）。
+        ureq(spawn_blocking) で HTTP probe（素 TCP は docker-proxy が受けるため実 HTTP のみ）、
+        RUNNING×web port だけ probe、warming 判定。engine に list_managed_raw 追加。core に
+        tokio(rt) 依存。probe 5 本 + 実エンジン build_snapshot smoke 緑。
+      - 3c(d1c6fad): desktop 非 streaming コマンド 11 本 + AppError(serde tagged) +
+        tauri-specta 配線。★F5 境界検証を全 id コマンドに（load_by_id / inline）。core 追補=
+        PortBump/Override を specta 化 + validate_override 公開。**依存決定: tauri-specta
+        =2.0.0-rc.21 / specta =2.0.0-rc.22 / specta-typescript =0.0.9 の三つ組**（plan の
+        rc.25 は feature 激変で不採用、playbook「rc 不適合→代替+報告」）。敵対的2視点レビュー
+        →ブロッカー1件(From<io::Error> 欠落)修正。**CI(Desktop artifact/windows)でコンパイル
+        通過をユーザー確認済み**。
+      - 3d(f98a230): push-stream コマンド(subscribe_instances/stream_logs/instance_install/
+        unsubscribe) + AbortHandle レジストリ + window teardown。snapshot_pump は単一ループ
+        select! 設計で events.ts の serialize+coalesce を構造的に排除。敵対的レビューの2件
+        「ブロッカー」は feature-unification による false alarm（tauri specta / tokio time は
+        tauri-specta / bollard が graph 全体で有効化済み）と実証、SHOULD 推奨で両 feature を
+        明示宣言。
+      - 3e(90506d6): plugin 登録(single-instance 最初/dialog/log/window-state) + capabilities。
+        review 0 ブロッカー。
 - [ ] Phase 4 — React UI
 - [ ] Phase 5 — parity + docs + 退役（+ Windows 実機確認 #3）
