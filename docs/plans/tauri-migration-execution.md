@@ -195,7 +195,7 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
         明示宣言。
       - 3e(90506d6): plugin 登録(single-instance 最初/dialog/log/window-state) + capabilities。
         review 0 ブロッカー。
-- [~] Phase 4 — React UI（**4a ✅ / 4b〜4f 未**）
+- [~] Phase 4 — React UI（**4a ✅ / 4b ✅ / 4c ✅ / 4d〜4f 未**）
       - 4a(c9ae23f): **flake.nix でローカルビルド環境確立**（単一 nixpkgs-unstable + rust-overlay
         1.96.1 の devShell。webkit2gtk-4.1/gtk3/dbus/libsoup の pkg-config を stdenv hook で配線）。
         **「desktop はローカル compile 不可・CI 専用」の前提を撤回** — 以後 fmt/clippy/test/bindings
@@ -225,6 +225,21 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
         巻き込み pusher=0 に→ up/down の snapshot が誰にも届かない（初回 snapshot は配信済みで list は正常
         に見える）。mock を install 冪等・disposer no-op のページ寿命 singleton に。実 backend は mock 非
         搭載で影響なし。**vitest/happy-dom は import 解決順レースを再現せず、実 chromium+CDP で特定。**
-      - 4c〜4f: dialogs(trust/delete/duplicate/import) → detail タブ(build/runtime log・services・settings) →
-        banners/drag-drop/open/export + parity 総点検 + scaffold 残骸掃除(README/AGENTS/`shadcn` dep)。
+      - 4c(0abc2ff store/IPC/mock + abc7bbc dialog UI): **import/trust/delete/duplicate を実装**。
+        client.ts に deleteInstance/duplicateInstance/importRecipe/importGithub + native file picker seam
+        pickRecipeFile(dialog プラグイン、mock は合成パス)。store に notice/importing/trust/github/
+        deleteTarget と各アクション。**★楽観排除の核心 = 構造変化(import/duplicate/delete)は `reloadRows`
+        (list_instance_rows 再取得)でのみ baseRows を更新** — 手管理の行 insert/remove を排し baseRows を
+        server 真実の純関数に(Deno の残楽観2箇所を移植時に解消)。delete は round-trip 中 deleting スピナーで
+        行を残し成功後に消す。UI: ImportBar(File/GitHub)、非 dismiss TrustDialog(Escape/backdrop 無視)、
+        DeleteDialog(volumes 既定ON/bind 既定OFF checkbox)、GithubImportDialog、行 duplicate/delete(tooltip・
+        deleting 中 無効化)、notice バナー、TooltipProvider。**shadcn は CLI 生成のみ**(base-nova style=
+        Base UI、`--base` フラグ不要・手書きなし): alert-dialog/dialog/input/checkbox/label/tooltip(button
+        は保持)。dep=@tauri-apps/plugin-dialog 2.7.1(Rust 側は 3e 配線済み)。**検証: tsc-b + vp check(既知
+        warning 2)+ vp build 緑 / 実ブラウザ CDP 28/28 ×4 安定**(headless chromium の font FATAL は最小
+        fontconfig+DejaVu+`--disable-remote-fonts` で回避 — アプリ側バグ非該当)。**File import の native
+        picker 実挙動は実 Tauri のみ(mock は合成パス)→ Windows 実機確認送り。**
+      - 4d〜4f: detail タブ(build/runtime log=stream_logs・services・settings=get/set_config・restartNeeded) →
+        banners/drag-drop/open/export(exportMount+save picker) + parity 総点検 + scaffold 残骸掃除
+        (README/AGENTS/`shadcn` dep)。
 - [ ] Phase 5 — parity + docs + 退役（+ Windows 実機確認 #3）
