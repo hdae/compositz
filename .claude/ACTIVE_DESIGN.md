@@ -5,11 +5,12 @@
 
 ## Current focus
 
-**Tauri 全面移行 — Phase 1〜4 完了。Phase 4（React UI）= 4a（flake+bindings）/ 4b（縦切り）/ 4c
-（dialogs）/ 4d（detail タブ）/ 4e（drag-drop+export）/ 4f（parity 監査+scaffold 掃除）すべて ✅。
-parity は Deno 仕様を5領域で並列敵対的監査 → connecting フリッカ bug 1件修正(d098520)、restart の
-タブ挙動1件は意図的逸脱として記録、他は全 parity。次は Phase 5（parity 総仕上げ + docs + Deno 退役 +
-Windows 実機確認 #3）。** 計画:
+**Tauri 全面移行 — Phase 1〜4 完了。Phase 4（React UI）= 4a〜4f すべて ✅。parity は Deno 仕様を5領域で
+並列敵対的監査 → connecting フリッカ bug 1件修正(d098520)、restart のタブ挙動1件は意図的逸脱として記録、
+他は全 parity。★Windows 実機確認 #3 ✅（ユーザー確認 2026-07-05）: 保留していた実 backend 依存項目
+(Settings の get/set_config・restart / drag-drop の onDragDropEvent / native save+exportMount / file
+picker)がすべて Windows で正しく動作。** **NEXT（ユーザー指示 2026-07-05）: レビュー + docs 点検 +
+総仕上げ + デザイン調整（Fable 復帰 → top tier に戻す）。Deno 退役はその後。** 計画:
 [docs/plans/tauri-migration.md](../docs/plans/tauri-migration.md)（承認済み親計画）+
 [docs/plans/tauri-migration-execution.md](../docs/plans/tauri-migration-execution.md)
 （**実行詳細・例外時対応 — 実装セッションはこちらに従う**）。
@@ -21,8 +22,9 @@ Windows 実機確認 #3）。** 計画:
   `deno task test`（160 本）は退役まで無傷を維持すること。
 - **update アークは凍結**（移行後に新スタックで実装）。**wslc は microsoft/WSL#40976 が動くまで
   保留**（プロジェクトの根幹の賭け — memory [[wsl-containers-recon]]）。
-- 体制: **Opus 単独遂行**（Fable 不在）。サブエージェントに schema を付けない・検証は実測ゲート 優先
-  — 詳細は execution 計画の「体制」節。
+- 体制: **Fable 復帰（2026-07-05, ユーザー指示）→ routed top tier に戻す**（narrow-deep や structured
+  output は Fable、broad fan-out は Opus、mechanical は Sonnet/Haiku）。**★[[workflow-structuredoutput-fragility]]:
+  opus には schema を付けない**（構造化は Fable に）。検証は実測ゲート優先 — 詳細は execution 計画の「体制」節。
 
 ## Pitfalls index（新スタックでも生きるものだけ）
 
@@ -156,7 +158,12 @@ shadcn を devDeps へ(AGENTS.md は Vite+ 自動生成のため保持)。**DECI
 動かさない**(Deno は logs へ切替 / React は Settings 維持＝不意なタブ移動を避ける方が良い、[[feedback-avoid-optimistic-ui]]
 と同系の anti-surprise 方針。参照: 監査 07-05)。
 
-**NEXT: Phase 5 — parity 総仕上げ + docs 整備 + Deno 退役 + Windows 実機確認 #3。** Deno `deno task test`
-(160本)を退役まで無傷維持。実 backend 依存の未検証(Settings の get/set_config・restart・drag-drop の
-onDragDropEvent・save/export・native picker)を Windows 実機で確認。**★user 優先(07-04): runnable 優先・
-テスト/CI 後回し・ローカルは vp dev + browser + mockIPC、実 backend は Windows。**
+**★Windows 実機確認 #3 ✅（2026-07-05）**: Phase 4 の実 backend 依存項目(Settings 実挙動・restart・
+onDragDropEvent・native save+exportMount・file picker)がすべて Windows で正常動作（ユーザー確認）。実
+backend 依存の未検証は解消。
+
+**NEXT（2026-07-05, ユーザー指示・Fable 復帰後）: レビュー + docs 点検 + 総仕上げ + デザイン調整。** 具体
+未確定(compact 後に着手方針を詰める)。想定作業: (a) コード全体レビュー(移行後の一貫性・dead code・knip)、
+(b) docs/ 整備(known-issues/limitations/decisions を新スタックに更新、ADR の Deno 参照を Tauri へ)、
+(c) 総仕上げ(細部の parity/UX)、(d) デザイン調整(UI 見た目)。その後 Phase 5 の残(Deno 退役=`packages/`
+撤去 + `deno task test` 160本を最後に確認して退役)。**★user 優先(07-04): runnable 優先・テスト/CI 後回し。**
