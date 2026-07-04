@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { InstanceTable } from "@/components/InstanceTable";
 import { ImportBar } from "@/components/ImportBar";
+import { DropZone } from "@/components/DropZone";
 import { TrustDialog } from "@/components/TrustDialog";
 import { DeleteDialog } from "@/components/DeleteDialog";
 import { GithubImportDialog } from "@/components/GithubImportDialog";
@@ -110,6 +111,7 @@ export const App = () => {
         <InstanceTable />
       </div>
 
+      <DropZone />
       <TrustDialog />
       <DeleteDialog />
       <GithubImportDialog />

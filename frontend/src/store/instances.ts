@@ -84,6 +84,7 @@ type InstancesState = {
   cancelDelete: () => void;
   remove: (id: string, opts: DeleteOpts) => Promise<void>;
   beginImportFile: () => Promise<void>;
+  importFromPath: (source: string) => Promise<void>;
   openGithub: () => void;
   setGithubSpec: (spec: string) => void;
   closeGithub: () => void;
@@ -358,13 +359,16 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
   // disk but stays HIDDEN — not refetched into the list — until the trust gate is
   // answered), then open the trust gate.
   beginImportFile: async () => {
+    const source = await pickRecipeFile();
+    if (source === undefined) return; // user cancelled the picker
+    await get().importFromPath(source);
+  },
+
+  // Ingest a recipe bundle from a known path (file picker or a window drop) → the
+  // instance exists on disk but stays HIDDEN until the trust gate is answered.
+  importFromPath: async (source) => {
     set({ importing: true, error: undefined });
     try {
-      const source = await pickRecipeFile();
-      if (source === undefined) {
-        set({ importing: false }); // user cancelled the picker
-        return;
-      }
       const { view, bumps } = await importRecipe(source);
       set({ importing: false, trust: { view, source, bumps } });
     } catch (error) {
