@@ -70,7 +70,11 @@ export function mergeRow(
     };
   }
   if (snapshot.kind === "connecting") {
-    return { ...base, running: false, services: deriveServices(base.webPorts, []), installed };
+    // No live snapshot yet — trust the server join baked into the base row
+    // (`list_instance_rows` joined a live engine read at fetch time). Zeroing `running` /
+    // `services` here would flash every running instance as "not running" (Start button,
+    // no live services) on every launch until the first snapshot arrives.
+    return { ...base, installed };
   }
   const container = snapshot.containers.find(
     (c) => c.instance === base.instanceId && c.state === "running",
