@@ -127,6 +127,28 @@ fn parse_rejects_malformed_specs() {
     }
 }
 
+#[test]
+fn parse_rejects_a_dots_only_repo_even_via_the_dot_git_strip() {
+    // A `.`/`..` repo passes the charset but would emit a literal dot-segment
+    // into the codeload URL path (`/owner/../tar.gz/HEAD`) and the provenance.
+    let bad = [
+        "owner/.",
+        "owner/..",
+        "owner/...",
+        "owner/...git", // `.git` strip turns this into `..`
+        "owner/..git",  // … and this into `.`
+    ];
+    for input in bad {
+        assert!(
+            parse_github_spec(input).is_err(),
+            "expected reject: {input:?}"
+        );
+    }
+    // Dots inside a real name stay fine (incl. a name that merely ends in dots).
+    assert_eq!(parse_github_spec("owner/re.po").unwrap().repo, "re.po");
+    assert_eq!(parse_github_spec("owner/repo..").unwrap().repo, "repo..");
+}
+
 // --- githubTarballUrl -------------------------------------------------------
 
 #[test]

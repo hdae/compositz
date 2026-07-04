@@ -89,10 +89,14 @@ pub fn parse_github_spec(input: &str) -> Result<GithubSpec, Error> {
     if !OWNER_RE.is_match(owner) {
         return Err(bad(input, &format!("bad owner \"{owner}\"")));
     }
-    // Tolerate a pasted `owner/repo.git` (a single trailing `.git`, like the Deno
-    // `/\.git$/` — `raw_repo` holds no `/`, so this is one path segment).
+    // Tolerate a pasted `owner/repo.git` (a single trailing `.git` —
+    // `raw_repo` holds no `/`, so this is one path segment).
     let repo = raw_repo.strip_suffix(".git").unwrap_or(raw_repo);
-    if !REPO_RE.is_match(repo) {
+    // The repo charset allows dots, but a dots-only repo (`.` / `..` — reachable
+    // as `owner/...git` after the strip) would put a real dot-segment into the
+    // codeload URL path. Clients normalize it away before sending (so it only
+    // 404s), but the URL and the recorded provenance MUST NOT carry one.
+    if !REPO_RE.is_match(repo) || repo.bytes().all(|b| b == b'.') {
         return Err(bad(input, &format!("bad repo \"{raw_repo}\"")));
     }
     for seg in sub_parts {
