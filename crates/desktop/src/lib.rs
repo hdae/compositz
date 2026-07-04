@@ -30,6 +30,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
         commands::instance_down,
         commands::instance_delete,
         commands::instance_duplicate,
+        commands::rename_instance,
         commands::get_config,
         commands::set_config,
         commands::import_recipe,

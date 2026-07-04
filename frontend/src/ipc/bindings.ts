@@ -73,6 +73,20 @@ async instanceDuplicate(id: string) : Promise<Result<ImportView, AppError>> {
 }
 },
 /**
+ * Set or clear the per-instance display name (`meta.name`). `None` — or a name
+ * that trims to empty / equals the manifest brand — clears the override, so the
+ * display returns to tracking the manifest name. Core re-validates the id at the
+ * path-touching sink; the row list reflects the change on the next fetch.
+ */
+async renameInstance(id: string, name: string | null) : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("rename_instance", { id, name }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * The Settings view-model for an instance: each manifest port/env/mount with its
  * author default + saved override, plus the host ports DEFINED by OTHER instances
  * and whether a restart is needed.
@@ -248,7 +262,15 @@ export type InstallEvent = { type: "log"; line: string } | { type: "done"; tag: 
 /**
  * One rendered dashboard row: an instance plus its derived runtime status.
  */
-export type InstanceRow = { instanceId: string; appId: string; name: string; version: string; description: string; webPorts: WebPort[]; 
+export type InstanceRow = { instanceId: string; appId: string; name: string; version: string; description: string; 
+/**
+ * Provenance: where the bundle came from (`meta.json` `source`), if recorded.
+ */
+source?: string | null; 
+/**
+ * Provenance: ISO-8601 creation time (`meta.json` `createdAt`), if recorded.
+ */
+createdAt?: string | null; webPorts: WebPort[]; 
 /**
  * Declared services, always listed from the definition; the live port fills in
  * when running.
@@ -287,6 +309,14 @@ instanceId: string;
  * The app (manifest id) this instance runs — a slug, for display/grouping.
  */
 appId: string; name: string; version: string; description: string; 
+/**
+ * Provenance: where the bundle came from (`meta.json` `source`), if recorded.
+ */
+source?: string | null; 
+/**
+ * Provenance: ISO-8601 creation time (`meta.json` `createdAt`), if recorded.
+ */
+createdAt?: string | null; 
 /**
  * Declared web ports (`web: true`). Live URLs are resolved against the container.
  */

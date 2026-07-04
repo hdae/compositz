@@ -15,8 +15,8 @@ use compositz_core::{
     export_mount as core_export_mount, ingest_bundle, ingest_github, install_instance,
     instance_image_tag, is_valid_instance_id, list_instances, load_instance, load_instance_config,
     load_launched_config, remove_instance_data, remove_instance_dir, remove_instance_image,
-    same_override, save_instance_config, to_container_statuses, to_instance_rows, to_instance_view,
-    up, validate_override, web_url,
+    same_override, save_instance_config, set_instance_name, to_container_statuses,
+    to_instance_rows, to_instance_view, up, validate_override, web_url,
 };
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -333,6 +333,27 @@ pub async fn set_config(
     Ok(SetConfigView {
         restart_needed: restart_needed(&instance, &over)?,
     })
+}
+
+/// Set or clear the per-instance display name (`meta.name`). `None` — or a name
+/// that trims to empty / equals the manifest brand — clears the override, so the
+/// display returns to tracking the manifest name. Core re-validates the id at the
+/// path-touching sink; the row list reflects the change on the next fetch.
+#[tauri::command]
+#[specta::specta]
+pub async fn rename_instance(
+    state: State<'_, AppState>,
+    id: String,
+    name: Option<String>,
+) -> Result<(), AppError> {
+    if !is_valid_instance_id(&id) {
+        return Err(AppError::bad_request(format!("invalid instance id: {id}")));
+    }
+    let store = state.store.clone();
+    tokio::task::spawn_blocking(move || set_instance_name(&store, &id, name))
+        .await
+        .map_err(|e| AppError::internal(format!("rename task failed: {e}")))??;
+    Ok(())
 }
 
 /// Import a recipe bundle from a local path (a tar / tar.gz archive file or a
