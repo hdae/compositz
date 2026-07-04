@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { RefreshCw, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -13,6 +14,35 @@ import { cn } from "@/lib/utils";
 import { installMockIfNeeded } from "@/ipc/client";
 import { useInstancesStore } from "@/store/instances";
 import { ThemeToggle } from "@/theme/ThemeToggle";
+
+/** Engine reachability, worn as a badge next to the app title. */
+const EngineBadge = ({ kind }: { kind: "connecting" | "online" | "offline" }) => {
+  if (kind === "online") {
+    return (
+      <Badge
+        variant="outline"
+        className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+      >
+        engine online
+      </Badge>
+    );
+  }
+  if (kind === "connecting") {
+    return (
+      <Badge variant="outline" className="text-muted-foreground">
+        connecting…
+      </Badge>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+    >
+      engine offline
+    </Badge>
+  );
+};
 
 export const App = () => {
   const init = useInstancesStore((s) => s.init);
@@ -51,13 +81,17 @@ export const App = () => {
       {/* Fixed toolbar over a scrolling list: the toolbar stays put while the cards
           scroll in the ScrollArea below (h-screen column, list takes the rest). */}
       <div className="flex h-screen flex-col">
-        <header className="flex shrink-0 items-center justify-end gap-2 border-b border-border px-6 py-3">
-          <ImportBar />
-          <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
-            <RefreshCw className={cn(loading && "animate-spin")} />
-            Refresh
-          </Button>
-          <ThemeToggle />
+        <header className="flex shrink-0 items-center gap-3 border-b border-border px-6 py-3">
+          <h1 className="text-lg font-semibold tracking-tight">compositz</h1>
+          <EngineBadge kind={snapshot.kind} />
+          <div className="ml-auto flex items-center gap-2">
+            <ImportBar />
+            <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
+              <RefreshCw className={cn(loading && "animate-spin")} />
+              Refresh
+            </Button>
+            <ThemeToggle />
+          </div>
         </header>
 
         <ScrollArea className="min-h-0 flex-1">
