@@ -281,7 +281,7 @@ How recipes are ingested, where data lives, and how launches are customized. Ful
   handler is event-driven. Verified against the real engine.
 
 **Why:** the user's outputs must land on the host where they're reachable (v1's named-volume-only
-persistence — [run.ts](../packages/core/src/recipe/run.ts) — hides them); and keeping every field a
+persistence — run.ts — hides them); and keeping every field a
 direct Docker concept makes the tool a thin, learnable layer over Docker rather than a new DSL.
 
 **Consequences:** `manifest.ts` (Zod) + recipe-format + the example recipe all move to v2 in RI-1;
@@ -293,8 +293,8 @@ Windows bind-path handling.
 ## ADR-015 — Manifest v2 core: structured Mounts + CreateMountpoint, managed cache layout · ✅ Accepted (verified)
 
 The implementation decisions settled while building RI-1 (the "Open details" ADR-014 deferred).
-Code: [manifest.ts](../packages/core/src/recipe/manifest.ts),
-[run.ts](../packages/core/src/recipe/run.ts), [storage.ts](../packages/core/src/storage.ts).
+Code: manifest.ts,
+run.ts, storage.ts.
 
 - **Mounts, not legacy `Binds`.** Every mount/cache goes through `HostConfig.Mounts`
   (`Type: bind|volume`, `Source`, `Target`), which is unambiguous on Windows (a `C:\…` bind source
