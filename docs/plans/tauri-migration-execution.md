@@ -259,6 +259,13 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
         生成。**検証: tsc-b+vp check(既知warning3)+vp test(exit0)+vp build 緑 / 実ブラウザ CDP 20/20 + 4c・
         UI-fix 回帰緑 / 敵対的レビュー(並行性7観点=全 holds、mock dead-disposer nit のみ修正、実バグ無し)。
         Settings の実 backend 実挙動は Windows 送り(mock は合成 settings)。**
-      - 4e〜4f: banners/drag-drop/open/export(exportMount+save picker) + parity 総点検 + scaffold 残骸掃除
-        (README/AGENTS/`shadcn` dep)。
+      - 4e(0251b57 export / a15ec3a drag-drop): **export + drag-drop**。client に exportMount/pickSaveDest
+        (native save ダイアログ、mock は合成パス)、SettingsPanel の Storage に Export ボタン(保存先選択→
+        exportMount)。DropZone=ウィンドウ全体ドロップ取込(**実 Tauri は onDragDropEvent の PATH**を受け=
+        HTML drop は Tauri が横取り、ブラウザ dev は HTML drag+合成パス)、file picker と同じ import→trust へ。
+        store の import を importFromPath に共有化。banners(offline/notice/error)は 4c で実装済み。**検証:
+        tsc/vp check(既知warning3)/vp test(exit0)/vp build 緑 + 実ブラウザ CDP 13/13 + 全回帰緑。onDragDropEvent
+        と実 save/export は Windows 送り(ブラウザは合成/no-op)。** NOTE: `@tauri-apps/api/webview` は既に静的
+        bundle 済み→動的 import は無効、静的 import + guard 呼び出しに。
+      - 4f(Phase 4 最終): parity 総点検 + scaffold 残骸掃除(frontend/README.md・AGENTS.md・`shadcn` dep)。
 - [ ] Phase 5 — parity + docs + 退役（+ Windows 実機確認 #3）
