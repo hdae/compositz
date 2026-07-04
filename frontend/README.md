@@ -1,32 +1,47 @@
-# React + TypeScript + Vite
+# compositz — desktop frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The React UI for the compositz Tauri desktop app: a dashboard for running local‑AI
+apps as isolated Docker containers (import a recipe → build → start → open). The Rust
+core + Tauri shell live in [`../crates`](../crates); this package is the webview.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **React 19** + **[vite-plus](https://viteplus.dev) (`vp`)** — dev server, build, lint
+  (Oxlint), format (Oxfmt), test (Vitest‑compatible).
+- **Tailwind CSS v4** + **[Base UI](https://base-ui.com)** components (shadcn `base-nova`
+  style — see `src/components/ui/`).
+- **zustand** for dashboard state; **lucide-react** icons; **Geist** font.
 
-## React Compiler
+## Backend seam
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Everything crosses one seam so nothing else touches Tauri directly:
 
-## Expanding the Oxlint configuration
+- `src/ipc/bindings.ts` — **generated** by `tauri-specta` (the desktop crate's
+  `export_bindings` test). Do not edit by hand; it is `@ts-nocheck` and excluded from
+  fmt/lint.
+- `src/ipc/client.ts` — the typed wrapper over `bindings`: `Result → throw` unwrapping,
+  request/response commands, and `Channel` subscriptions (snapshots, install/runtime
+  logs). Also the native dialog seams (`pickRecipeFile` / `pickSaveDest`).
+- `src/ipc/mock.ts` — a **dev‑only** stateful fake of the backend. Loaded only under
+  plain `vp dev` in a browser (no Tauri); tree‑shaken from the production build. Lets the
+  whole UI run and be clicked through without the Rust backend.
+- `src/store/instances.ts` — the dashboard store (server‑confirmed, **no optimistic
+  updates**); `src/lib/rows.ts` — merges the base rows with the live snapshot.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## Develop
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```sh
+vp dev            # browser dev with the mock IPC (or drive the real app via `cargo tauri dev`)
+vp check          # format + lint + typecheck  (--fix to auto-fix)
+vp test run       # tests (none yet — passWithNoTests)
+tsc -b && vp build
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Add a shadcn component (Base UI, never hand‑written):
+
+```sh
+pnpm dlx shadcn@latest add <name>   # base-nova style is configured in components.json
+```
+
+Real Docker‑backed behavior (drag‑drop file paths, native dialogs, container logs) is
+exercised in the packaged desktop app, not in browser dev.
