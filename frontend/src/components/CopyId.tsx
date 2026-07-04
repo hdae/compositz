@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { MouseEvent } from "react";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -13,7 +14,10 @@ export const CopyId = ({ id, className }: { id: string; className?: string }) =>
 
   useEffect(() => () => clearTimeout(timer.current), []);
 
-  const copy = async () => {
+  // Copying must never double as a click on whatever surface hosts the id (the
+  // card header toggles on click) — stop propagation here, at the source.
+  const copy = async (e: MouseEvent) => {
+    e.stopPropagation();
     try {
       await navigator.clipboard.writeText(id);
       setCopied(true);

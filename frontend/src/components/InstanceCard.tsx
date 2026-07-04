@@ -62,10 +62,7 @@ export const InstanceCard = ({ vm, engineOnline }: Props) => {
             <span className="truncate font-medium">{row.name}</span>
             <StatusPill installed={row.installed} running={row.running} />
           </div>
-          <span
-            className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
             <span className="shrink-0">v{row.version} ·</span>
             <CopyId id={row.instanceId} className="text-muted-foreground/80" />
           </span>
