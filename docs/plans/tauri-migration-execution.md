@@ -217,8 +217,14 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
         stream) + up + down + open**。**未着手(4c〜4f 送り)**: delete/duplicate/import dialog、settings/services
         detail タブ、trust dialog、drag-drop、stream_logs(runtime log)、テスト。**新規 shadcn 追加なし**
         (table/badge/button/scroll-area 既存で充足)。**検証: vp check 緑(既知 warning 2 のみ)/ tsc -b + vp
-        build 緑 / dev サーバで新規13モジュール transform 200・エラー0。★ブラウザ実機(vp dev + mockIPC)と
-        Windows 実 backend の UI 動作確認は未 — headless で JS 実行検証は不可**。
+        build 緑 / dev サーバで新規13モジュール transform 200・エラー0。**★実ブラウザ検証済み（headless
+        chromium を CDP 直叩きで駆動し list/install/up/down/open/theme を実クリック確認、5/5 安定）。**
+        Windows 実 backend の UI 動作確認は Phase 4/5 の節目。
+      - 4b-fix(361e380): browser-dev の **Start/Stop 約2/3で無反応**を修正。dev mock の disposer が
+        `snapshotPushers.clear()` でグローバル全消し + StrictMode の捨てマウント遅延 cleanup が live 購読を
+        巻き込み pusher=0 に→ up/down の snapshot が誰にも届かない（初回 snapshot は配信済みで list は正常
+        に見える）。mock を install 冪等・disposer no-op のページ寿命 singleton に。実 backend は mock 非
+        搭載で影響なし。**vitest/happy-dom は import 解決順レースを再現せず、実 chromium+CDP で特定。**
       - 4c〜4f: dialogs(trust/delete/duplicate/import) → detail タブ(build/runtime log・services・settings) →
         banners/drag-drop/open/export + parity 総点検 + scaffold 残骸掃除(README/AGENTS/`shadcn` dep)。
 - [ ] Phase 5 — parity + docs + 退役（+ Windows 実機確認 #3）
