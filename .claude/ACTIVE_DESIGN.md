@@ -6,15 +6,16 @@
 
 ## Current focus
 
-**Tauri 移行は完遂（ADR-028）・Deno ツリー退役済み・UI カード化デザイン調整も完了
-（2026-07-05, ユーザー実機確認済み）。** レビュー（5領域敵対的 → high/med 0）、docs 大改訂、
-コメント一掃、schema/bindings の生成コミット化、クリーンビルド、そして UI 刷新
-（テーブル → 開閉カード / 固定ツールバー+ScrollArea / icon-only アクション+⋯メニュー /
-shadcn Select / ポート検証 / ヘッダー接続バッジ）まで済み。shadcn は CLI 再取得で
-出所検証済み（fmt 正規化後 8/10 バイト一致）。
+**Phase 3 update アーク実装済み（2026-07-05, ADR-029）— Windows 実機確認待ち。**
+Slice A = provenance 表示（source/createdAt/updatedAt を view/row/ls へ）+ Rename UI
+（`set_instance_name`、空欄/brand 同名は override 解除=manifest 追従）。Slice B =
+in-place update（prepare→再trust→commit の2段 staging、GitHub 由来のみ、appId 不変
+MUST、id/volumes/config.yaml 維持、旧 image 回収は旧 manifest 基準）。敵対的レビュー
+3視点 → high 0・med 4 全修正（load_instance の .old-app 自己修復 / commit 前 ping /
+fetching 中 Cancel+identity ガード / staged version 照合）。
 
-**NEXT: [roadmap](../docs/roadmap.md) Phase 3（★in-place update アーク / provenance 表示 /
-volumes GC / manifest 表現力）— または追加のデザイン微調整。**
+**NEXT: Windows 実機確認（update フロー★主眼）→ Slice C（user-facing build args +
+--no-cache）or roadmap Phase 3 の他項目（volumes GC / manifest 表現力）。**
 **wslc は microsoft/WSL#40976 が動くまで保留**（プロジェクトの根幹の賭け —
 memory [[wsl-containers-recon]]）。
 
@@ -76,8 +77,10 @@ memory [[wsl-containers-recon]]）。
 
 ## Resume point
 
-レビュー + docs + Deno 退役 + クリーンビルド + **UI カード化**（8ed0e00〜663defd の 7 コミット、
-ユーザー実機確認済み）まで完了。UI 実装の落とし穴は Pitfalls 参照（ScrollArea の max-h は
-viewport 側 / stopPropagation は発生源で / port 入力は text+inputMode=numeric）。
-次は **roadmap Phase 3（update アーク）** が本命。バンドル 521kB の chunk 警告は容認中
-（ローカル webview、必要なら chunkSizeWarningLimit）。
+**update アーク（Slice A+B）完了**: 5fbd973〜671d7ba の 11 コミット（core/cli/desktop/ui/
+docs + レビュー修正 4）。全ゲート緑（core+cli 15 suites / desktop clippy+bindings /
+frontend tsc+check+build）。**未了 = Windows 実機確認**（update フロー・rename・ls 列・
+engine 停止時の commit 拒否）。既知の残余: superseded image 回収漏れは GC 対象
+（known-issues 記録済み）/ commit 成功後 reloadRows 失敗の stale 表示は banner 通知で
+自己回復。バンドル 521kB 警告は容認中。**Slice C（build args / --no-cache）は未計画 —
+着手前に要計画承認。**
