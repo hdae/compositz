@@ -32,6 +32,7 @@ import type {
   PublishedPort,
   SetConfigView,
   SnapshotEvent,
+  UpdatePreview,
   UpView,
   WebPort,
 } from "./bindings";
@@ -49,6 +50,7 @@ type Def = {
   description: string;
   source: string | null;
   createdAt: string | null;
+  updatedAt: string | null;
   webPorts: WebPort[];
 };
 
@@ -67,6 +69,7 @@ const DEFS: Def[] = [
       "The most powerful and modular diffusion model GUI, with a graph/nodes interface for designing and executing advanced Stable Diffusion pipelines — supports SD1.x/SD2.x/SDXL/Flux, ControlNet, LoRAs, and fully offline local inference.",
     source: "github:comfyanonymous/ComfyUI",
     createdAt: "2026-06-20T12:00:00Z",
+    updatedAt: null,
     webPorts: [webPort("web", 8188, 8188)],
   },
   {
@@ -78,6 +81,7 @@ const DEFS: Def[] = [
     description: "Speech-to-text transcription UI.",
     source: "file:C:/Users/dev/recipes/whisper-webui.tar.gz",
     createdAt: "2026-07-01T08:30:00Z",
+    updatedAt: null,
     webPorts: [webPort("web", 7860, 7861)],
   },
   {
@@ -89,6 +93,7 @@ const DEFS: Def[] = [
     description: "A tiny demo web app.",
     source: "upload",
     createdAt: "2026-07-04T18:00:00Z",
+    updatedAt: null,
     webPorts: [webPort("web", 8080, 8090)],
   },
 ];
@@ -128,6 +133,7 @@ function buildRow(d: Def): InstanceRow {
     description: d.description,
     source: d.source,
     createdAt: d.createdAt,
+    updatedAt: d.updatedAt,
     webPorts: d.webPorts,
     services: deriveServices(d.webPorts, live),
     installed: s.installed,
@@ -156,6 +162,7 @@ function viewOf(d: Def): InstanceView {
     description: d.description,
     source: d.source,
     createdAt: d.createdAt,
+    updatedAt: d.updatedAt,
     webPorts: d.webPorts,
     imageTag: `compositz/${d.instanceId}:${d.version}`,
   };
@@ -184,6 +191,7 @@ function synthImport(source: string): ImportView {
     description: `Imported from ${source}.`,
     source: isGithub ? source : `file:${source}`,
     createdAt: new Date().toISOString(),
+    updatedAt: null,
     webPorts: [webPort("web", 8000, 9000 + importCounter)],
   };
   DEFS.push(d);
@@ -195,6 +203,9 @@ function synthImport(source: string): ImportView {
 
 /** Per-instance saved launch override (mirrors config.yaml) — drives get/set_config. */
 const savedOverrides: Record<string, Override> = {};
+
+/** Staged (prepared, not yet trusted) updates — mirrors `<instance>/.update/`. */
+const pendingUpdates = new Map<string, { source: string; version: string }>();
 
 /** Synthesize a Settings view-model: ports from the def + a sample env var + a mount. */
 function settingsOf(id: string): InstanceSettings {
@@ -398,6 +409,7 @@ export function installBrowserMock(): () => void {
           name: `${src.name} (copy)`,
           source: `duplicate:${src.instanceId}`,
           createdAt: new Date().toISOString(),
+          updatedAt: null, // a fresh copy has never been updated in place
           webPorts,
         };
         DEFS.push(dupDef);
@@ -412,6 +424,57 @@ export function installBrowserMock(): () => void {
         delete state[id];
         broadcastSnapshot(); // reflect it leaving the running set, if it was up
         return { warning: null } satisfies DeleteView;
+      }
+
+      case "update_prepare": {
+        const id = String(field(payload, "id"));
+        const d = def(id);
+        if (!d.source?.startsWith("github:")) {
+          throw new Error("only GitHub-sourced instances can be updated in place");
+        }
+        const rawRef = field(payload, "newRef");
+        const ref = typeof rawRef === "string" ? rawRef.trim() : "";
+        const base = d.source.split("@")[0] ?? d.source;
+        const source = ref === "" ? base : `${base}@${ref}`;
+        // Synthesize "upstream moved on": bump the patch version.
+        const parts = d.version.split(".").map((n) => Number(n) || 0);
+        parts[2] = (parts[2] ?? 0) + 1;
+        const newVersion = parts.join(".");
+        pendingUpdates.set(id, { source, version: newVersion });
+        return {
+          instanceId: id,
+          source,
+          currentVersion: d.version,
+          newVersion,
+          newName: d.brand,
+          newDescription: d.description,
+        } satisfies UpdatePreview;
+      }
+
+      case "update_commit": {
+        const id = String(field(payload, "id"));
+        const staged = pendingUpdates.get(id);
+        if (!staged) throw new Error("no prepared update to commit");
+        pendingUpdates.delete(id);
+        const d = def(id);
+        d.version = staged.version;
+        d.source = staged.source;
+        d.updatedAt = new Date().toISOString();
+        // Mirror the real backend: the old container is stopped, and the version
+        // change means the new image tag is not built yet.
+        const s = state[id];
+        if (s) {
+          s.running = false;
+          s.accepting = false;
+          s.installed = false;
+          broadcastSnapshot();
+        }
+        return viewOf(d);
+      }
+
+      case "update_discard": {
+        pendingUpdates.delete(String(field(payload, "id")));
+        return null;
       }
 
       case "rename_instance": {

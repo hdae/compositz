@@ -1,4 +1,4 @@
-import { ChevronRight, Copy, Loader2, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { ChevronRight, Copy, Loader2, MoreVertical, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -33,9 +33,12 @@ export const InstanceCard = ({ vm, engineOnline }: Props) => {
   const duplicate = useInstancesStore((s) => s.duplicate);
   const requestDelete = useInstancesStore((s) => s.requestDelete);
   const requestRename = useInstancesStore((s) => s.requestRename);
+  const requestUpdate = useInstancesStore((s) => s.requestUpdate);
   const toggleExpanded = useInstancesStore((s) => s.toggleExpanded);
 
   const menuBusy = duplicating || deleting;
+  // In-place update needs a re-fetchable origin — only a GitHub source has one.
+  const canUpdate = row.source?.startsWith("github:") ?? false;
 
   return (
     <section className="rounded-xl border border-border bg-card text-card-foreground">
@@ -92,6 +95,14 @@ export const InstanceCard = ({ vm, engineOnline }: Props) => {
                 <Pencil />
                 Rename
               </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={menuBusy || !canUpdate}
+                title={canUpdate ? undefined : "Only GitHub-sourced instances can update in place"}
+                onClick={() => requestUpdate(row)}
+              >
+                <RefreshCw />
+                Update
+              </DropdownMenuItem>
               <DropdownMenuItem disabled={menuBusy} onClick={() => void duplicate(row.instanceId)}>
                 <Copy />
                 Duplicate
@@ -117,16 +128,20 @@ export const InstanceCard = ({ vm, engineOnline }: Props) => {
                 {row.description}
               </p>
             )}
-            {(row.source || row.createdAt) && (
+            {(row.source || row.createdAt || row.updatedAt) && (
               <p className="text-xs text-muted-foreground/80">
                 {row.source && (
                   <>
                     From <span className="font-mono break-all">{row.source}</span>
                   </>
                 )}
-                {row.source && row.createdAt && " · "}
+                {row.source && (row.createdAt || row.updatedAt) ? " · " : null}
                 {row.createdAt && (
                   <span title={row.createdAt}>created {formatRelativeAge(row.createdAt)}</span>
+                )}
+                {row.createdAt && row.updatedAt ? " · " : null}
+                {row.updatedAt && (
+                  <span title={row.updatedAt}>updated {formatRelativeAge(row.updatedAt)}</span>
                 )}
               </p>
             )}

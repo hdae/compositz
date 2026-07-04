@@ -28,8 +28,18 @@ import {
   pickRecipeFile,
   renameInstance,
   subscribeInstances,
+  updateCommit,
+  updateDiscard,
+  updatePrepare,
 } from "@/ipc/client";
-import type { DeleteOpts, InstanceRow, InstanceView, PortBump, Subscription } from "@/ipc/client";
+import type {
+  DeleteOpts,
+  InstanceRow,
+  InstanceView,
+  PortBump,
+  Subscription,
+  UpdatePreview,
+} from "@/ipc/client";
 
 /** The three run-state actions that spin the primary Start/Stop/Install control. */
 export type BusyKind = "starting" | "stopping" | "installing";
@@ -45,6 +55,19 @@ export type GithubState = { spec: string; submitting: boolean; error: string | u
 
 /** The rename dialog state: the target row and the name being edited. */
 export type RenameState = { row: InstanceRow; name: string; saving: boolean };
+
+/**
+ * The update dialog state. `input` = editing the ref; `fetching` = prepare in
+ * flight; `preview` = staged, awaiting the re-trust decision; `committing` =
+ * applying. The preview is present from `preview` on.
+ */
+export type UpdateState = {
+  row: InstanceRow;
+  ref: string;
+  phase: "input" | "fetching" | "preview" | "committing";
+  preview: UpdatePreview | undefined;
+  error: string | undefined;
+};
 
 type InstancesState = {
   baseRows: InstanceRow[];
@@ -76,6 +99,8 @@ type InstancesState = {
   deleteTarget: InstanceRow | undefined;
   /** The rename dialog, when open. */
   rename: RenameState | undefined;
+  /** The in-place update dialog, when open. */
+  update: UpdateState | undefined;
 
   init: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -92,6 +117,11 @@ type InstancesState = {
   setRenameName: (name: string) => void;
   cancelRename: () => void;
   submitRename: () => Promise<void>;
+  requestUpdate: (row: InstanceRow) => void;
+  setUpdateRef: (ref: string) => void;
+  cancelUpdate: () => void;
+  checkUpdate: () => Promise<void>;
+  confirmUpdate: () => Promise<void>;
   remove: (id: string, opts: DeleteOpts) => Promise<void>;
   beginImportFile: () => Promise<void>;
   importFromPath: (source: string) => Promise<void>;
@@ -151,6 +181,7 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
   github: undefined,
   deleteTarget: undefined,
   rename: undefined,
+  update: undefined,
 
   init: async () => {
     const token = ++sessionToken;
@@ -449,6 +480,63 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
     if (!t) return;
     set({ trust: undefined });
     await get().remove(t.view.instanceId, { volumes: true, bindData: false });
+  },
+
+  // Open the update dialog with the ref prefilled from the recorded source
+  // (`github:owner/repo[/subdir][@ref]` — the part after the last `@`, if any).
+  requestUpdate: (row) => {
+    const source = row.source ?? "";
+    const at = source.lastIndexOf("@");
+    const ref = at === -1 ? "" : source.slice(at + 1);
+    set({ update: { row, ref, phase: "input", preview: undefined, error: undefined } });
+  },
+
+  setUpdateRef: (ref) =>
+    set((s) => (s.update && s.update.phase === "input" ? { update: { ...s.update, ref } } : {})),
+
+  // Close the dialog. A staged (previewed) update is discarded server-side —
+  // fire-and-forget, a new prepare replaces any leftover staging anyway. Mid-flight
+  // phases can't cancel (the backend call is already running).
+  cancelUpdate: () => {
+    const u = get().update;
+    if (!u || u.phase === "fetching" || u.phase === "committing") return;
+    if (u.phase === "preview") {
+      void updateDiscard(u.row.instanceId).catch(() => {});
+    }
+    set({ update: undefined });
+  },
+
+  // Prepare: download + stage the (new) ref, then show the re-trust preview. On
+  // failure stay on the input phase with the error, so the ref can be corrected.
+  checkUpdate: async () => {
+    const u = get().update;
+    if (!u || u.phase !== "input") return;
+    set({ update: { ...u, phase: "fetching", error: undefined } });
+    try {
+      const preview = await updatePrepare(u.row.instanceId, u.ref.trim());
+      set((s) => (s.update ? { update: { ...s.update, phase: "preview", preview } } : {}));
+    } catch (error) {
+      set((s) =>
+        s.update ? { update: { ...s.update, phase: "input", error: describe(error) } } : {},
+      );
+    }
+  },
+
+  // Trust = update: swap the bundle server-side (stops the old container), then
+  // reflect via refetch and rebuild with the streamed install log — the same
+  // action-driven flow as a fresh import's trust.
+  confirmUpdate: async () => {
+    const u = get().update;
+    if (!u || u.phase !== "preview") return;
+    set({ update: { ...u, phase: "committing" } });
+    try {
+      await updateCommit(u.row.instanceId);
+      set({ update: undefined });
+      await get().reloadRows();
+      await get().install(u.row.instanceId);
+    } catch (error) {
+      set({ update: undefined, error: `update ${u.row.instanceId} failed: ${describe(error)}` });
+    }
   },
 
   setTab: (id, tab) => set((s) => ({ tabByInstance: { ...s.tabByInstance, [id]: tab } })),

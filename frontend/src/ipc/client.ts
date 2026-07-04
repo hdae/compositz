@@ -23,6 +23,7 @@ import type {
   Result,
   SetConfigView,
   SnapshotEvent,
+  UpdatePreview,
   UpView,
 } from "./bindings";
 
@@ -44,6 +45,7 @@ export type {
   Service,
   SetConfigView,
   SnapshotEvent,
+  UpdatePreview,
   UpView,
 } from "./bindings";
 
@@ -133,6 +135,25 @@ export async function renameInstance(id: string, name: string | null): Promise<v
 /** Import a recipe from a GitHub spec (`owner/repo[/subdir][@ref]`, public repos only). */
 export async function importGithub(spec: string): Promise<ImportView> {
   return unwrap(await commands.importGithub(spec));
+}
+
+/**
+ * Stage an in-place update (GitHub-sourced instances only) and return the
+ * re-trust preview. `newRef` overrides the recorded ref; empty ⇒ default branch.
+ * Nothing live changes until `updateCommit`.
+ */
+export async function updatePrepare(id: string, newRef: string): Promise<UpdatePreview> {
+  return unwrap(await commands.updatePrepare(id, newRef));
+}
+
+/** Apply a prepared update: swap the bundle, stop the old container, reclaim the old image. */
+export async function updateCommit(id: string): Promise<void> {
+  unwrap(await commands.updateCommit(id));
+}
+
+/** Drop a prepared update (idempotent); the instance is untouched. */
+export async function updateDiscard(id: string): Promise<void> {
+  unwrap(await commands.updateDiscard(id));
 }
 
 /**
