@@ -1,28 +1,43 @@
 // The dashboard store. Holds the base rows (from `list_instance_rows`) and the live
-// snapshot (from `subscribe_instances`), and drives the up / down / install actions.
+// snapshot (from `subscribe_instances`), and drives the up / down / install / delete /
+// duplicate / import actions.
 //
-// Deliberately NO optimistic updates (a hard user preference): an action never flips
-// `running` / `installed` itself. `running` and published ports come only from the
-// snapshot stream (server-confirmed); `installed` flips only when `instance_install`
-// reports `done`. While an action is in flight the row shows a transient `busy`
-// spinner — an "in progress" signal, not a guessed outcome — cleared when the call
-// settles; the real state then arrives via the snapshot.
+// Deliberately NO optimistic updates (a hard user preference): an action never guesses
+// the outcome. `running` + published ports come only from the snapshot stream;
+// `installed` flips only when `instance_install` reports `done`. Structural changes
+// (import, duplicate, delete) mutate the store's `baseRows` ONLY by refetching
+// `list_instance_rows` AFTER the server confirms — so `baseRows` is always a derived
+// view of server truth, never a hand-maintained insert/remove that could diverge. While
+// an action is in flight the row shows a transient `busy` / `deleting` / `duplicating`
+// spinner — an "in progress" signal, not a guessed outcome.
 
 import { useMemo } from "react";
 import { create } from "zustand";
 import { mergeRow } from "@/lib/rows";
 import type { LiveSnapshot } from "@/lib/rows";
 import {
+  deleteInstance,
+  duplicateInstance,
+  importGithub,
+  importRecipe,
   installInstance,
   instanceDown,
   instanceUp,
   listInstanceRows,
   openServiceUrl,
+  pickRecipeFile,
   subscribeInstances,
 } from "@/ipc/client";
-import type { InstanceRow, Subscription } from "@/ipc/client";
+import type { DeleteOpts, InstanceRow, InstanceView, PortBump, Subscription } from "@/ipc/client";
 
+/** The three run-state actions that spin the primary Start/Stop/Install control. */
 export type BusyKind = "starting" | "stopping" | "installing";
+
+/** A freshly-imported instance awaiting the trust ("install?") decision. */
+export type TrustState = { view: InstanceView; source: string; bumps: PortBump[] };
+
+/** The GitHub-import modal state: the in-progress spec, whether a fetch is running, last error. */
+export type GithubState = { spec: string; submitting: boolean; error: string | undefined };
 
 type InstancesState = {
   baseRows: InstanceRow[];
@@ -30,21 +45,48 @@ type InstancesState = {
   /** Rows that flipped to installed since load (via an `instance_install` `done`). */
   installedOverride: Record<string, boolean>;
   busy: Record<string, BusyKind>;
+  /** A duplicate is in flight for this instance (separate from run-state busy). */
+  duplicating: Record<string, boolean>;
+  /** A delete is in flight for this instance — its row controls are disabled meanwhile. */
+  deleting: Record<string, boolean>;
   /** Accumulated build-log lines per instance (the streaming install output). */
   buildLog: Record<string, string[]>;
   expanded: Record<string, boolean>;
   loading: boolean;
   ready: boolean;
   error: string | undefined;
+  /** Non-error info (port reassignments, partial-outcome delete warnings). */
+  notice: string | undefined;
+  /** A recipe import (file pick + ingest) is running. */
+  importing: boolean;
+  /** The trust gate: a just-imported recipe awaiting an install / discard choice. */
+  trust: TrustState | undefined;
+  /** The GitHub-import modal, when open. */
+  github: GithubState | undefined;
+  /** The instance whose delete-confirm dialog is open. */
+  deleteTarget: InstanceRow | undefined;
 
   init: () => Promise<void>;
   refresh: () => Promise<void>;
+  reloadRows: () => Promise<void>;
   up: (id: string) => Promise<void>;
   down: (id: string) => Promise<void>;
   install: (id: string) => Promise<void>;
   open: (url: string) => Promise<void>;
+  duplicate: (id: string) => Promise<void>;
+  requestDelete: (row: InstanceRow) => void;
+  cancelDelete: () => void;
+  remove: (id: string, opts: DeleteOpts) => Promise<void>;
+  beginImportFile: () => Promise<void>;
+  openGithub: () => void;
+  setGithubSpec: (spec: string) => void;
+  closeGithub: () => void;
+  submitGithub: () => Promise<void>;
+  trustInstall: () => Promise<void>;
+  trustReject: () => Promise<void>;
   toggleExpanded: (id: string) => void;
   dismissError: () => void;
+  dismissNotice: () => void;
   teardown: () => void;
 };
 
@@ -66,16 +108,29 @@ function without<T>(record: Record<string, T>, key: string): Record<string, T> {
   return next;
 }
 
-export const useInstancesStore = create<InstancesState>((set) => ({
+/** The user-facing notice for a duplicate whose host ports had to be reassigned. */
+function duplicateBumpNotice(id: string, bumps: PortBump[]): string {
+  const list = bumps.map((b) => `${b.name} ${b.from}→${b.to}`).join(", ");
+  return `Duplicated as ${id} — host port reassigned: ${list}. You can change it in Settings.`;
+}
+
+export const useInstancesStore = create<InstancesState>((set, get) => ({
   baseRows: [],
   snapshot: { kind: "connecting" },
   installedOverride: {},
   busy: {},
+  duplicating: {},
+  deleting: {},
   buildLog: {},
   expanded: {},
   loading: false,
   ready: false,
   error: undefined,
+  notice: undefined,
+  importing: false,
+  trust: undefined,
+  github: undefined,
+  deleteTarget: undefined,
 
   init: async () => {
     const token = ++sessionToken;
@@ -124,6 +179,21 @@ export const useInstancesStore = create<InstancesState>((set) => ({
       set({ baseRows: rows, loading: false });
     } catch (error) {
       set({ loading: false, error: describe(error) });
+    }
+  },
+
+  // Quiet refetch of `baseRows` after a confirmed structural mutation — no page-level
+  // loading flag (the acting row already shows its own spinner). This is the ONLY way
+  // rows are added/removed, so the list stays a pure function of server truth.
+  reloadRows: async () => {
+    const token = sessionToken;
+    try {
+      const rows = await listInstanceRows();
+      if (token !== sessionToken) return;
+      set({ baseRows: rows });
+    } catch (error) {
+      if (token !== sessionToken) return;
+      set({ error: describe(error) });
     }
   },
 
@@ -204,10 +274,113 @@ export const useInstancesStore = create<InstancesState>((set) => ({
     }
   },
 
+  // Duplicate = a fresh deployment of the same app: bundle + settings minus ports (they
+  // are reassigned server-side), no data. Server-confirmed: the new row appears only
+  // from the refetch, and any port reassignment is surfaced as a notice.
+  duplicate: async (id) => {
+    set((s) => ({
+      duplicating: { ...s.duplicating, [id]: true },
+      error: undefined,
+      notice: undefined,
+    }));
+    try {
+      const { view, bumps } = await duplicateInstance(id);
+      await get().reloadRows();
+      if (bumps.length) set({ notice: duplicateBumpNotice(view.instanceId, bumps) });
+    } catch (error) {
+      set({ error: `duplicate ${id} failed: ${describe(error)}` });
+    } finally {
+      set((s) => ({ duplicating: without(s.duplicating, id) }));
+    }
+  },
+
+  requestDelete: (row) => set({ deleteTarget: row }),
+  cancelDelete: () => set({ deleteTarget: undefined }),
+
+  // Delete server-side, then drop the row via a refetch — the row lingers with a
+  // `deleting` spinner through the round-trip rather than being optimistically removed
+  // (and rolled back on failure). On success the per-id transient state is cleaned up.
+  remove: async (id, opts) => {
+    set((s) => ({ deleting: { ...s.deleting, [id]: true }, error: undefined, notice: undefined }));
+    try {
+      const { warning } = await deleteInstance(id, opts);
+      await get().reloadRows();
+      set((s) => ({
+        buildLog: without(s.buildLog, id),
+        expanded: without(s.expanded, id),
+        installedOverride: without(s.installedOverride, id),
+        notice: warning ? `delete ${id}: ${warning}` : s.notice,
+      }));
+    } catch (error) {
+      set({ error: `delete ${id} failed: ${describe(error)}` });
+    } finally {
+      set((s) => ({ deleting: without(s.deleting, id) }));
+    }
+  },
+
+  // Import a recipe bundle: pick a path, ingest it server-side (the instance exists on
+  // disk but stays HIDDEN — not refetched into the list — until the trust gate is
+  // answered), then open the trust gate.
+  beginImportFile: async () => {
+    set({ importing: true, error: undefined });
+    try {
+      const source = await pickRecipeFile();
+      if (source === undefined) {
+        set({ importing: false }); // user cancelled the picker
+        return;
+      }
+      const { view, bumps } = await importRecipe(source);
+      set({ importing: false, trust: { view, source, bumps } });
+    } catch (error) {
+      set({ importing: false, error: `import failed: ${describe(error)}` });
+    }
+  },
+
+  openGithub: () => set({ github: { spec: "", submitting: false, error: undefined } }),
+  setGithubSpec: (spec) => set((s) => (s.github ? { github: { ...s.github, spec } } : {})),
+  closeGithub: () => set((s) => (s.github && !s.github.submitting ? { github: undefined } : {})),
+
+  // GitHub import: download + ingest the codeload tarball, then hand off to the trust
+  // gate (same server-confirmed hidden-until-trusted flow as a file import). On failure
+  // keep the modal open with the error so the spec can be fixed and retried.
+  submitGithub: async () => {
+    const g = get().github;
+    const spec = g?.spec.trim();
+    if (!g || !spec || g.submitting) return;
+    set({ github: { ...g, submitting: true, error: undefined } });
+    try {
+      const { view, bumps } = await importGithub(spec);
+      set({ github: undefined, trust: { view, source: `github:${spec}`, bumps } });
+    } catch (error) {
+      set((s) => ({
+        github: s.github ? { ...s.github, submitting: false, error: describe(error) } : undefined,
+      }));
+    }
+  },
+
+  // Trust = Yes: reveal the imported row (it is already on disk — server-confirmed, not
+  // optimistic) and build it now, streaming the log into its panel.
+  trustInstall: async () => {
+    const t = get().trust;
+    if (!t) return;
+    set({ trust: undefined });
+    await get().reloadRows();
+    await get().install(t.view.instanceId);
+  },
+
+  // Trust = No: the just-imported instance is removed entirely (nothing was built).
+  trustReject: async () => {
+    const t = get().trust;
+    if (!t) return;
+    set({ trust: undefined });
+    await get().remove(t.view.instanceId, { volumes: true, bindData: false });
+  },
+
   toggleExpanded: (id) =>
     set((s) => ({ expanded: { ...s.expanded, [id]: !(s.expanded[id] ?? false) } })),
 
   dismissError: () => set({ error: undefined }),
+  dismissNotice: () => set({ notice: undefined }),
 
   teardown: () => {
     sessionToken++; // invalidate the running session
@@ -224,6 +397,8 @@ export const useInstancesStore = create<InstancesState>((set) => ({
 export type RowVM = {
   row: InstanceRow;
   busy: BusyKind | undefined;
+  duplicating: boolean;
+  deleting: boolean;
   buildLog: string[] | undefined;
   expanded: boolean;
 };
@@ -234,6 +409,8 @@ export function useRowVMs(): RowVM[] {
   const snapshot = useInstancesStore((s) => s.snapshot);
   const installedOverride = useInstancesStore((s) => s.installedOverride);
   const busy = useInstancesStore((s) => s.busy);
+  const duplicating = useInstancesStore((s) => s.duplicating);
+  const deleting = useInstancesStore((s) => s.deleting);
   const buildLog = useInstancesStore((s) => s.buildLog);
   const expanded = useInstancesStore((s) => s.expanded);
 
@@ -242,9 +419,11 @@ export function useRowVMs(): RowVM[] {
       baseRows.map((base) => ({
         row: mergeRow(base, snapshot, installedOverride),
         busy: busy[base.instanceId],
+        duplicating: duplicating[base.instanceId] ?? false,
+        deleting: deleting[base.instanceId] ?? false,
         buildLog: buildLog[base.instanceId],
         expanded: expanded[base.instanceId] ?? false,
       })),
-    [baseRows, snapshot, installedOverride, busy, buildLog, expanded],
+    [baseRows, snapshot, installedOverride, busy, duplicating, deleting, buildLog, expanded],
   );
 }

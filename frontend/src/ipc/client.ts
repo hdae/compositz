@@ -12,6 +12,9 @@ import { Channel, isTauri } from "@tauri-apps/api/core";
 import { commands } from "./bindings";
 import type {
   AppError,
+  DeleteOpts,
+  DeleteView,
+  ImportView,
   InstallEvent,
   InstanceRow,
   Result,
@@ -19,7 +22,17 @@ import type {
   UpView,
 } from "./bindings";
 
-export type { InstallEvent, InstanceRow, SnapshotEvent, UpView } from "./bindings";
+export type {
+  DeleteOpts,
+  DeleteView,
+  ImportView,
+  InstallEvent,
+  InstanceRow,
+  InstanceView,
+  PortBump,
+  SnapshotEvent,
+  UpView,
+} from "./bindings";
 
 /** A backend error carried across IPC, with its `kind` for callers that branch on it. */
 export class IpcError extends Error {
@@ -75,6 +88,45 @@ export async function instanceDown(id: string): Promise<void> {
 /** Open a local service URL in the OS default browser (backend enforces localhost). */
 export async function openServiceUrl(url: string): Promise<void> {
   unwrap(await commands.openServiceUrl(url));
+}
+
+/**
+ * Delete an instance: container + built image + (per `opts`) data volumes / bind data,
+ * then its definition. Returns a partial-outcome warning (non-fatal) if any.
+ */
+export async function deleteInstance(id: string, opts: DeleteOpts): Promise<DeleteView> {
+  return unwrap(await commands.instanceDelete(id, opts));
+}
+
+/** Derive a fresh instance from an existing one (settings minus ports, no data). */
+export async function duplicateInstance(id: string): Promise<ImportView> {
+  return unwrap(await commands.instanceDuplicate(id));
+}
+
+/** Import a recipe bundle from a local path (tar / tar.gz / directory) into a new instance. */
+export async function importRecipe(source: string): Promise<ImportView> {
+  return unwrap(await commands.importRecipe(source));
+}
+
+/** Import a recipe from a GitHub spec (`owner/repo[/subdir][@ref]`, public repos only). */
+export async function importGithub(spec: string): Promise<ImportView> {
+  return unwrap(await commands.importGithub(spec));
+}
+
+/**
+ * Pick a recipe bundle via the OS-native file picker (dialog plugin) and return its
+ * path, or `undefined` if the user cancelled. Under plain `vp dev` (no Tauri) there is
+ * no native picker, so a synthetic path is handed to the dev mock instead.
+ */
+export async function pickRecipeFile(): Promise<string | undefined> {
+  if (!hasTauriBackend()) return "mock://recipe.tar";
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    filters: [{ name: "Recipe bundle", extensions: ["tar", "gz", "tgz"] }],
+  });
+  return typeof selected === "string" ? selected : undefined;
 }
 
 // --- push streams ---------------------------------------------------------

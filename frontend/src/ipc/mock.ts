@@ -17,8 +17,12 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { deriveServices } from "@/lib/rows";
 import type {
   ContainerStatus,
+  DeleteView,
+  ImportView,
   InstallEvent,
   InstanceRow,
+  InstanceView,
+  PortBump,
   PublishedPort,
   SnapshotEvent,
   UpView,
@@ -113,6 +117,48 @@ function currentContainers(): ContainerStatus[] {
     state: "running",
     ports: publishedPorts(d.instanceId),
   }));
+}
+
+// --- structural mutations (import / duplicate / delete) -------------------
+
+let importCounter = 0;
+
+function viewOf(d: Def): InstanceView {
+  return {
+    instanceId: d.instanceId,
+    appId: d.appId,
+    name: d.name,
+    version: d.version,
+    description: d.description,
+    webPorts: d.webPorts,
+    imageTag: `compositz/${d.instanceId}:${d.version}`,
+  };
+}
+
+/** Ingest a synthetic recipe from an import source (a file path or a `github:` spec). */
+function synthImport(source: string): ImportView {
+  importCounter += 1;
+  const short = importCounter.toString(16).padStart(6, "0");
+  const isGithub = source.startsWith("github:");
+  const raw = isGithub ? (source.slice("github:".length).split("@")[0] ?? "") : "";
+  const repo = raw.split("/").filter(Boolean).slice(0, 2).join("-");
+  const appId =
+    repo
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "recipe";
+  const instanceId = `${appId}-${short}`;
+  const d: Def = {
+    instanceId,
+    appId,
+    name: repo || "Imported recipe",
+    version: "0.1.0",
+    description: `Imported from ${source}.`,
+    webPorts: [webPort("web", 8000, 9000 + importCounter)],
+  };
+  DEFS.push(d);
+  state[instanceId] = { installed: false, running: false, accepting: false };
+  return { view: viewOf(d), bumps: [] };
 }
 
 // --- Channel plumbing -----------------------------------------------------
@@ -246,6 +292,39 @@ export function installBrowserMock(): () => void {
           broadcastSnapshot();
         }
         return null;
+      }
+
+      case "import_recipe":
+        return synthImport(String(field(payload, "source")));
+
+      case "import_github":
+        return synthImport(`github:${String(field(payload, "spec"))}`);
+
+      case "instance_duplicate": {
+        const id = String(field(payload, "id"));
+        const src = def(id);
+        importCounter += 1;
+        const short = importCounter.toString(16).padStart(6, "0");
+        const dupId = `${src.appId}-${short}`;
+        const bumps: PortBump[] = [];
+        const webPorts: WebPort[] = src.webPorts.map((wp) => {
+          const to = 10000 + importCounter * 10 + (wp.container % 10);
+          bumps.push({ name: wp.name, from: wp.host, to });
+          return { ...wp, host: to };
+        });
+        const dupDef: Def = { ...src, instanceId: dupId, webPorts };
+        DEFS.push(dupDef);
+        state[dupId] = { installed: false, running: false, accepting: false };
+        return { view: viewOf(dupDef), bumps } satisfies ImportView;
+      }
+
+      case "instance_delete": {
+        const id = String(field(payload, "id"));
+        const idx = DEFS.findIndex((d) => d.instanceId === id);
+        if (idx >= 0) DEFS.splice(idx, 1);
+        delete state[id];
+        broadcastSnapshot(); // reflect it leaving the running set, if it was up
+        return { warning: null } satisfies DeleteView;
       }
 
       case "instance_install": {
