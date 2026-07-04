@@ -192,6 +192,7 @@ fn write_meta_persists_provenance_read_back_on_load() {
         source: Some("github:owner/repo@main".to_string()),
         created_at: Some("2026-07-03T00:00:00Z".to_string()),
         updated_at: None,
+        duplicated_from: None,
         name: None,
     };
     write_meta(dir.join(META_FILE).to_str().unwrap(), &meta).unwrap();

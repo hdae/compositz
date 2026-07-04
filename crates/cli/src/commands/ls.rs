@@ -27,14 +27,20 @@ pub async fn run() -> Result<i32> {
         ))
     );
     for instance in &list {
-        // Date only — time of day is noise at list granularity (meta.json keeps
-        // the full timestamp).
-        let created = instance
-            .meta
-            .created_at
-            .as_deref()
-            .map(|ts| ts.get(..10).unwrap_or(ts))
-            .unwrap_or("-");
+        // LOCAL date only — meta.json stores UTC, but displayed times are always
+        // local (a UTC date reads as "yesterday" for an evening import east of
+        // UTC). Time of day is noise at list granularity. An unparseable
+        // timestamp is shown verbatim rather than hidden.
+        let created = match instance.meta.created_at.as_deref() {
+            Some(ts) => chrono::DateTime::parse_from_rfc3339(ts)
+                .map(|dt| {
+                    dt.with_timezone(&chrono::Local)
+                        .format("%Y-%m-%d")
+                        .to_string()
+                })
+                .unwrap_or_else(|_| ts.to_string()),
+            None => "-".to_string(),
+        };
         // Pad each colored cell BEFORE coloring, so the escape sequence never
         // counts toward the column width.
         println!(

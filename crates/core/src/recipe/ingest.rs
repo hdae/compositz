@@ -128,6 +128,7 @@ pub fn ingest_bundle(
         source: Some(opts.source.unwrap_or(described)),
         created_at: Some(opts.created_at.unwrap_or_else(now_iso8601)),
         updated_at: None,
+        duplicated_from: None,
         // A fresh import shows the manifest brand name (no per-instance override).
         name: None,
     };
@@ -197,9 +198,13 @@ pub fn duplicate_instance(instances_dir: &str, src_instance_id: &str) -> Result<
     let staging = Builder::new().prefix(".dup-").tempdir_in(&instances_dir)?;
     copy_tree_to(&src_app, &staging.path().join(APP_SUBDIR))?;
     let meta = InstanceMeta {
-        source: Some(format!("duplicate:{src_instance_id}")),
+        // The copy's `source` stays the CODE's origin — where the bundle can be
+        // re-fetched from — so a copy of a GitHub-sourced instance remains
+        // updatable in place. The duplicate relationship is its own field.
+        source: src.meta.source.clone(),
         created_at: Some(now_iso8601()),
         updated_at: None,
+        duplicated_from: Some(src_instance_id.to_string()),
         name: Some(format!("{base_name} (copy)")),
     };
     write_meta(

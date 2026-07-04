@@ -207,9 +207,13 @@ fn duplicate_copies_only_app_and_mints_a_new_id() {
     let b = duplicate_instance(s(&store), &a.instance_id).unwrap();
     assert_eq!(b.app_id, "hello");
     assert_ne!(b.instance_id, a.instance_id);
+    // The copy INHERITS the code's origin (here the archive default "upload") —
+    // a GitHub-sourced copy must stay updatable in place — and the duplicate
+    // relationship is recorded separately.
+    assert_eq!(b.meta.source, a.meta.source);
     assert_eq!(
-        b.meta.source.as_deref(),
-        Some(&*format!("duplicate:{}", a.instance_id))
+        b.meta.duplicated_from.as_deref(),
+        Some(a.instance_id.as_str())
     );
     assert!(
         store

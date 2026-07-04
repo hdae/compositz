@@ -11,8 +11,10 @@
 //!   discard  → drop the staging (the instance is untouched)
 //!
 //! v1 updates GitHub-sourced instances only: `meta.source` round-trips through
-//! the spec grammar, so the origin is recoverable. `file:` / `dir:` / `upload` /
-//! `duplicate:` provenance has no re-fetchable origin (re-import instead).
+//! the spec grammar, so the origin is recoverable. `file:` / `dir:` / `upload`
+//! provenance has no re-fetchable origin (re-import instead). A duplicate
+//! INHERITS its origin `source` (lineage lives in `meta.duplicatedFrom`), so a
+//! copy of a GitHub-sourced instance updates like its original.
 //!
 //! The staged bundle is REVALIDATED at commit (manifest parses, same `appId`) —
 //! prepare-time checks are not trusted across the gap, a stale or tampered

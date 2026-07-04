@@ -67,6 +67,12 @@ pub struct InstanceMeta {
     /// import time; this marks when the bundle was last replaced).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
+    /// Lineage: the instance id this one was duplicated from, if any. A copy's
+    /// `source` inherits the ORIGIN (where the code came from — so a GitHub-sourced
+    /// copy stays updatable in place); this field carries the duplicate
+    /// relationship separately.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duplicated_from: Option<String>,
     /// Per-instance display-name override. Absent for a fresh import (the manifest
     /// brand name is shown); a duplicate sets it to `"<name> (copy)"` so two
     /// deployments of the same recipe are distinguishable at a glance.
