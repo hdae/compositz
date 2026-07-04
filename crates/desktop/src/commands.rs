@@ -390,7 +390,14 @@ pub async fn update_commit(
     id: String,
 ) -> Result<InstanceView, AppError> {
     let old = load_by_id(&state.store, &id)?;
-    let old_version = old.manifest.version.clone();
+    // Refuse BEFORE the irreversible fs swap when the engine is unreachable:
+    // commit's contract includes stopping the old-code container (core `down`
+    // is deliberately best-effort and cannot report the outage), so committing
+    // offline would report success while OLD code keeps running under the new
+    // version's metadata.
+    state.engine.ping().await.map_err(|e| {
+        AppError::internal(format!("engine unreachable — update was not applied: {e}"))
+    })?;
     let store = state.store.clone();
     let commit_id = id.clone();
     let updated = tokio::task::spawn_blocking(move || commit_update(&store, &commit_id))
@@ -399,7 +406,9 @@ pub async fn update_commit(
     // The bundle is swapped — a still-running container executes retired code, so
     // stop it as part of the update (the flow rebuilds + restarts right after).
     down(&state.engine, &id, None).await?;
-    remove_superseded_image(&state.engine, &updated, &old_version).await?;
+    // The OLD manifest decides which tag is superseded (a build→image flip would
+    // otherwise leak the last built image with no later removal path).
+    remove_superseded_image(&state.engine, &old, &updated.manifest.version).await?;
     let over = load_instance_config(&updated.dir)?;
     Ok(to_instance_view(&updated, &over))
 }
