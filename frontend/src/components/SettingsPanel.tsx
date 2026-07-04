@@ -2,6 +2,13 @@ import { useEffect, useState } from "react";
 import { FileDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { exportMount, getConfig, pickSaveDest, setConfig } from "@/ipc/client";
 import type { InstanceSettings, Override, Placement } from "@/ipc/client";
@@ -12,9 +19,6 @@ type Props = {
   running: boolean;
   onRestart: () => Promise<void>;
 };
-
-const SELECT_CLASS =
-  "h-8 rounded-lg border border-input bg-background px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50";
 
 /**
  * The per-instance launch-override editor (RI-4). Mounts fresh when the Settings tab
@@ -210,10 +214,11 @@ export const SettingsPanel = ({ instanceId, running, onRestart }: Props) => {
                     </button>
                   )}
                 </div>
+                {/* text + numeric input mode (not type="number"): no spinner buttons,
+                    and no scroll-wheel value changes; validation is ours anyway. */}
                 <Input
-                  type="number"
-                  min={1}
-                  max={65535}
+                  type="text"
+                  inputMode="numeric"
                   value={ports[p.name] ?? ""}
                   onChange={(e) => editPort(p.name, e.target.value)}
                   aria-label={`Host port for ${p.name}`}
@@ -275,18 +280,20 @@ export const SettingsPanel = ({ instanceId, running, onRestart }: Props) => {
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <select
+                <Select
                   value={placement[m.name] ?? m.manifestPlacement}
-                  onChange={(e) => {
-                    const v = e.target.value;
+                  onValueChange={(v) => {
                     if (v === "bind" || v === "volume") editPlace(m.name, v);
                   }}
-                  aria-label={`Placement for ${m.name}`}
-                  className={cn(SELECT_CLASS, "w-24")}
                 >
-                  <option value="volume">volume</option>
-                  <option value="bind">bind</option>
-                </select>
+                  <SelectTrigger className="w-24" aria-label={`Placement for ${m.name}`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="volume">volume</SelectItem>
+                    <SelectItem value="bind">bind</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Tip label="Export this mount's data as a tar">
                   <Button
                     size="sm"
