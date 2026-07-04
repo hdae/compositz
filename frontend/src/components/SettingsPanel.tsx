@@ -307,23 +307,19 @@ export const SettingsPanel = ({ instanceId, running, onRestart }: Props) => {
         </section>
       )}
 
-      <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
-        <Button size="sm" disabled={saving || missingRequired} onClick={() => void save()}>
-          {saving ? (
-            <>
-              <Loader2 className="animate-spin" />
-              Saving…
-            </>
-          ) : (
-            "Save"
-          )}
-        </Button>
+      {/* Footer, right-aligned: status text sits immediately left of the actions,
+          Save anchors the bottom-right corner. */}
+      <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-3">
+        {saveError !== undefined && <span className="text-xs text-destructive">{saveError}</span>}
         {missingRequired && (
           <span className="text-xs text-amber-600 dark:text-amber-400">
             Set required values to save.
           </span>
         )}
         {saved && <span className="text-xs text-emerald-600 dark:text-emerald-400">Saved.</span>}
+        {saved && !running && (
+          <span className="text-xs text-muted-foreground">Applies on next start.</span>
+        )}
         {running && restartNeeded && (
           <Button
             size="sm"
@@ -341,10 +337,16 @@ export const SettingsPanel = ({ instanceId, running, onRestart }: Props) => {
             )}
           </Button>
         )}
-        {saved && !running && (
-          <span className="text-xs text-muted-foreground">Applies on next start.</span>
-        )}
-        {saveError !== undefined && <span className="text-xs text-destructive">{saveError}</span>}
+        <Button size="sm" disabled={saving || missingRequired} onClick={() => void save()}>
+          {saving ? (
+            <>
+              <Loader2 className="animate-spin" />
+              Saving…
+            </>
+          ) : (
+            "Save"
+          )}
+        </Button>
       </div>
     </div>
   );
