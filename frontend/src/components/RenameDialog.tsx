@@ -53,6 +53,7 @@ export const RenameDialog = () => {
             aria-label="Instance display name"
             onChange={(e) => setRenameName(e.target.value)}
           />
+          {rename?.error && <p className="text-sm text-destructive">{rename.error}</p>}
           <DialogFooter>
             <Button
               type="button"

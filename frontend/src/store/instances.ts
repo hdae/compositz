@@ -53,8 +53,13 @@ export type TrustState = { view: InstanceView; source: string; bumps: PortBump[]
 /** The GitHub-import modal state: the in-progress spec, whether a fetch is running, last error. */
 export type GithubState = { spec: string; submitting: boolean; error: string | undefined };
 
-/** The rename dialog state: the target row and the name being edited. */
-export type RenameState = { row: InstanceRow; name: string; saving: boolean };
+/** The rename dialog state: the target row, the name being edited, last error. */
+export type RenameState = {
+  row: InstanceRow;
+  name: string;
+  saving: boolean;
+  error: string | undefined;
+};
 
 /**
  * The update dialog state. `input` = editing the ref; `fetching` = prepare in
@@ -375,27 +380,28 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
   requestDelete: (row) => set({ deleteTarget: row }),
   cancelDelete: () => set({ deleteTarget: undefined }),
 
-  requestRename: (row) => set({ rename: { row, name: row.name, saving: false } }),
+  requestRename: (row) => set({ rename: { row, name: row.name, saving: false, error: undefined } }),
   setRenameName: (name) => set((s) => (s.rename ? { rename: { ...s.rename, name } } : {})),
   cancelRename: () => set((s) => (s.rename && !s.rename.saving ? { rename: undefined } : {})),
 
   // Persist the display name server-side, then reflect it via the row refetch
   // (server-confirmed, like every structural change). An empty name clears the
-  // override — the row returns to the recipe's own name.
+  // override — the row returns to the recipe's own name. On failure the dialog
+  // stays open with the error so the typed name is not lost (same retry shape
+  // as the GitHub import modal).
   submitRename: async () => {
     const r = get().rename;
     if (!r || r.saving) return;
-    set({ rename: { ...r, saving: true } });
+    set({ rename: { ...r, saving: true, error: undefined } });
     try {
       const trimmed = r.name.trim();
       await renameInstance(r.row.instanceId, trimmed === "" ? null : trimmed);
       set({ rename: undefined });
       await get().reloadRows();
     } catch (error) {
-      set({
-        rename: undefined,
-        error: `rename ${r.row.instanceId} failed: ${describe(error)}`,
-      });
+      set((s) =>
+        s.rename ? { rename: { ...s.rename, saving: false, error: describe(error) } } : {},
+      );
     }
   },
 
@@ -482,11 +488,13 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
     await get().remove(t.view.instanceId, { volumes: true, bindData: false });
   },
 
-  // Open the update dialog with the ref prefilled from the recorded source
-  // (`github:owner/repo[/subdir][@ref]` — the part after the last `@`, if any).
+  // Open the update dialog with the ref prefilled from the recorded source.
+  // The grammar delimits the ref at the FIRST `@` (core parse_github_spec) —
+  // owner/repo/subdir can never contain one, but the ref itself may, so
+  // lastIndexOf would truncate a ref like `v1@stable` to `stable`.
   requestUpdate: (row) => {
     const source = row.source ?? "";
-    const at = source.lastIndexOf("@");
+    const at = source.indexOf("@");
     const ref = at === -1 ? "" : source.slice(at + 1);
     set({ update: { row, ref, phase: "input", preview: undefined, error: undefined } });
   },
@@ -495,11 +503,15 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
     set((s) => (s.update && s.update.phase === "input" ? { update: { ...s.update, ref } } : {})),
 
   // Close the dialog. A staged (previewed) update is discarded server-side —
-  // fire-and-forget, a new prepare replaces any leftover staging anyway. Mid-flight
-  // phases can't cancel (the backend call is already running).
+  // fire-and-forget, a new prepare replaces any leftover staging anyway.
+  // Cancelling during "fetching" is allowed (a GitHub download can hang — the
+  // user must never be trapped in the modal): the in-flight prepare's late
+  // result is dropped by checkUpdate's identity+phase guard, and any staging it
+  // lands is bounded by the replace-on-prepare contract. Only "committing"
+  // cannot cancel — the swap may already be landing.
   cancelUpdate: () => {
     const u = get().update;
-    if (!u || u.phase === "fetching" || u.phase === "committing") return;
+    if (!u || u.phase === "committing") return;
     if (u.phase === "preview") {
       void updateDiscard(u.row.instanceId).catch(() => {});
     }
@@ -512,12 +524,22 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
     const u = get().update;
     if (!u || u.phase !== "input") return;
     set({ update: { ...u, phase: "fetching", error: undefined } });
+    // The resolve guards check IDENTITY + phase, not mere presence: the user can
+    // cancel during the fetch and open the dialog for another instance — a late
+    // result attaching to that dialog would show (and then commit!) the wrong
+    // preview.
     try {
       const preview = await updatePrepare(u.row.instanceId, u.ref.trim());
-      set((s) => (s.update ? { update: { ...s.update, phase: "preview", preview } } : {}));
+      set((s) =>
+        s.update && s.update.row.instanceId === u.row.instanceId && s.update.phase === "fetching"
+          ? { update: { ...s.update, phase: "preview", preview } }
+          : {},
+      );
     } catch (error) {
       set((s) =>
-        s.update ? { update: { ...s.update, phase: "input", error: describe(error) } } : {},
+        s.update && s.update.row.instanceId === u.row.instanceId && s.update.phase === "fetching"
+          ? { update: { ...s.update, phase: "input", error: describe(error) } }
+          : {},
       );
     }
   },
@@ -535,6 +557,8 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
       await get().reloadRows();
       await get().install(u.row.instanceId);
     } catch (error) {
+      // Deliberately NO discard here: after a failed commit the staging's state
+      // is uncertain, and the next prepare replaces it server-side anyway.
       set({ update: undefined, error: `update ${u.row.instanceId} failed: ${describe(error)}` });
     }
   },

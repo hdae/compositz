@@ -26,7 +26,11 @@ export const UpdateDialog = () => {
   const checkUpdate = useInstancesStore((s) => s.checkUpdate);
   const confirmUpdate = useInstancesStore((s) => s.confirmUpdate);
 
-  const busy = update?.phase === "fetching" || update?.phase === "committing";
+  // Only the commit locks the dialog (the swap may already be landing). A
+  // fetch can hang on the network, so the user can always cancel out of it —
+  // the store drops the late result.
+  const fetching = update?.phase === "fetching";
+  const committing = update?.phase === "committing";
   const preview = update?.preview;
 
   return (
@@ -36,7 +40,7 @@ export const UpdateDialog = () => {
         if (!open) cancelUpdate();
       }}
     >
-      <DialogContent showCloseButton={!busy}>
+      <DialogContent showCloseButton={!committing}>
         <DialogHeader>
           <DialogTitle>Update instance</DialogTitle>
           <DialogDescription>
@@ -62,7 +66,7 @@ export const UpdateDialog = () => {
               <Input
                 autoFocus
                 value={update.ref}
-                disabled={busy}
+                disabled={fetching}
                 placeholder="default branch"
                 aria-label="Git ref"
                 className="font-mono"
@@ -71,16 +75,10 @@ export const UpdateDialog = () => {
             </label>
             {update.error && <p className="text-sm text-destructive">{update.error}</p>}
             <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                onClick={cancelUpdate}
-              >
+              <Button type="button" variant="outline" size="sm" onClick={cancelUpdate}>
                 Cancel
               </Button>
-              <Button type="submit" size="sm" disabled={busy}>
+              <Button type="submit" size="sm" disabled={fetching}>
                 {update.phase === "fetching" ? (
                   <>
                     <Loader2 className="animate-spin" />
@@ -121,12 +119,17 @@ export const UpdateDialog = () => {
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={busy}
+                disabled={committing}
                 onClick={cancelUpdate}
               >
                 Cancel
               </Button>
-              <Button type="button" size="sm" disabled={busy} onClick={() => void confirmUpdate()}>
+              <Button
+                type="button"
+                size="sm"
+                disabled={committing}
+                onClick={() => void confirmUpdate()}
+              >
                 {update.phase === "committing" ? (
                   <>
                     <Loader2 className="animate-spin" />
