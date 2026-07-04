@@ -123,6 +123,15 @@ export const SettingsPanel = ({ instanceId, running, onRestart }: Props) => {
     (e) => e.required && (env[e.name]?.trim() ?? "") === "",
   );
 
+  // Port validity: digits-only is enforced at input time; here the range check.
+  // Empty stays legal (= fall back to the manifest default on save).
+  const portOutOfRange = (raw: string): boolean => {
+    if (raw === "") return false;
+    const n = Number(raw);
+    return !Number.isInteger(n) || n < 1 || n > 65535;
+  };
+  const invalidPorts = settings.ports.some((p) => portOutOfRange(ports[p.name] ?? ""));
+
   // Port conflict is DEFINITION-based (host ports of OTHER instances + this instance's
   // own other ports) and recomputes as the user types.
   const portValues = settings.ports.map((p) => ({ name: p.name, value: Number(ports[p.name]) }));
@@ -188,8 +197,10 @@ export const SettingsPanel = ({ instanceId, running, onRestart }: Props) => {
             Ports
           </h4>
           {settings.ports.map((p) => {
-            const cur = Number(ports[p.name]);
-            const conflict = conflictsWith(p.name, cur);
+            const raw = ports[p.name] ?? "";
+            const cur = Number(raw);
+            const outOfRange = portOutOfRange(raw);
+            const conflict = !outOfRange && conflictsWith(p.name, cur);
             return (
               <div key={p.name} className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
@@ -204,6 +215,9 @@ export const SettingsPanel = ({ instanceId, running, onRestart }: Props) => {
                       container {p.container} · default {p.manifestHost}
                     </span>
                   </div>
+                  {outOfRange && (
+                    <span className="text-xs text-destructive">port must be 1–65535</span>
+                  )}
                   {conflict && (
                     <button
                       type="button"
@@ -215,16 +229,21 @@ export const SettingsPanel = ({ instanceId, running, onRestart }: Props) => {
                   )}
                 </div>
                 {/* text + numeric input mode (not type="number"): no spinner buttons,
-                    and no scroll-wheel value changes; validation is ours anyway. */}
+                    and no scroll-wheel value changes. Digits-only at the keystroke;
+                    the 1–65535 range check gates Save. */}
                 <Input
                   type="text"
                   inputMode="numeric"
-                  value={ports[p.name] ?? ""}
-                  onChange={(e) => editPort(p.name, e.target.value)}
+                  value={raw}
+                  onChange={(e) => {
+                    if (/^\d*$/.test(e.target.value)) editPort(p.name, e.target.value);
+                  }}
                   aria-label={`Host port for ${p.name}`}
+                  aria-invalid={outOfRange || undefined}
                   className={cn(
                     "w-28 font-mono",
                     conflict && "border-amber-500 focus-visible:ring-amber-500",
+                    outOfRange && "border-destructive focus-visible:ring-destructive",
                   )}
                 />
               </div>
@@ -318,6 +337,9 @@ export const SettingsPanel = ({ instanceId, running, onRestart }: Props) => {
           Save anchors the bottom-right corner. */}
       <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-3">
         {saveError !== undefined && <span className="text-xs text-destructive">{saveError}</span>}
+        {invalidPorts && (
+          <span className="text-xs text-destructive">Fix invalid ports to save.</span>
+        )}
         {missingRequired && (
           <span className="text-xs text-amber-600 dark:text-amber-400">
             Set required values to save.
@@ -344,7 +366,11 @@ export const SettingsPanel = ({ instanceId, running, onRestart }: Props) => {
             )}
           </Button>
         )}
-        <Button size="sm" disabled={saving || missingRequired} onClick={() => void save()}>
+        <Button
+          size="sm"
+          disabled={saving || missingRequired || invalidPorts}
+          onClick={() => void save()}
+        >
           {saving ? (
             <>
               <Loader2 className="animate-spin" />
