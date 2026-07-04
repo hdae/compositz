@@ -10,11 +10,14 @@
 mod commands;
 mod error;
 mod state;
+mod stream;
+
+use std::sync::Mutex;
 
 use compositz_core::connect;
 use compositz_core::storage::{HostPlatform, instances_dir};
-use state::AppState;
-use tauri::Manager;
+use state::{AppState, StreamRegistry};
+use tauri::{Manager, WindowEvent};
 use tauri_specta::{Builder, collect_commands};
 
 /// The tauri-specta command registry. Listing the commands ONCE here keeps the
@@ -22,6 +25,7 @@ use tauri_specta::{Builder, collect_commands};
 /// command in one place cannot drift from the other.
 fn specta_builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new().commands(collect_commands![
+        // request/response
         commands::list_instance_rows,
         commands::instance_up,
         commands::instance_down,
@@ -33,6 +37,11 @@ fn specta_builder() -> Builder<tauri::Wry> {
         commands::import_github,
         commands::export_mount,
         commands::open_service_url,
+        // push streams (over tauri::ipc::Channel)
+        stream::subscribe_instances,
+        stream::stream_logs,
+        stream::instance_install,
+        stream::unsubscribe,
     ])
 }
 
@@ -57,15 +66,31 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(builder.invoke_handler())
+        .on_window_event(|window, event| {
+            // Window teardown stops every live pump so none outlives the webview.
+            if matches!(event, WindowEvent::Destroyed) {
+                if let Some(state) = window.try_state::<AppState>() {
+                    state
+                        .streams
+                        .lock()
+                        .expect("stream registry mutex poisoned")
+                        .abort_all();
+                }
+            }
+        })
         .setup(move |app| {
-            // Required for tauri-specta events (added with the streaming commands).
+            // Required for tauri-specta events (in addition to the command handler).
             builder.mount_events(app);
             // Connect to the engine + resolve the store at startup. A failure here is
             // fatal for now (a manager with no engine can do nothing); a later phase
             // can degrade to a connection banner.
             let engine = connect()?;
             let store = instances_dir(&HostPlatform)?;
-            app.manage(AppState { engine, store });
+            app.manage(AppState {
+                engine,
+                store,
+                streams: Mutex::new(StreamRegistry::default()),
+            });
             Ok(())
         })
         .run(tauri::generate_context!())

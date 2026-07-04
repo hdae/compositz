@@ -20,7 +20,10 @@ license = "MIT"
 bollard = { version = "0.21", default-features = false, features = ["http", "pipe", "ssl"] }
 thiserror = "2"
 anyhow = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# `time` powers the desktop snapshot pump's warming/safety refresh timers
+# (`tokio::time::sleep` + the `select!` timeout arm). bollard enables it transitively,
+# but declare it here so the timer is load-bearing, not incidental.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 futures-util = "0.3"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

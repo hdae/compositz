@@ -25,7 +25,11 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 compositz-core = { path = "../core", features = ["specta"] }
-tauri = { version = "2", features = [] }
+# `specta`: `tauri::ipc::Channel<T>` impls `specta::Type` only under this feature,
+# which the streaming commands' Channel args require. tauri-specta already enables
+# it transitively, but declare it here so the dependency is load-bearing, not
+# incidental to tauri-specta's own dep spec.
+tauri = { version = "2", features = ["specta"] }
 tauri-plugin-opener = "2"
 tokio.workspace = true
 futures-util.workspace = true

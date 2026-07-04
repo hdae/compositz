@@ -79,8 +79,8 @@ pub struct SetConfigView {
 /// Load an instance for a URL id, validating against the id charset (the single
 /// source of truth) and reconciling the loaded id with the requested id — so a
 /// path-shaped id can neither traverse out of the store nor load an unintended
-/// instance. Mirrors the Deno `loadById`.
-fn load_by_id(store: &str, id: &str) -> Result<Instance, AppError> {
+/// instance. Mirrors the Deno `loadById`. Shared with the streaming `instance_install`.
+pub(crate) fn load_by_id(store: &str, id: &str) -> Result<Instance, AppError> {
     if !is_valid_instance_id(id) {
         return Err(AppError::bad_request(format!("invalid instance id: {id}")));
     }
