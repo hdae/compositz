@@ -12,7 +12,7 @@ use compositz_core::recipe::config::Override;
 use compositz_core::recipe::instance::{
     CONFIG_FILE, InstanceMeta, META_FILE, list_instances, load_instance, load_instance_config,
     load_launched_config, remove_instance_dir, save_instance_config, save_launched_config,
-    write_meta,
+    set_instance_name, write_meta,
 };
 use tempfile::TempDir;
 
@@ -195,6 +195,70 @@ fn write_meta_persists_provenance_read_back_on_load() {
     };
     write_meta(dir.join(META_FILE).to_str().unwrap(), &meta).unwrap();
     assert_eq!(load_instance(dir.to_str().unwrap()).unwrap().meta, meta);
+}
+
+// --- per-instance display name (rename) -------------------------------------
+
+#[test]
+fn set_instance_name_sets_and_clears_the_display_override_preserving_provenance() {
+    let store = TempDir::new().unwrap();
+    create_instance(store.path(), "hello-abc123", "hello", "Hello", Some("test"));
+    let dir = store.path().join("hello-abc123");
+    let dir = dir.to_str().unwrap();
+
+    set_instance_name(
+        store_path(&store),
+        "hello-abc123",
+        Some("My Hello".to_string()),
+    )
+    .unwrap();
+    let loaded = load_instance(dir).unwrap();
+    assert_eq!(loaded.display_name(), "My Hello");
+    // The rewrite must not drop the other provenance fields.
+    assert_eq!(loaded.meta.source.as_deref(), Some("test"));
+
+    // None clears the override — display returns to the manifest brand.
+    set_instance_name(store_path(&store), "hello-abc123", None).unwrap();
+    assert_eq!(load_instance(dir).unwrap().display_name(), "Hello");
+}
+
+#[test]
+fn set_instance_name_normalizes_blank_and_manifest_equal_names_to_cleared() {
+    let store = TempDir::new().unwrap();
+    create_instance(store.path(), "hello-abc123", "hello", "Hello", None);
+    let dir = store.path().join("hello-abc123");
+    let dir = dir.to_str().unwrap();
+
+    // Whitespace-only ⇒ cleared, never a blank display name.
+    set_instance_name(store_path(&store), "hello-abc123", Some("   ".to_string())).unwrap();
+    assert_eq!(load_instance(dir).unwrap().meta.name, None);
+
+    // Typing the manifest brand verbatim ⇒ cleared, so the name keeps TRACKING the
+    // manifest (matters once an in-place update changes the brand).
+    set_instance_name(
+        store_path(&store),
+        "hello-abc123",
+        Some(" Hello ".to_string()),
+    )
+    .unwrap();
+    assert_eq!(load_instance(dir).unwrap().meta.name, None);
+}
+
+#[test]
+fn set_instance_name_rejects_bad_ids_and_a_missing_instance() {
+    let store = TempDir::new().unwrap();
+    create_instance(store.path(), "hello-abc123", "hello", "Hello", None);
+
+    // Path-shaped / invalid ids must error BEFORE touching the filesystem.
+    for evil in [".", "..", "a/b", "UPPER", ""] {
+        assert!(
+            set_instance_name(store_path(&store), evil, Some("X".to_string())).is_err(),
+            "evil {evil:?} must be rejected"
+        );
+    }
+    // A valid-shaped id without a real instance must not mint a meta.json.
+    assert!(set_instance_name(store_path(&store), "ghost-9z8y7x", Some("X".to_string())).is_err());
+    assert!(!store.path().join("ghost-9z8y7x").exists());
 }
 
 // --- per-instance launch override (config.yaml, RI-4) ----------------------

@@ -38,6 +38,7 @@ pub use recipe::ingest::{
 pub use recipe::instance::{
     Instance, InstanceMeta, is_valid_instance_id, list_instances, load_instance,
     load_instance_config, load_launched_config, remove_instance_dir, save_instance_config,
+    set_instance_name,
 };
 pub use recipe::manifest::{
     MANIFEST_VERSION, Manifest, Placement, manifest_json_schema, parse_manifest,

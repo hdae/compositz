@@ -83,6 +83,12 @@ pub struct InstanceView {
     pub name: String,
     pub version: String,
     pub description: String,
+    /// Provenance: where the bundle came from (`meta.json` `source`), if recorded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// Provenance: ISO-8601 creation time (`meta.json` `createdAt`), if recorded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
     /// Declared web ports (`web: true`). Live URLs are resolved against the container.
     pub web_ports: Vec<WebPort>,
     /// The image tag this instance builds to (e.g. `compositz/hello-a1b2c3:0.1.0`).
@@ -121,6 +127,12 @@ pub struct InstanceRow {
     pub name: String,
     pub version: String,
     pub description: String,
+    /// Provenance: where the bundle came from (`meta.json` `source`), if recorded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// Provenance: ISO-8601 creation time (`meta.json` `createdAt`), if recorded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
     pub web_ports: Vec<WebPort>,
     /// Declared services, always listed from the definition; the live port fills in
     /// when running.
@@ -275,6 +287,8 @@ pub fn to_instance_view(instance: &Instance, over: &Override) -> InstanceView {
         name: instance.display_name().to_string(),
         version: m.version.clone(),
         description: m.description.clone().unwrap_or_default(),
+        source: instance.meta.source.clone(),
+        created_at: instance.meta.created_at.clone(),
         web_ports: m
             .ports
             .iter()
@@ -327,6 +341,8 @@ pub fn to_instance_rows(
                 name: v.name.clone(),
                 version: v.version.clone(),
                 description: v.description.clone(),
+                source: v.source.clone(),
+                created_at: v.created_at.clone(),
                 web_ports: v.web_ports.clone(),
                 services: instance_services(&v.web_ports, live_ports),
                 installed,
@@ -419,6 +435,8 @@ mod tests {
             name: "Hello Web".to_string(),
             version: "0.1.0".to_string(),
             description: "demo".to_string(),
+            source: Some("github:owner/repo".to_string()),
+            created_at: Some("2026-01-01T00:00:00Z".to_string()),
             web_ports: vec![web_port()],
             image_tag: "compositz/hello-web-a1b2c3:0.1.0".to_string(),
         }
@@ -786,6 +804,17 @@ mod tests {
         assert_eq!(v.name, "Hello");
         assert_eq!(v.version, "0.1.0");
         assert_eq!(v.description, "A hello app.");
+    }
+
+    #[test]
+    fn to_instance_view_carries_provenance_from_meta_and_rows_pass_it_through() {
+        let v = to_instance_view(&instance_with(base_manifest()), &Override::default());
+        assert_eq!(v.source.as_deref(), Some("github:owner/repo"));
+        assert_eq!(v.created_at.as_deref(), Some("2026-01-01T00:00:00Z"));
+        // The row keeps the view's provenance untouched (fetch-time join only).
+        let row = &to_instance_rows(&[view()], None)[0];
+        assert_eq!(row.source.as_deref(), Some("github:owner/repo"));
+        assert_eq!(row.created_at.as_deref(), Some("2026-01-01T00:00:00Z"));
     }
 
     #[test]

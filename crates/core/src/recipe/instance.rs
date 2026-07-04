@@ -168,6 +168,35 @@ pub fn remove_instance_dir(instances_dir: &str, instance_id: &str) -> Result<(),
     }
 }
 
+/// Set or clear the per-instance display-name override (`meta.name`), atomically.
+/// `None` — or a name that trims to empty, or equals the manifest brand — CLEARS the
+/// override, so display returns to tracking the manifest name (after an in-place
+/// update changes the brand, a cleared name follows it instead of pinning the old
+/// one). The id is validated HERE (path-touching sinks defend themselves, ADR-025),
+/// and the target must load as a real instance — this never mints a `meta.json`
+/// into an arbitrary directory.
+pub fn set_instance_name(
+    instances_dir: &str,
+    instance_id: &str,
+    name: Option<String>,
+) -> Result<(), Error> {
+    if !is_valid_instance_id(instance_id) {
+        return Err(Error::Instance(format!(
+            "invalid instance id: \"{instance_id}\""
+        )));
+    }
+    let dir = format!("{}/{}", norm_dir(instances_dir), instance_id);
+    let instance = load_instance(&dir)?;
+    let effective = name
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty() && n != &instance.manifest.name);
+    let meta = InstanceMeta {
+        name: effective,
+        ..instance.meta
+    };
+    write_meta(&format!("{dir}/{META_FILE}"), &meta)
+}
+
 /// Load the per-instance launch override (`config.yaml`). An absent file ⇒ the
 /// empty override (the common case). A present-but-invalid file is surfaced (fail
 /// loud — never silently launch with a misread override).
