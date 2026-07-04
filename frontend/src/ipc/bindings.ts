@@ -314,7 +314,11 @@ createdAt?: string | null;
 /**
  * Provenance: ISO-8601 time of the last in-place update, if any.
  */
-updatedAt?: string | null; webPorts: WebPort[]; 
+updatedAt?: string | null; 
+/**
+ * Lineage: the instance id this one was duplicated from, if any.
+ */
+duplicatedFrom?: string | null; webPorts: WebPort[]; 
 /**
  * Declared services, always listed from the definition; the live port fills in
  * when running.
@@ -365,6 +369,10 @@ createdAt?: string | null;
  * Provenance: ISO-8601 time of the last in-place update, if any.
  */
 updatedAt?: string | null; 
+/**
+ * Lineage: the instance id this one was duplicated from, if any.
+ */
+duplicatedFrom?: string | null; 
 /**
  * Declared web ports (`web: true`). Live URLs are resolved against the container.
  */

@@ -51,6 +51,7 @@ type Def = {
   source: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  duplicatedFrom: string | null;
   webPorts: WebPort[];
 };
 
@@ -70,6 +71,7 @@ const DEFS: Def[] = [
     source: "github:comfyanonymous/ComfyUI",
     createdAt: "2026-06-20T12:00:00Z",
     updatedAt: null,
+    duplicatedFrom: null,
     webPorts: [webPort("web", 8188, 8188)],
   },
   {
@@ -82,6 +84,7 @@ const DEFS: Def[] = [
     source: "file:C:/Users/dev/recipes/whisper-webui.tar.gz",
     createdAt: "2026-07-01T08:30:00Z",
     updatedAt: null,
+    duplicatedFrom: null,
     webPorts: [webPort("web", 7860, 7861)],
   },
   {
@@ -94,6 +97,7 @@ const DEFS: Def[] = [
     source: "upload",
     createdAt: "2026-07-04T18:00:00Z",
     updatedAt: null,
+    duplicatedFrom: null,
     webPorts: [webPort("web", 8080, 8090)],
   },
 ];
@@ -134,6 +138,7 @@ function buildRow(d: Def): InstanceRow {
     source: d.source,
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
+    duplicatedFrom: d.duplicatedFrom,
     webPorts: d.webPorts,
     services: deriveServices(d.webPorts, live),
     installed: s.installed,
@@ -163,6 +168,7 @@ function viewOf(d: Def): InstanceView {
     source: d.source,
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
+    duplicatedFrom: d.duplicatedFrom,
     webPorts: d.webPorts,
     imageTag: `compositz/${d.instanceId}:${d.version}`,
   };
@@ -192,6 +198,7 @@ function synthImport(source: string): ImportView {
     source: isGithub ? source : `file:${source}`,
     createdAt: new Date().toISOString(),
     updatedAt: null,
+    duplicatedFrom: null,
     webPorts: [webPort("web", 8000, 9000 + importCounter)],
   };
   DEFS.push(d);
@@ -407,9 +414,12 @@ export function installBrowserMock(): () => void {
           ...src,
           instanceId: dupId,
           name: `${src.name} (copy)`,
-          source: `duplicate:${src.instanceId}`,
+          // Mirror the core: the copy inherits the CODE's origin (so a GitHub-
+          // sourced copy stays updatable); lineage is its own field.
+          source: src.source,
           createdAt: new Date().toISOString(),
           updatedAt: null, // a fresh copy has never been updated in place
+          duplicatedFrom: src.instanceId,
           webPorts,
         };
         DEFS.push(dupDef);

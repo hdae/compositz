@@ -28,8 +28,10 @@ re-verified on Windows. Highlights of what ships today:
 - 🔄 **In-place instance update** ([ADR-029](decisions.md)): two-phase
   prepare→re-trust→commit landed in core + desktop (GitHub-sourced only; instanceId /
   volumes / `config.yaml` survive; superseded image reclaimed). Remaining: Windows
-  real-machine verification, CLI parity (`compositz update`), user-facing **build
-  args** (a "rebuild needed" state next to ADR-023's "restart needed"), and an opt-in
+  real-machine verification, CLI parity (`compositz update`), **re-upload update for
+  `file:`/`upload` sources** (pick a new archive into the same instance — the same
+  staging + re-trust machinery, different fetch), user-facing **build args** (a
+  "rebuild needed" state next to ADR-023's "restart needed"), and an opt-in
   `--no-cache` rebuild action (build cache stays ON by default — user decision;
   `BuildOptions.noCache` is wired in core but nothing sets it).
 - 🔄 **Instance label + provenance display**: `source` / `createdAt` / `updatedAt` now
@@ -55,6 +57,10 @@ re-verified on Windows. Highlights of what ships today:
   planned), memory/CPU limits (speculative — only on demand).
 - ⏳ **Ops visibility**: crashed ≠ stopped status, GPU-fallback badge, pull layer
   progress, persistent build logs (all tracked in [known-issues.md](known-issues.md)).
+- ⏳ **Engine connection settings** (user wish): the endpoint is env-only today
+  (`COMPOSITZ_DOCKER_HOST`) — make it configurable from the UI and persisted
+  (Docker Desktop / rootless / remote TCP / a future wslc endpoint), with the
+  header badge reflecting the configured target.
 - ⏳ **GPU runtime detection**: choose nvidia vs CDI from `/info` / `/version`.
 - ⏳ **s6-overlay v3** multi-daemon recipe pattern + an example recipe.
 - ⏳ **Strict isolation** opt-out per recipe (copy-mode cache, per-app cache) for

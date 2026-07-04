@@ -927,3 +927,10 @@ Provenance became visible alongside this arc: `source` / `createdAt` / `updatedA
 `ls`, and a rename UI over `meta.name` (`set_instance_name`, blank/brand-equal clears the override
 so the name tracks the manifest across updates). CLI parity (`compositz update`) and a
 "rebuild needed" state for user-facing build args stay on the roadmap.
+
+**Amended 2026-07-05 (user decision):** a duplicate now INHERITS its origin `source` — `source`
+means "where the code came from", so a copy of a GitHub-sourced instance stays updatable in
+place — and the duplicate relationship moved to its own `meta.duplicatedFrom` field (shown on the
+card provenance line). `duplicate:<id>` source strings no longer occur. Displayed times are
+always LOCAL (CLI `ls` converts; the UI hover shows the local timestamp); storage stays UTC.
+Re-upload update for `file:`/`upload` sources is roadmap follow-up.

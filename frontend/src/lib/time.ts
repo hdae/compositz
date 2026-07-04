@@ -10,6 +10,15 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
 ];
 
 /**
+ * An ISO-8601 timestamp as the user's LOCAL date+time (times are always shown
+ * local — the stored value is UTC). Verbatim if unparseable.
+ */
+export function formatLocalTimestamp(iso: string): string {
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? iso : new Date(t).toLocaleString();
+}
+
+/**
  * An ISO-8601 timestamp as a relative age ("3 days ago", "just now"). An
  * unparseable input is returned verbatim — provenance is best-effort display,
  * never worth an exception.

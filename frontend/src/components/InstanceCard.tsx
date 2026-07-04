@@ -6,7 +6,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { formatRelativeAge } from "@/lib/time";
+import { Fragment } from "react";
+import type { ReactNode } from "react";
+import { formatLocalTimestamp, formatRelativeAge } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { useInstancesStore } from "@/store/instances";
 import type { RowVM } from "@/store/instances";
@@ -16,6 +18,65 @@ import { DetailPanel } from "./DetailPanel";
 import { StatusPill } from "./StatusPill";
 
 type Props = { vm: RowVM; engineOnline: boolean };
+
+/**
+ * Where this instance came from, on one muted line: origin source, duplicate
+ * lineage, and created/updated ages (hover = the full LOCAL timestamp).
+ */
+const ProvenanceLine = ({ row }: { row: RowVM["row"] }) => {
+  const parts: { key: string; node: ReactNode }[] = [];
+  if (row.source) {
+    parts.push({
+      key: "source",
+      node: (
+        <>
+          From <span className="font-mono break-all">{row.source}</span>
+        </>
+      ),
+    });
+  }
+  if (row.duplicatedFrom) {
+    parts.push({
+      key: "dup",
+      node: (
+        <>
+          duplicated from <span className="font-mono">{row.duplicatedFrom}</span>
+        </>
+      ),
+    });
+  }
+  if (row.createdAt) {
+    parts.push({
+      key: "created",
+      node: (
+        <span title={formatLocalTimestamp(row.createdAt)}>
+          created {formatRelativeAge(row.createdAt)}
+        </span>
+      ),
+    });
+  }
+  if (row.updatedAt) {
+    parts.push({
+      key: "updated",
+      node: (
+        <span title={formatLocalTimestamp(row.updatedAt)}>
+          updated {formatRelativeAge(row.updatedAt)}
+        </span>
+      ),
+    });
+  }
+  if (parts.length === 0) return null;
+  return (
+    <p className="text-xs text-muted-foreground/80">
+      {parts.map((part, i) => (
+        <Fragment key={part.key}>
+          {i > 0 && " · "}
+          {part.node}
+        </Fragment>
+      ))}
+    </p>
+  );
+};
 
 /**
  * One instance as a collapsible card. Collapsed = identity only (name, status,
@@ -95,9 +156,11 @@ export const InstanceCard = ({ vm, engineOnline }: Props) => {
                 <Pencil />
                 Rename
               </DropdownMenuItem>
+              {/* No hover hint on the disabled item (Base UI swallows pointer
+                  events there) — the source that explains WHY is on the card's
+                  provenance line. */}
               <DropdownMenuItem
                 disabled={menuBusy || !canUpdate}
-                title={canUpdate ? undefined : "Only GitHub-sourced instances can update in place"}
                 onClick={() => requestUpdate(row)}
               >
                 <RefreshCw />
@@ -128,23 +191,7 @@ export const InstanceCard = ({ vm, engineOnline }: Props) => {
                 {row.description}
               </p>
             )}
-            {(row.source || row.createdAt || row.updatedAt) && (
-              <p className="text-xs text-muted-foreground/80">
-                {row.source && (
-                  <>
-                    From <span className="font-mono break-all">{row.source}</span>
-                  </>
-                )}
-                {row.source && (row.createdAt || row.updatedAt) ? " · " : null}
-                {row.createdAt && (
-                  <span title={row.createdAt}>created {formatRelativeAge(row.createdAt)}</span>
-                )}
-                {row.createdAt && row.updatedAt ? " · " : null}
-                {row.updatedAt && (
-                  <span title={row.updatedAt}>updated {formatRelativeAge(row.updatedAt)}</span>
-                )}
-              </p>
-            )}
+            <ProvenanceLine row={row} />
             <DetailPanel vm={vm} />
           </div>
         </div>
