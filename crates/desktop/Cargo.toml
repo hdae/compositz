@@ -31,6 +31,13 @@ compositz-core = { path = "../core", features = ["specta"] }
 # incidental to tauri-specta's own dep spec.
 tauri = { version = "2", features = ["specta"] }
 tauri-plugin-opener = "2"
+# single-instance MUST be registered first (its guard runs before the rest of setup);
+# dialog = frontend file open/save pickers; log = structured logging; window-state =
+# persist window geometry across launches.
+tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-log = "2"
+tauri-plugin-window-state = "2"
 tokio.workspace = true
 futures-util.workspace = true
 serde.workspace = true

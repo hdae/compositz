@@ -64,6 +64,17 @@ pub fn run() {
     }
 
     tauri::Builder::default()
+        // single-instance MUST be registered FIRST — its guard aborts a second
+        // launch before the rest of setup runs; a second launch focuses the
+        // existing window instead of opening another engine connection.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(builder.invoke_handler())
         .on_window_event(|window, event| {
