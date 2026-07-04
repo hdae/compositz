@@ -248,7 +248,17 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
         CI: `vp test` が「テスト0で exit1」→ **passWithNoTests**(4b 以降赤だった Frontend/Test を緑に)。
         検証=core fmt/clippy/test 緑(新2件) / frontend tsc-b+vp check+vp test(exit0)+vp build 緑 / 実ブラウザ
         CDP 12/12 + 4c 回帰 28/28。
-      - 4d〜4f: detail タブ(build/runtime log=stream_logs・services・settings=get/set_config・restartNeeded) →
-        banners/drag-drop/open/export(exportMount+save picker) + parity 総点検 + scaffold 残骸掃除
+      - 4d(61941f7 infra / 56ee654 UI): **展開行を Base UI Tabs 化**(build log/runtime log/services/settings)。
+        client に streamLogs/getConfig/setConfig、store に tabByInstance+setTab と action駆動タブ遷移
+        (install→build→settings / start→logs / ready→services)+ restart(タブ不動の down→up)。
+        RuntimeLog は **running 時のみ streamLogs を購読・unmount で解除**(Base UI は inactive パネルを
+        unmount=タブ有効時のみ pump、StrictMode 遅延 resolve は cancelled で自己解除)。SettingsPanel=
+        get/set_config で override 編集(定義ベース衝突検出+空きポート提案、manifest 既定との差分のみ保存、
+        running なら Restart)。ServicesList=定義ベース列挙・ready で OS 既定ブラウザ Open。LogView に
+        build/runtime 共通化。mock に get/set_config/stream_logs のステートフル handler。shadcn tabs を CLI
+        生成。**検証: tsc-b+vp check(既知warning3)+vp test(exit0)+vp build 緑 / 実ブラウザ CDP 20/20 + 4c・
+        UI-fix 回帰緑 / 敵対的レビュー(並行性7観点=全 holds、mock dead-disposer nit のみ修正、実バグ無し)。
+        Settings の実 backend 実挙動は Windows 送り(mock は合成 settings)。**
+      - 4e〜4f: banners/drag-drop/open/export(exportMount+save picker) + parity 総点検 + scaffold 残骸掃除
         (README/AGENTS/`shadcn` dep)。
 - [ ] Phase 5 — parity + docs + 退役（+ Windows 実機確認 #3）
