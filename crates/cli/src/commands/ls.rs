@@ -22,19 +22,29 @@ pub async fn run() -> Result<i32> {
     println!(
         "{}",
         dim(&format!(
-            "{:<28}{:<14}{:<10}{}",
-            "INSTANCE", "APP", "VERSION", "NAME"
+            "{:<28}{:<14}{:<10}{:<24}{:<12}{}",
+            "INSTANCE", "APP", "VERSION", "NAME", "CREATED", "SOURCE"
         ))
     );
     for instance in &list {
-        // Pad the id BEFORE coloring, so the escape sequence never counts toward
-        // the column width.
+        // Date only — time of day is noise at list granularity (meta.json keeps
+        // the full timestamp).
+        let created = instance
+            .meta
+            .created_at
+            .as_deref()
+            .map(|ts| ts.get(..10).unwrap_or(ts))
+            .unwrap_or("-");
+        // Pad each colored cell BEFORE coloring, so the escape sequence never
+        // counts toward the column width.
         println!(
-            "{}{:<14}{:<10}{}",
+            "{}{:<14}{:<10}{}{:<12}{}",
             green(&format!("{:<28}", instance.instance_id)),
             instance.app_id,
             instance.manifest.version,
-            cyan(&instance.manifest.name),
+            cyan(&format!("{:<24}", instance.display_name())),
+            created,
+            dim(instance.meta.source.as_deref().unwrap_or("-")),
         );
     }
     Ok(0)
