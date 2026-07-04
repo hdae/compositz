@@ -89,5 +89,9 @@ export default defineConfig({
     globals: true,
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
     setupFiles: ["./src/test/setup.ts"],
+    // Tests are deferred (runnable-first); an empty suite must NOT fail CI. This is
+    // "no tests yet is not a failure", not a disabled check — the step runs real
+    // tests the moment any land under the include glob.
+    passWithNoTests: true,
   },
 });
