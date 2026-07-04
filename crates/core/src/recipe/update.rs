@@ -30,7 +30,8 @@ use crate::recipe::ingest::{
     BundleSource, copy_tree_to, extract_archive_to, locate_bundle_root, now_iso8601,
 };
 use crate::recipe::instance::{
-    APP_SUBDIR, Instance, InstanceMeta, META_FILE, is_valid_instance_id, load_instance, write_meta,
+    APP_SUBDIR, Instance, InstanceMeta, META_FILE, OLD_APP_SUBDIR, is_valid_instance_id,
+    load_instance, write_meta,
 };
 use crate::recipe::loader::load_recipe;
 use crate::recipe::norm_dir;
@@ -42,10 +43,14 @@ pub const UPDATE_SUBDIR: &str = ".update";
 /// The staged provenance (`{ "source": … }`) next to the staged bundle.
 const UPDATE_SOURCE_FILE: &str = "source.json";
 
-/// The provenance recorded alongside a staged bundle, applied at commit.
+/// The provenance recorded alongside a staged bundle, applied at commit. The
+/// `version` pins WHAT the trust preview showed: commit re-reads the staged
+/// manifest and refuses a mismatch, so the trust answer is bound to the staged
+/// content, not merely to the instance.
 #[derive(Debug, Serialize, Deserialize)]
 struct StagedSource {
     source: String,
+    version: String,
 }
 
 /// What a prepared update would do — the trust prompt's content.
@@ -155,13 +160,27 @@ pub fn stage_update_bundle(
     fs::rename(&bundle_root, publish.path().join(APP_SUBDIR))?;
     let staged = StagedSource {
         source: source_label,
+        version: manifest.version.clone(),
     };
     let json = serde_json::to_string_pretty(&staged)
         .map_err(|e| Error::Instance(format!("staged source failed to serialize: {e}")))?;
     fs::write(publish.path().join(UPDATE_SOURCE_FILE), json)?;
 
+    // Move any prior pending update ASIDE before deleting it: `remove_dir_all`
+    // can fail half-way (a locked file — realistic under Windows AV), and a
+    // half-deleted dir must never sit AT the pending path where a later commit
+    // could read it. The rename detaches it atomically; its actual removal is
+    // then free to fail (RAII cleanup — dot-prefixed, reclaimed with the
+    // instance at worst).
     let pending = instance_dir.join(UPDATE_SUBDIR);
-    remove_dir_if_present(&pending)?;
+    let trash = Builder::new()
+        .prefix(".updtrash-")
+        .tempdir_in(&instance_dir)?;
+    match fs::rename(&pending, trash.path().join("pending")) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(Error::Io(e)),
+    }
     fs::rename(publish.path(), &pending)?;
 
     Ok(UpdatePreview {
@@ -189,6 +208,14 @@ pub fn commit_update(instances_dir: &str, instance_id: &str) -> Result<Instance,
         .map_err(|_| Error::Recipe("no prepared update to commit".to_string()))?;
     let staged: StagedSource = serde_json::from_str(&staged_json)
         .map_err(|e| Error::Recipe(format!("staged update is corrupt: {e}")))?;
+    // A staging without its bundle is the residue of an interrupted commit —
+    // drop it and say so, instead of a confusing "no manifest" error.
+    if !staged_app.is_dir() {
+        let _ = fs::remove_dir_all(&pending);
+        return Err(Error::Recipe(
+            "staged update is incomplete — prepare the update again".to_string(),
+        ));
+    }
     // Revalidate — never trust prepare-time checks across the gap.
     let manifest = load_recipe(staged_app.to_str().ok_or_else(non_utf8)?)?.manifest;
     if manifest.id != instance.app_id {
@@ -197,9 +224,17 @@ pub fn commit_update(instances_dir: &str, instance_id: &str) -> Result<Instance,
             instance.app_id, manifest.id
         )));
     }
+    // Bind the trust answer to the CONTENT the preview showed, not just the
+    // instance: a staging replaced or altered since the preview must re-gate.
+    if manifest.version != staged.version {
+        return Err(Error::Recipe(format!(
+            "staged update changed since the preview (v{} → v{}) — prepare the update again",
+            staged.version, manifest.version
+        )));
+    }
 
     let app = instance_dir.join(APP_SUBDIR);
-    let old = instance_dir.join(".old-app");
+    let old = instance_dir.join(OLD_APP_SUBDIR);
     remove_dir_if_present(&old)?;
     fs::rename(&app, &old)?;
     if let Err(e) = fs::rename(&staged_app, &app) {

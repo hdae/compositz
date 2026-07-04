@@ -594,21 +594,30 @@ pub async fn remove_instance_image(
     Ok(())
 }
 
-/// Remove the per-instance image tag SUPERSEDED by an in-place update, i.e. when
-/// the update changed the manifest version (the tag embeds it — a same-version
-/// rebuild overwrites the tag instead, nothing to reclaim). No-op for an
-/// `image`-based recipe (shared/external image, MUST never be removed). Call
-/// after `down`: best-effort and unforced, like [`remove_instance_image`].
+/// The per-instance image tag SUPERSEDED by an in-place update, if any: the tag
+/// the OLD manifest built (`compositz/<id>:<oldVersion>`), when the old recipe
+/// was build-based AND the update changed the version (a same-version rebuild
+/// overwrites the tag — nothing to reclaim). Keyed off the OLD manifest, MUST
+/// NOT be the new one: an update flipping a build recipe into an `image` recipe
+/// would otherwise leak the last built image forever (no later path removes it).
+/// An image-based OLD recipe never had a per-instance tag → `None`. Pure.
+pub fn superseded_image_tag(old: &Instance, new_version: &str) -> Option<String> {
+    if old.manifest.image.is_some() || old.manifest.version == new_version {
+        return None;
+    }
+    Some(image_tag(&old.instance_id, &old.manifest.version))
+}
+
+/// Remove the image tag [`superseded_image_tag`] names, if any. Call after
+/// `down`: best-effort and unforced, like [`remove_instance_image`].
 pub async fn remove_superseded_image(
     engine: &EngineHandle,
-    instance: &Instance,
-    old_version: &str,
+    old: &Instance,
+    new_version: &str,
 ) -> Result<(), Error> {
-    if instance.manifest.image.is_some() || instance.manifest.version == old_version {
-        return Ok(());
+    if let Some(tag) = superseded_image_tag(old, new_version) {
+        let _ = engine.remove_image(&tag).await;
     }
-    let tag = image_tag(&instance.instance_id, old_version);
-    let _ = engine.remove_image(&tag).await;
     Ok(())
 }
 

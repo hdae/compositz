@@ -240,3 +240,90 @@ fn update_paths_reject_path_shaped_ids() {
     // The store is untouched.
     assert_eq!(list_instances(store_path(&store)).len(), 1);
 }
+
+// --- interrupted-commit recovery (fault injection) ---------------------------
+
+#[test]
+fn a_crash_between_the_swap_renames_self_heals_on_the_next_load() {
+    let store = TempDir::new().unwrap();
+    create_instance(store.path(), "hello-abc123", "hello", "github:owner/repo");
+    let bundle = new_bundle("hello", "Hello", "0.2.0");
+    stage_update_bundle(
+        store_path(&store),
+        "hello-abc123",
+        dir_source(&bundle),
+        "github:owner/repo".to_string(),
+    )
+    .unwrap();
+
+    // Fault injection: reproduce the dead state a hard kill leaves between
+    // commit's two renames — the original bundle parked at `.old-app`, no `app/`.
+    let dir = store.path().join("hello-abc123");
+    fs::rename(dir.join("app"), dir.join(".old-app")).unwrap();
+
+    // The next load rolls the original back in (the commit never completed, so
+    // pre-update IS the correct state) instead of silently skipping the instance.
+    let healed = load_instance(dir.to_str().unwrap()).unwrap();
+    assert_eq!(healed.manifest.version, "0.1.0");
+    assert!(dir.join("app").is_dir());
+    assert!(!dir.join(".old-app").exists());
+    assert_eq!(list_instances(store_path(&store)).len(), 1);
+
+    // The staging survived the interruption — the commit can simply be retried.
+    let updated = commit_update(store_path(&store), "hello-abc123").unwrap();
+    assert_eq!(updated.manifest.version, "0.2.0");
+}
+
+#[test]
+fn commit_rejects_a_staging_whose_version_changed_since_the_preview() {
+    let store = TempDir::new().unwrap();
+    create_instance(store.path(), "hello-abc123", "hello", "github:owner/repo");
+    let bundle = new_bundle("hello", "Hello", "0.2.0");
+    stage_update_bundle(
+        store_path(&store),
+        "hello-abc123",
+        dir_source(&bundle),
+        "github:owner/repo".to_string(),
+    )
+    .unwrap();
+
+    // Same app, different content than the preview showed — the trust answer
+    // must not carry over.
+    let staged_manifest = store
+        .path()
+        .join("hello-abc123")
+        .join(UPDATE_SUBDIR)
+        .join("app")
+        .join("compositz.yaml");
+    fs::write(&staged_manifest, manifest("hello", "Hello", "9.9.9")).unwrap();
+
+    let err = commit_update(store_path(&store), "hello-abc123").unwrap_err();
+    assert!(
+        err.to_string().contains("changed since the preview"),
+        "got: {err}"
+    );
+    let live = load_instance(store.path().join("hello-abc123").to_str().unwrap()).unwrap();
+    assert_eq!(live.manifest.version, "0.1.0");
+}
+
+#[test]
+fn commit_drops_an_incomplete_staging_with_a_clear_error() {
+    let store = TempDir::new().unwrap();
+    create_instance(store.path(), "hello-abc123", "hello", "github:owner/repo");
+    let bundle = new_bundle("hello", "Hello", "0.2.0");
+    stage_update_bundle(
+        store_path(&store),
+        "hello-abc123",
+        dir_source(&bundle),
+        "github:owner/repo".to_string(),
+    )
+    .unwrap();
+
+    // Residue shape of an interrupted commit: source.json present, bundle gone.
+    let pending = store.path().join("hello-abc123").join(UPDATE_SUBDIR);
+    fs::remove_dir_all(pending.join("app")).unwrap();
+
+    let err = commit_update(store_path(&store), "hello-abc123").unwrap_err();
+    assert!(err.to_string().contains("incomplete"), "got: {err}");
+    assert!(!pending.exists(), "the unusable staging is dropped");
+}

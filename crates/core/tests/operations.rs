@@ -118,3 +118,37 @@ fn deconflict_distinct_ports_do_not_conflict_and_rerunning_is_idempotent() {
     ); // again — still none
     assert_eq!(load_instance_config(&b.dir).unwrap(), Override::default());
 }
+
+// --- superseded image tag (in-place update reclaim) --------------------------
+
+#[test]
+fn superseded_image_tag_names_the_old_build_tag_only_on_a_version_change() {
+    let store = TempDir::new().unwrap();
+    let src = recipe_dir("web", 8090); // build-based, version 0.1.0
+    let a = ingest(&store, &src);
+
+    // Version changed → the OLD tag is reclaimable (regardless of what the new
+    // manifest looks like — including a build→image flip).
+    let expected = format!("compositz/{}:0.1.0", a.instance_id);
+    assert_eq!(
+        compositz_core::superseded_image_tag(&a, "0.2.0").as_deref(),
+        Some(expected.as_str())
+    );
+    // Same version → the rebuild overwrites the tag in place; nothing to reclaim.
+    assert_eq!(compositz_core::superseded_image_tag(&a, "0.1.0"), None);
+}
+
+#[test]
+fn superseded_image_tag_is_none_for_an_image_based_old_recipe() {
+    let store = TempDir::new().unwrap();
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("compositz.yaml"),
+        "manifestVersion: 2\nid: shared\nname: Shared\nversion: \"0.1.0\"\nimage: nginx:alpine\ngpu: none\n",
+    )
+    .unwrap();
+    let a = ingest(&store, &dir);
+
+    // The old recipe never built a per-instance tag — nothing may be removed.
+    assert_eq!(compositz_core::superseded_image_tag(&a, "0.2.0"), None);
+}

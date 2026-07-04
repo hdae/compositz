@@ -37,6 +37,9 @@ static INSTANCE_ID: LazyLock<Regex> =
 
 /// Subdirectory holding the recipe bundle inside an instance directory.
 pub const APP_SUBDIR: &str = "app";
+/// Where an update commit parks the ORIGINAL bundle during its swap (see
+/// `recipe::update`). Load-time self-healing keys on this name too.
+pub(crate) const OLD_APP_SUBDIR: &str = ".old-app";
 /// Provenance file inside an instance directory.
 pub const META_FILE: &str = "meta.json";
 /// Per-instance launch override (RI-4) inside an instance directory.
@@ -108,7 +111,17 @@ pub fn load_instance(instance_dir: &str) -> Result<Instance, Error> {
             "invalid instance directory: {instance_dir}"
         )));
     }
-    let bundle = load_recipe(&format!("{dir}/{APP_SUBDIR}"))?;
+    // Self-heal an interrupted update commit: a crash between its two renames
+    // leaves the original bundle at `.old-app` and NO `app/`. Roll the original
+    // back in — the commit never completed (meta was not rewritten), so the
+    // pre-update bundle IS the correct state. Without this, the instance would
+    // silently vanish from every listing with no code path left to repair it.
+    let app = format!("{dir}/{APP_SUBDIR}");
+    let old = format!("{dir}/{OLD_APP_SUBDIR}");
+    if !Path::new(&app).exists() && Path::new(&old).exists() {
+        std::fs::rename(&old, &app)?;
+    }
+    let bundle = load_recipe(&app)?;
     let meta = read_meta(&format!("{dir}/{META_FILE}"));
     Ok(Instance {
         instance_id,
