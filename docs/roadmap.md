@@ -25,21 +25,19 @@ re-verified on Windows. Highlights of what ships today:
 
 ## Phase 3 — Hardening ⏳ (current)
 
-- ⏳ **In-place instance update** (user wish; frozen during the migration, now the
-  headline item): re-ingest a new ref/commit into the SAME instance (`meta.source`
-  already round-trips `github:owner/repo[/subdir][@ref]`) keeping instanceId / volumes /
-  `config.yaml`, behind a **re-trust gate** (new code = new trust, ADR-020) + image
-  rebuild. Companions: provenance display (below), user-facing **build args** (a
-  "rebuild needed" state next to ADR-023's "restart needed"), and an opt-in
+- 🔄 **In-place instance update** ([ADR-029](decisions.md)): two-phase
+  prepare→re-trust→commit landed in core + desktop (GitHub-sourced only; instanceId /
+  volumes / `config.yaml` survive; superseded image reclaimed). Remaining: Windows
+  real-machine verification, CLI parity (`compositz update`), user-facing **build
+  args** (a "rebuild needed" state next to ADR-023's "restart needed"), and an opt-in
   `--no-cache` rebuild action (build cache stays ON by default — user decision;
   `BuildOptions.noCache` is wired in core but nothing sets it).
-- ⏳ **Instance label + provenance display**: `meta.source`/`createdAt` are persisted
-  but shown only in the trust dialog. Surface source/ref/age in `ls` and the UI row,
-  and let the user edit the per-instance display name (`meta.name` exists — duplicates
-  set it to "<name> (copy)" — but there is no rename UI yet). The display prerequisite
-  for in-place update.
+- 🔄 **Instance label + provenance display**: `source` / `createdAt` / `updatedAt` now
+  show on the expanded card and in `ls`, and the ⋯ menu has Rename over `meta.name`
+  (blank / brand-equal clears the override). Remaining: Windows verification.
 - ⏳ **Volume lifecycle & GC**: `volumes prune` for already-orphaned volumes (see
-  [known-issues.md](known-issues.md)); `gc --reclaim` for venv-subpath orphans; uv
+  [known-issues.md](known-issues.md)); `gc --reclaim` for venv-subpath orphans; stale
+  per-instance image tags missed at update-commit time (ADR-029 / known-issues); uv
   `repair` / `rebuild` wrappers. A read-only **disk-usage view** (images / volumes /
   shared caches — tens of GB with cocktail-class apps) stages BEFORE any destructive
   reclaim UI.

@@ -29,6 +29,19 @@ issue (the SSE transport itself was retired with the Tauri migration, [ADR-028](
   and prune on explicit confirmation (Phase-3 "volumes/GC"; the engine volume
   endpoints exist in core). The venv-subpath variant is the entry below.
 
+## A missed superseded-image removal at update time is never retried
+
+- **What:** an in-place update reclaims the OLD per-instance image tag at commit
+  ([ADR-029](decisions.md)), but a removal that is skipped or fails — a crash between
+  the commit and the reclaim, an in-use 409 (e.g. a leaked export helper still
+  referencing it), or a pre-commit build finishing late and re-creating the old tag —
+  is permanent: no later code path removes that tag again. Disk waste only (multi-GB
+  for GPU images); shared/external images and cache volumes stay structurally
+  unreachable.
+- **Fix direction:** the Phase-3 GC: enumerate `compositz/<instanceId>:<version>` tags
+  against each instance's CURRENT manifest version and reclaim stale ones on explicit
+  confirmation — same shape as the volume prune above.
+
 ## Deleting a venv-preset instance leaves its venv inside the shared uv volume
 
 - **What:** the `venv` cache preset puts each instance's venv at `venvs/<instanceId>`

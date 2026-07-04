@@ -890,3 +890,40 @@ was killed first, in Phase 0.
   from CI windows-latest. `COMPOSITZ_DOCKER_HOST` (not `DOCKER_HOST`) selects the engine endpoint.
 - The frontend has no unit tests yet (`passWithNoTests`) — a deliberate deferral, revisit when the
   UI stabilizes.
+
+---
+
+## ADR-029 — In-place instance update: two-phase staging behind a re-trust gate · ✅ Accepted
+
+Decided 2026-07-05 (roadmap Phase 3 headline; frozen during the migration as the "update arc").
+
+**Context.** Instances are immutable snapshots of a recipe (ADR-017): updating an app meant
+import-new + migrate-data-by-hand. `meta.source` already round-trips the GitHub spec
+(`github:owner/repo[/subdir][@ref]`, ADR-021), so a GitHub-sourced instance's origin is
+re-fetchable. The trust model (ADR-020) says new code = new trust — an update must not silently
+swap in unreviewed code.
+
+**Decision.** `crates/core/src/recipe/update.rs`:
+
+- **Two-phase**: `prepare_update` downloads + extracts into `<instance>/.update/` (bundle +
+  `source.json`) and returns a preview — the live `app/` is untouched until the user answers the
+  re-trust gate. `commit_update` swaps `app/` (rename-out, rename-in, best-effort rollback),
+  updates `meta.source` + a new `updatedAt` field (`createdAt` and the rename override are
+  preserved), and drops the staging. `discard_update` is the decline path (idempotent).
+- **GitHub-only (v1)**: `file:` / `dir:` / `upload` / `duplicate:` provenance has no re-fetchable
+  origin — the UI disables Update with the reason; re-import covers those.
+- **Same-app invariant (MUST)**: the staged manifest's `id` must equal the instance's `app_id`,
+  checked at prepare AND revalidated at commit — the instance id keys the image tag and volume
+  names, so a different app under the same id would silently attach foreign data. A version/name
+  change is fine; an app change is rejected.
+- **Engine side** (desktop `update_commit`): after the fs swap the old container is stopped (it
+  runs retired code) and `remove_superseded_image` reclaims the old per-instance tag only when the
+  version changed (a same-version rebuild overwrites the tag; image-based recipes are untouched).
+  The client then rebuilds via the existing streamed install and refetches rows.
+
+**Consequences:** instance id / volumes / `config.yaml` / `.launched.yaml` all survive an update;
+orphaned override keys are ignored at launch and dropped at the next Settings save (by design).
+Provenance became visible alongside this arc: `source` / `createdAt` / `updatedAt` on the row +
+`ls`, and a rename UI over `meta.name` (`set_instance_name`, blank/brand-equal clears the override
+so the name tracks the manifest across updates). CLI parity (`compositz update`) and a
+"rebuild needed" state for user-facing build args stay on the roadmap.
