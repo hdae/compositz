@@ -241,7 +241,7 @@ pub fn to_container_statuses(
 /// because it is what the container is ACTUALLY on (covering an unrestarted override
 /// change and an engine auto-bump). With no live binding yet, fall back to the
 /// defined port (`wp.host`) so the row shows the *expected* endpoint, `ready: false`.
-pub fn instance_services(web_ports: &[WebPort], ports: &[PublishedPort]) -> Vec<Service> {
+fn instance_services(web_ports: &[WebPort], ports: &[PublishedPort]) -> Vec<Service> {
     web_ports
         .iter()
         .map(|wp| {

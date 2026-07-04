@@ -1,252 +1,297 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://compositz.dev/schema/compositz.schema.json",
-  "type": "object",
-  "properties": {
-    "manifestVersion": {
-      "type": "number",
-      "const": 2
-    },
-    "id": {
-      "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
-      "description": "Key for image/container/data/labels."
-    },
-    "name": {
-      "type": "string",
-      "pattern": "\\S"
-    },
-    "version": {
-      "type": "string",
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"
-    },
-    "description": {
-      "type": "string"
-    },
-    "build": {
-      "type": "object",
+  "$defs": {
+    "BuildSpec": {
+      "additionalProperties": false,
+      "description": "Build the image from a Dockerfile context (mutually exclusive with `image`).",
       "properties": {
+        "args": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
         "dockerfile": {
           "default": "Dockerfile",
           "type": "string"
-        },
-        "args": {
-          "type": "object",
-          "propertyNames": {
-            "type": "string"
-          },
-          "additionalProperties": {
-            "type": "string"
-          }
         }
       },
+      "type": "object"
+    },
+    "CacheScope": {
+      "enum": [
+        "shared",
+        "instance"
+      ],
+      "type": "string"
+    },
+    "CacheSpec": {
+      "description": "Opt-in managed cache. Presets (`venv`, `huggingface`) inject well-known env\nvars; `custom` names its own volume + injected env var.\n\n`Deserialize` is hand-written rather than derived: the Zod source uses a\n`strictObject` per variant, so an unknown key *inside* a cache entry must be\nrejected. serde's internally-tagged enums (`#[serde(tag = ...)]`) cannot carry\n`deny_unknown_fields`, so the derive would silently drop such keys — a parity\nregression against the source-of-truth spec. The impl below buffers each entry,\nreads its `type`, and re-deserializes through a per-variant struct that *does*\ndeny unknown fields. `Serialize` / `JsonSchema` stay derived (internally tagged).",
+      "oneOf": [
+        {
+          "description": "Per-instance uv venv + co-located uv cache/interpreters on one shared\nvolume (hardlink-safe). Injects `VIRTUAL_ENV` + `UV_PROJECT_ENVIRONMENT`\n(same path) + `UV_CACHE_DIR` + `UV_PYTHON_INSTALL_DIR`.",
+          "properties": {
+            "type": {
+              "const": "venv",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Shared HuggingFace hub cache. Injects `HF_HOME`.",
+          "properties": {
+            "type": {
+              "const": "huggingface",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A named cache injected into a chosen env var.",
+          "properties": {
+            "env": {
+              "description": "Env var the mount path is injected into.",
+              "type": "string"
+            },
+            "name": {
+              "description": "Cache key (volume suffix).",
+              "type": "string"
+            },
+            "scope": {
+              "$ref": "#/$defs/CacheScope",
+              "default": "shared",
+              "description": "`shared` => one cache across apps; `instance` => a per-instance subpath."
+            },
+            "type": {
+              "const": "custom",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "name",
+            "env"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "EnvSpec": {
       "additionalProperties": false,
-      "description": "Build the image from a Dockerfile context (mutually exclusive with `image`)."
-    },
-    "image": {
-      "description": "Prebuilt image reference (mutually exclusive with `build`).",
-      "type": "string",
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]*$"
-    },
-    "ports": {
-      "default": [],
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$",
-            "description": "Stable key — UI button label and per-install override key."
-          },
-          "container": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 65535,
-            "description": "Port the app listens on inside the container."
-          },
-          "host": {
-            "description": "Host port to publish on (default = container; auto-bumped on conflict).",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 65535
-          },
-          "protocol": {
-            "default": "tcp",
-            "type": "string",
-            "enum": [
-              "tcp",
-              "udp"
-            ]
-          },
-          "web": {
-            "default": false,
-            "description": "Serves a browser UI — renders an \"Open UI\" button. Multiple allowed.",
-            "type": "boolean"
-          },
-          "path": {
-            "default": "/",
-            "description": "UI path (absolute), used to build the open URL.",
-            "type": "string",
-            "pattern": "^\\/"
-          },
-          "description": {
-            "type": "string"
-          }
+      "properties": {
+        "default": {
+          "description": "Suggested/placeholder value (coexists with `required`).",
+          "type": [
+            "string",
+            "null"
+          ]
         },
-        "required": [
-          "name",
-          "container"
-        ],
-        "additionalProperties": false
-      }
-    },
-    "mounts": {
-      "default": [],
-      "description": "Persisted data. Declared => kept across restarts.",
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$",
-            "description": "Stable key — host subdir / volume suffix."
-          },
-          "target": {
-            "type": "string",
-            "pattern": "^\\/",
-            "description": "In-container mount path."
-          },
-          "placement": {
-            "default": "volume",
-            "description": "bind => host <data-root>/<instanceId>/<name> (browsable, slow on Windows); volume => managed named volume.",
-            "type": "string",
-            "enum": [
-              "bind",
-              "volume"
-            ]
-          },
-          "description": {
-            "type": "string"
-          }
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
-        "required": [
-          "name",
-          "target"
-        ],
-        "additionalProperties": false
-      }
-    },
-    "cache": {
-      "default": [],
-      "description": "Opt-in managed caches; paths injected as env vars.",
-      "type": "array",
-      "items": {
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "venv"
-              }
-            },
-            "required": [
-              "type"
-            ],
-            "additionalProperties": false,
-            "description": "Per-instance uv venv + co-located uv cache/interpreters on one shared volume (hardlink-safe). Injects VIRTUAL_ENV + UV_PROJECT_ENVIRONMENT (same path) + UV_CACHE_DIR + UV_PYTHON_INSTALL_DIR. Incompatible with apps that hard-code a `.venv`-relative path: uv project ops are redirected to the injected path."
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "huggingface"
-              }
-            },
-            "required": [
-              "type"
-            ],
-            "additionalProperties": false,
-            "description": "Shared HuggingFace hub cache. Injects HF_HOME."
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "custom"
-              },
-              "name": {
-                "type": "string",
-                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$",
-                "description": "Cache key (volume suffix)."
-              },
-              "env": {
-                "type": "string",
-                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
-                "description": "Env var the mount path is injected into."
-              },
-              "scope": {
-                "default": "shared",
-                "description": "shared => one cache across apps; instance => a per-instance subpath (instanceId encodes the app).",
-                "type": "string",
-                "enum": [
-                  "shared",
-                  "instance"
-                ]
-              }
-            },
-            "required": [
-              "type",
-              "name",
-              "env"
-            ],
-            "additionalProperties": false
-          }
-        ]
-      }
-    },
-    "env": {
-      "default": [],
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-          },
-          "description": {
-            "type": "string"
-          },
-          "required": {
-            "default": false,
-            "description": "The user must confirm a value before launch.",
-            "type": "boolean"
-          },
-          "default": {
-            "description": "Suggested/placeholder value (coexists with required).",
-            "type": "string"
-          }
+        "name": {
+          "type": "string"
         },
-        "required": [
-          "name"
-        ],
-        "additionalProperties": false
-      }
+        "required": {
+          "default": false,
+          "description": "The user must confirm a value before launch.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
     },
-    "gpu": {
-      "default": "preferred",
-      "type": "string",
+    "GpuMode": {
+      "description": "GPU policy: `required` fails without a GPU; `preferred` tries GPU then falls\nback to CPU; `none` never attaches one.",
       "enum": [
         "required",
         "preferred",
         "none"
       ],
-      "description": "GPU policy: required fails without a GPU; preferred tries GPU then falls back to CPU; none never attaches one."
+      "type": "string"
+    },
+    "MountMapping": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Stable key — host subdir / volume suffix.",
+          "type": "string"
+        },
+        "placement": {
+          "$ref": "#/$defs/Placement",
+          "default": "volume"
+        },
+        "target": {
+          "description": "In-container mount path (absolute).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "target"
+      ],
+      "type": "object"
+    },
+    "Placement": {
+      "enum": [
+        "bind",
+        "volume"
+      ],
+      "type": "string"
+    },
+    "PortMapping": {
+      "additionalProperties": false,
+      "properties": {
+        "container": {
+          "description": "Port the app listens on inside the container.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "host": {
+          "description": "Host port to publish on (default = container; auto-bumped on conflict).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Stable key — UI button label and per-install override key.",
+          "type": "string"
+        },
+        "path": {
+          "default": "/",
+          "description": "UI path (absolute), used to build the open URL.",
+          "type": "string"
+        },
+        "protocol": {
+          "$ref": "#/$defs/Protocol",
+          "default": "tcp"
+        },
+        "web": {
+          "default": false,
+          "description": "Serves a browser UI — renders an \"Open UI\" button. Multiple allowed.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "container"
+      ],
+      "type": "object"
+    },
+    "Protocol": {
+      "enum": [
+        "tcp",
+        "udp"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A parsed + validated recipe manifest. Construct only via [`parse_manifest`],\nwhich applies the cross-field refinements a plain deserialize can't.",
+  "properties": {
+    "build": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BuildSpec"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "cache": {
+      "default": [],
+      "description": "Opt-in managed caches; paths injected as env vars.",
+      "items": {
+        "$ref": "#/$defs/CacheSpec"
+      },
+      "type": "array"
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "env": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/EnvSpec"
+      },
+      "type": "array"
+    },
+    "gpu": {
+      "$ref": "#/$defs/GpuMode",
+      "default": "preferred"
+    },
+    "id": {
+      "description": "Key for image/container/data/labels.",
+      "type": "string"
+    },
+    "image": {
+      "description": "Prebuilt image reference (mutually exclusive with `build`).",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "manifestVersion": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "mounts": {
+      "default": [],
+      "description": "Persisted data. Declared => kept across restarts.",
+      "items": {
+        "$ref": "#/$defs/MountMapping"
+      },
+      "type": "array"
+    },
+    "name": {
+      "type": "string"
+    },
+    "ports": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/PortMapping"
+      },
+      "type": "array"
+    },
+    "version": {
+      "type": "string"
     }
   },
   "required": [
@@ -255,6 +300,6 @@
     "name",
     "version"
   ],
-  "additionalProperties": false,
-  "title": "Compositz recipe manifest"
+  "title": "Compositz recipe manifest",
+  "type": "object"
 }

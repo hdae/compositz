@@ -19,11 +19,6 @@ pub const IMAGE_NAMESPACE: &str = "compositz";
 /// env vars (see `cache[]`), never this prefix directly.
 pub const MANAGED_MOUNT_ROOT: &str = "/compositz";
 
-/// The default image tag version when a recipe omits one (`compositz/<id>:latest`).
-/// Every current call site passes an explicit version; this mirrors the Deno
-/// `imageTag(id, version = "latest")` default for the rare caller that doesn't.
-pub const DEFAULT_IMAGE_VERSION: &str = "latest";
-
 /// A namespaced Docker label key, e.g. `label("instance")` => `io.compositz.instance`.
 pub fn label(suffix: &str) -> String {
     format!("{LABEL_PREFIX}.{suffix}")
@@ -91,7 +86,6 @@ mod tests {
             image_tag("comfyui-a1b2c3", "0.1.0"),
             "compositz/comfyui-a1b2c3:0.1.0"
         );
-        assert_eq!(image_tag("x", DEFAULT_IMAGE_VERSION), "compositz/x:latest");
     }
 
     #[test]

@@ -61,7 +61,7 @@ impl ContainerSummary {
 /// A published port shows both host and container port: `"8188->8188/tcp"`.
 /// An unpublished (container-only) port shows just the private side:
 /// `"8188/tcp"`. The protocol defaults to `tcp` when the engine omits it.
-pub fn format_port(port: &PortSummary) -> String {
+fn format_port(port: &PortSummary) -> String {
     let proto = port_proto(port);
     match port.public_port {
         Some(public) => format!("{}->{}/{}", public, port.private_port, proto),

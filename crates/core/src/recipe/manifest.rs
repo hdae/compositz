@@ -59,11 +59,6 @@ static VERSION: LazyLock<Regex> =
 static IMAGE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z0-9][A-Za-z0-9._:/@-]*$").unwrap());
 
-/// Whether an id from outside is a legal recipe id (see [`RECIPE_ID`]).
-pub fn is_valid_recipe_id(id: &str) -> bool {
-    RECIPE_ID.is_match(id)
-}
-
 // --- Enums ---
 
 /// GPU policy: `required` fails without a GPU; `preferred` tries GPU then falls

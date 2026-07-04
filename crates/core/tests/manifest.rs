@@ -5,7 +5,7 @@
 
 use compositz_core::recipe::manifest::{
     CacheScope, CacheSpec, EnvSpec, GpuMode, Manifest, MountMapping, Placement, PortMapping,
-    Protocol, is_valid_recipe_id, manifest_json_schema, parse_manifest,
+    Protocol, manifest_json_schema, parse_manifest,
 };
 
 /// Assert that parsing `yaml` fails with a message containing `needle`.
@@ -25,11 +25,19 @@ fn assert_rejects(yaml: &str, needle: &str) {
 
 #[test]
 fn recipe_id_accepts_valid_rejects_path_shaped_uppercase_blank() {
+    // The id keys the image / container / data dirs / labels, so the charset is
+    // asserted through the parse boundary every id actually crosses.
+    fn manifest_with_id(id: &str) -> String {
+        format!("manifestVersion: 2\nid: {id:?}\nname: X\nversion: \"1\"\nbuild: {{}}\ngpu: none\n")
+    }
     for ok in ["comfyui", "hello-web", "a", "x0-9"] {
-        assert!(is_valid_recipe_id(ok), "{ok} should be valid");
+        assert!(
+            parse_manifest(&manifest_with_id(ok)).is_ok(),
+            "{ok} should be valid"
+        );
     }
     for bad in ["", "..", "../x", "a/b", "Abc", "_x", "x.y", "-x"] {
-        assert!(!is_valid_recipe_id(bad), "{bad} should be invalid");
+        assert_rejects(&manifest_with_id(bad), "id");
     }
 }
 
@@ -398,6 +406,19 @@ fn rejects_two_mounts_on_the_same_target() {
         "manifestVersion: 2\nid: x\nname: X\nversion: \"1\"\nbuild: {}\nmounts:\n  - name: a\n    target: /data\n  - name: b\n    target: /data\n",
         "duplicate mount target",
     );
+}
+
+/// Regenerates the committed manifest JSON Schema for recipe authors/agents.
+/// Deterministic (same types → same document), so a dirty `git diff` on
+/// `spec/compositz.schema.json` after `cargo test` means the committed schema is
+/// stale — the same generate-and-commit pattern as the desktop crate's
+/// `export_bindings`.
+#[test]
+fn export_schema() {
+    let schema = manifest_json_schema();
+    let json = serde_json::to_string_pretty(schema.as_value()).expect("schema serializes");
+    std::fs::write("../../spec/compositz.schema.json", format!("{json}\n"))
+        .expect("write spec/compositz.schema.json");
 }
 
 #[test]

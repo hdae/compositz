@@ -23,7 +23,7 @@ pub mod view;
 pub use endpoint::{Endpoint, parse_docker_host};
 pub use engine::{BuildProgress, EngineVersion, VolumeSummary};
 pub use error::Error;
-pub use model::{ContainerSummary, format_port};
+pub use model::ContainerSummary;
 pub use probe::{SnapshotPush, build_snapshot, enrich_with_probes, probe_host};
 pub use recipe::config::{Override, same_override, validate_override};
 pub use recipe::github::{
@@ -39,7 +39,7 @@ pub use recipe::instance::{
     load_instance_config, load_launched_config, remove_instance_dir, save_instance_config,
 };
 pub use recipe::manifest::{
-    MANIFEST_VERSION, Manifest, Placement, is_valid_recipe_id, manifest_json_schema, parse_manifest,
+    MANIFEST_VERSION, Manifest, Placement, manifest_json_schema, parse_manifest,
 };
 pub use recipe::operations::{
     BindDirFailure, PortBump, RemoveDataOpts, RemoveDataResult, UpResult, VolumeFailure,
@@ -52,7 +52,7 @@ pub use recipe::run::{
 };
 pub use view::{
     ContainerStatus, EngineSnapshot, EnvSetting, InstanceRow, InstanceSettings, InstanceView,
-    MountSetting, PortSetting, PublishedPort, Service, WebPort, build_settings, instance_services,
+    MountSetting, PortSetting, PublishedPort, Service, WebPort, build_settings,
     to_container_statuses, to_instance_rows, to_instance_view,
 };
 
