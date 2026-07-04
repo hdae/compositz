@@ -6,16 +6,17 @@
 
 ## Current focus
 
-**Tauri 移行は完遂（ADR-028）・Deno ツリー退役済み（2026-07-05）。** 全体コードレビュー
-（5領域並列敵対的 + 検証）→ 検出は low 2件+dead 3件のみで全て解消、docs 大改訂
-（architecture/README/roadmap/known-issues 棚卸し/ADR-028+supersede）、コメントの
-Deno/phase 参照一掃、`spec/compositz.schema.json` を schemars 生成
-（`cargo test -p compositz-core export_schema`）に移行、クリーンビルド済み。
+**Tauri 移行は完遂（ADR-028）・Deno ツリー退役済み・UI カード化デザイン調整も完了
+（2026-07-05, ユーザー実機確認済み）。** レビュー（5領域敵対的 → high/med 0）、docs 大改訂、
+コメント一掃、schema/bindings の生成コミット化、クリーンビルド、そして UI 刷新
+（テーブル → 開閉カード / 固定ツールバー+ScrollArea / icon-only アクション+⋯メニュー /
+shadcn Select / ポート検証 / ヘッダー接続バッジ）まで済み。shadcn は CLI 再取得で
+出所検証済み（fmt 正規化後 8/10 バイト一致）。
 
-**NEXT（ユーザー指示）: デザイン調整（UI 見た目）+ 残りの総仕上げ。** その後は
-[roadmap](../docs/roadmap.md) Phase 3（★in-place update アーク / provenance 表示 /
-volumes GC / manifest 表現力）。**wslc は microsoft/WSL#40976 が動くまで保留**
-（プロジェクトの根幹の賭け — memory [[wsl-containers-recon]]）。
+**NEXT: [roadmap](../docs/roadmap.md) Phase 3（★in-place update アーク / provenance 表示 /
+volumes GC / manifest 表現力）— または追加のデザイン微調整。**
+**wslc は microsoft/WSL#40976 が動くまで保留**（プロジェクトの根幹の賭け —
+memory [[wsl-containers-recon]]）。
 
 - 体制: routed top tier = **Fable**（narrow-deep/structured）、broad fan-out = Opus、
   mechanical = Sonnet/Haiku。**★opus には schema を付けない**（[[workflow-structuredoutput-fragility]]）。
@@ -53,8 +54,18 @@ volumes GC / manifest 表現力）。**wslc は microsoft/WSL#40976 が動くま
 - **Base UI `Tabs.Panel` は inactive を unmount** — RuntimeLog/SettingsPanel は「タブ有効時のみ
   購読/取得」をこれで実現。build done→settings 自動切替で build ログ本文は DOM から消える
   （テストの落とし穴）。
-- **shadcn `TableCell` は `whitespace-nowrap` 既定** — 長文セルは `table-fixed` + カラム幅 +
-  `whitespace-normal` で折返す（`break-words` 単独では覆せない）。
+- **ScrollArea の高さ上限は Root でなく viewport 側へ** — viewport の %高さは auto 親で解決
+  しないため、Root に max-h を置くと溢れるだけでスクロールしない。shadcn wrapper は viewport
+  class を露出しないので `[&_[data-slot=scroll-area-viewport]]:max-h-64` の arbitrary variant
+  で当てる。auto-scroll も同じ data-slot を querySelector して viewport を直接操作（LogView）。
+- **stopPropagation は発生源に置く** — カードのヘッダー全体クリック開閉に対し、メタ行の span
+  全体で止めると余白クリックまで死ぬ（実際にバグった: 66de739）。止めるのはコピー等の
+  操作ボタン自身のハンドラ内で。
+- **number input は使わない** — port 等は `type="text"` + `inputMode="numeric"` + 自前検証
+  （スピナー除去 CSS はブラウザ依存ハック、number はホイールで値が変わる事故もある）。
+- **shadcn の CLI 出力に未使用 import が混ざることがある**（select 系 → scroll-area の
+  `import * as React`）— tsconfig の unused エラーになるため import 行のみ調整可
+  （[[shadcn-vendor-from-upstream]] の運用どおり中身は不改変）。
 - **楽観的更新はしない**（[[feedback-avoid-optimistic-ui]]）— 構造変化(import/duplicate/delete)は
   `reloadRows`(=list_instance_rows 再取得)でのみ baseRows 更新。server-confirmed のみ。
 - **dev mock はページ寿命 singleton**（install 冪等・disposer no-op）— StrictMode の遅延 cleanup が
@@ -65,6 +76,8 @@ volumes GC / manifest 表現力）。**wslc は microsoft/WSL#40976 が動くま
 
 ## Resume point
 
-レビュー + docs + Deno 退役 + クリーンビルドまで完了（このセッション、コミット済み）。
-次セッションは **UI デザイン調整**から: 対象は frontend/src/components（現状 shadcn 既定の
-素朴な見た目）。仕様の親は docs/（roadmap Phase 3 が次の実装アーク）。
+レビュー + docs + Deno 退役 + クリーンビルド + **UI カード化**（8ed0e00〜663defd の 7 コミット、
+ユーザー実機確認済み）まで完了。UI 実装の落とし穴は Pitfalls 参照（ScrollArea の max-h は
+viewport 側 / stopPropagation は発生源で / port 入力は text+inputMode=numeric）。
+次は **roadmap Phase 3（update アーク）** が本命。バンドル 521kB の chunk 警告は容認中
+（ローカル webview、必要なら chunkSizeWarningLimit）。
