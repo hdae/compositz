@@ -51,6 +51,14 @@ bindings 生成）✅ / 4b（runnable 縦切り実装）✅ / 4c（dialogs: impo
 - **Docker は TCP で到達**: `COMPOSITZ_DOCKER_HOST=tcp://host.docker.internal:2375`（この dev 環境
   自体が同じ engine 上の container — 統合テストは compositz-test-* 命名 + 正確な id で後始末、
   prune/一括系 絶対禁止、共有 cache volume に触れない）。
+- **shadcn の `TableCell` は `whitespace-nowrap` 既定** — table 内の長文(description 等)は折返さず
+  テーブルを max-content 幅に広げ横スクロールを出す。対策=`Table` を **`table-fixed`** + カラム幅指定に
+  し、折返させたいセルは **`whitespace-normal`** で上書き（`break-words` だけでは nowrap を覆せない）。4c 後の
+  fix で対応。
+- **frontend CI の `vp test` は `passWithNoTests: true`**（vite.config）— 4b で skeleton 削除後テスト0で
+  "No test files found" exit 1 になり CI が赤だった。テスト方針は「後回し」のまま緑に。テストが入れば通常実行。
+- **複製の表示名は core の per-instance override**（`InstanceMeta.name`、`to_instance_view` が
+  `meta.name ▷ manifest.name`）。duplicate が `"<名> (copy)"` を記録し同名 recipe の複製を区別可能に。
 - **楽観的更新はしない**（ユーザー明示 — memory [[feedback-avoid-optimistic-ui]]）。
   server-confirmed state か明確な rollback のみ。**4c で構造変化(import/duplicate/delete)は
   `reloadRows`(=list_instance_rows 再取得)でのみ baseRows を更新する方式に確定** — 手管理の行

@@ -239,6 +239,15 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
         warning 2)+ vp build 緑 / 実ブラウザ CDP 28/28 ×4 安定**(headless chromium の font FATAL は最小
         fontconfig+DejaVu+`--disable-remote-fonts` で回避 — アプリ側バグ非該当)。**File import の native
         picker 実挙動は実 Tauri のみ(mock は合成パス)→ Windows 実機確認送り。**
+      - 4c-fix(3fd6198 core / 5d8d440 ci / e11098e ui): ユーザー UI フィードバック + CI 修正。
+        ①description 横スクロール = **shadcn TableCell の whitespace-nowrap 既定**が原因 → Table を
+        `table-fixed`+カラム幅、detail セルを `whitespace-normal` に(break-words だけでは nowrap を覆せない)。
+        ③subtitle を `v{version} · {instanceId}`(CopyId でクリックコピー)に(appId はタイトルとほぼ同一で
+        判別不可)。②複製名 = **core に per-instance 表示名 override**(InstanceMeta.name、to_instance_view が
+        meta.name▷manifest、duplicate が「(copy)」、bindings 不変)。collapsed 行に 1 行 description。
+        CI: `vp test` が「テスト0で exit1」→ **passWithNoTests**(4b 以降赤だった Frontend/Test を緑に)。
+        検証=core fmt/clippy/test 緑(新2件) / frontend tsc-b+vp check+vp test(exit0)+vp build 緑 / 実ブラウザ
+        CDP 12/12 + 4c 回帰 28/28。
       - 4d〜4f: detail タブ(build/runtime log=stream_logs・services・settings=get/set_config・restartNeeded) →
         banners/drag-drop/open/export(exportMount+save picker) + parity 総点検 + scaffold 残骸掃除
         (README/AGENTS/`shadcn` dep)。
