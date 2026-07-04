@@ -166,20 +166,15 @@ function broadcastSnapshot(): void {
   for (const pusher of snapshotPushers.values()) pusher.push(event);
 }
 
-/** Timers started by the mock (warming timeouts + install intervals), all cleared by
- *  the disposer the installer returns. */
-const timers = new Set<ReturnType<typeof setTimeout>>();
-
 /** Simulate an app "warming up": Docker publishes the port at start, the probe only
  *  goes green a moment later — so `ready` transitions after the row is already live. */
 function scheduleWarming(id: string): void {
-  const timer = setTimeout(() => {
+  setTimeout(() => {
     if (state[id]?.running) {
       state[id]!.accepting = true;
       broadcastSnapshot();
     }
   }, 2500);
-  timers.add(timer);
 }
 
 const INSTALL_LOG = [
@@ -192,7 +187,23 @@ const INSTALL_LOG = [
   "Successfully built the image",
 ];
 
+let installed = false;
+
+/**
+ * Install the dev mock. Idempotent and page-lifetime: the mock is a global singleton
+ * (its `mockIPC` handler + subscription registry live in this module), so it is
+ * installed ONCE and never torn down — a reload clears everything.
+ *
+ * The returned disposer is intentionally a NO-OP. An earlier version cleared the
+ * global `snapshotPushers` on dispose, which raced badly with React StrictMode: the
+ * throwaway first mount's async mock-import can resolve AFTER the second mount has
+ * already subscribed, and its late cleanup then wiped the live subscription — leaving
+ * zero pushers, so `up`/`down` snapshots reached nobody. Per-subscription teardown is
+ * the store's job (via `unsubscribe`), not a global reset.
+ */
 export function installBrowserMock(): () => void {
+  if (installed) return () => {};
+  installed = true;
   mockIPC((cmd: string, payload?: InvokeArgs) => {
     switch (cmd) {
       case "list_instance_rows":
@@ -250,17 +261,12 @@ export function installBrowserMock(): () => void {
               return;
             }
             clearInterval(timer);
-            timers.delete(timer);
             disposers.delete(subId);
             if (state[id]) state[id]!.installed = true;
             pusher.push({ type: "done", tag: `compositz/${id}:latest` });
             broadcastSnapshot();
           }, 350);
-          timers.add(timer);
-          disposers.set(subId, () => {
-            clearInterval(timer);
-            timers.delete(timer);
-          });
+          disposers.set(subId, () => clearInterval(timer));
         }
         return subId;
       }
@@ -283,12 +289,7 @@ export function installBrowserMock(): () => void {
     }
   });
 
-  return () => {
-    for (const timer of timers) clearInterval(timer);
-    timers.clear();
-    disposers.clear();
-    snapshotPushers.clear();
-  };
+  return () => {};
 }
 
 /** Exposed for tests that assert list rendering from known fixture data. */
