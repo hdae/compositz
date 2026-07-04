@@ -6,7 +6,8 @@
 ## Current focus
 
 **Tauri 全面移行 — Phase 1〜3 完了。Phase 4（React UI）着手中: 4a（flake ビルド環境 +
-bindings 生成）✅（c9ae23f）。次は 4b（frontend 再構築）。** 計画:
+bindings 生成）✅ / 4b（runnable 縦切り実装）✅（2f9adf1・静的緑・ブラウザ実機確認待ち）。次は
+4c（dialogs）。** 計画:
 [docs/plans/tauri-migration.md](../docs/plans/tauri-migration.md)（承認済み親計画）+
 [docs/plans/tauri-migration-execution.md](../docs/plans/tauri-migration-execution.md)
 （**実行詳細・例外時対応 — 実装セッションはこちらに従う**）。
@@ -79,17 +80,21 @@ DevTools 不可のため新コマンドの直接検証は未。**このエラー
 `// @ts-nocheck` 前置 / vite.config の fmt・lint `ignorePatterns` で除外）→ 4b でそのまま消費可。追加
 作業なし。** desktop の CI ゲート（clippy/test/bindings 鮮度）追加は後回し（user 合意・4b 後 or Phase 5）。
 
-**NEXT: 4b〜4f — React UI 再構築。** 旧 `frontend/src/`（Phase 0 skeleton: App.tsx / ipc/{index,
-mock,types}.ts / components / store — 全て throwaway）を破棄し再構築。仕様は Deno
-`packages/ui/islands/InstanceList.tsx`(1,434 行モノリス)の分解。`frontend/src/ipc/bindings.ts` を
-型付き IPC 層に。新コマンド= list_instance_rows / instance_up/down/delete/duplicate /
-get_config/set_config / import_recipe/import_github / export_mount / open_service_url +
-push-stream(subscribe_instances/stream_logs/instance_install/unsubscribe)。**楽観的更新3箇所
-（act の start/stop / removeInstance / trustInstall の行挿入）は snapshot/応答駆動へ置換**。挙動
-parity は各 ADR（execution 計画 Phase 4 節）。shadcn は CLI 追加のみ(`--base base`)。分解案=
-InstanceTable/Row/StatusPill/ActionButton/TrustDialog/DeleteDialog/DuplicateDialog/ImportDialog/
-Detail(build/runtime log・services・settings)/banners/ThemeProvider、zustand は小分割。
-**★user 優先事項（2026-07-04）: 「まずちゃんと動くこと」を先に確認したい → 完全性より runnable な
-縦切りを優先。ローカル動作確認は `vp dev` + browser + mockIPC（mock を bindings 準拠に書き直す）、
-実 backend は Windows。テスト/CI 整備は後回し。** 再開手順: memory index → execution 計画 Phase 4 →
-InstanceList.tsx + bindings.ts(生成済・有効) + 各 ADR。
+**4b ✅（2f9adf1）: runnable 縦切りを実装。** Phase 0 skeleton 破棄 → bindings.ts を型付き IPC 層
+`ipc/client.ts` に → `lib/rows.ts`(snapshot マージ=core view.rs 移植) / `store/instances.ts`(zustand・
+**楽観更新なし**・StrictMode 二重購読を sessionToken で無効化) / theme(ADR-019) / components
+(InstanceTable/Row/StatusPill/ActionButton/BuildLogPanel)。mock は新コマンド準拠のステートフル fake。
+縦切り範囲 = **list + subscribe(snapshot) + install(log) + up + down + open**。**楽観更新は排除済み**
+(up/down/install は busy スピナー + snapshot 駆動で server-confirmed)。**新規 shadcn 追加なし**
+(table/badge/button/scroll-area 既存で充足)。**検証: vp check 緑(既知 warning 2)/ tsc-b+vp build 緑 /
+dev 新規13モジュール transform 200。★ブラウザ実機(vp dev+mockIPC)と Windows 実 backend の UI 挙動確認は
+未 — headless で JS 実行検証不可**。
+
+**NEXT: 4c〜4f — React UI 残り。** 4c dialogs(trust 非 dismiss / delete(volumes+export 安全弁) /
+duplicate / import(File+GitHub))、4d detail タブ(build/runtime log=stream_logs・services・settings=
+get_config/set_config・restartNeeded)、4e banners/drag-drop/open/export、4f parity 総点検 + scaffold
+残骸掃除(frontend/README.md・AGENTS.md・`dependencies` の `shadcn`)。**残る楽観更新2箇所を snapshot/応答
+駆動へ**: removeInstance(delete の行削除→server-confirmed) / trustInstall(trust 後の行挿入→応答駆動)。
+shadcn は CLI 追加のみ(`--base base`)。挙動 parity は各 ADR（execution 計画 Phase 4 節・
+InstanceList.tsx が仕様）。**★user 優先(07-04): runnable 優先・テスト/CI 後回し・ローカルは vp dev +
+browser + mockIPC、実 backend は Windows。**

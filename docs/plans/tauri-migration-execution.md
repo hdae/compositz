@@ -206,7 +206,19 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
         clippy(collapsible_if) 2件を let-chains へ collapse（CI は desktop 非対象のため flake で初検出）。
         624c055 で生成 bindings.ts を有効 TS 化（衝突 placeholder 除去 + `// @ts-nocheck` + vite.config
         fmt/lint `ignorePatterns` 除外）= 4b でそのまま consume 可。desktop の CI ゲート追加は後回し（user 合意）。
-      - 4b〜4f: skeleton 破棄 → shadcn/theme/shell → list/actions → dialogs → detail tabs →
-        banners/parity。★user 優先(07-04): まず「ちゃんと動く」を確認したい → 完全性より runnable
-        縦切り優先、ローカルは vp dev + browser + mockIPC（mock を bindings 準拠へ書換）、実 backend は Windows。
+      - 4b(2f9adf1): **runnable な縦切りを実装**。Phase 0 skeleton(App/ipc/components/store)を破棄し、
+        bindings.ts を型付き IPC 層 `ipc/client.ts`(Result→throw + Channel 購読ハンドル)に包む。新規:
+        `lib/rows.ts`(snapshot マージ = core view.rs の instance_services/to_instance_rows join を移植)、
+        `store/instances.ts`(zustand、**楽観的更新なし** — up/down/install は busy スピナー + snapshot 駆動で
+        server-confirmed、StrictMode 二重購読を sessionToken で無効化)、theme(ADR-019 class+localStorage+
+        system 既定・CSP 安全な main.tsx early boot に分割)、components(InstanceTable/Row/StatusPill/
+        ActionButton/BuildLogPanel)。mock を新コマンド準拠のステートフル fake へ(Channel plumbing は Phase 0
+        実証パターンを object payload 対応に一般化)。**縦切り範囲 = list + subscribe(snapshot) + install(log
+        stream) + up + down + open**。**未着手(4c〜4f 送り)**: delete/duplicate/import dialog、settings/services
+        detail タブ、trust dialog、drag-drop、stream_logs(runtime log)、テスト。**新規 shadcn 追加なし**
+        (table/badge/button/scroll-area 既存で充足)。**検証: vp check 緑(既知 warning 2 のみ)/ tsc -b + vp
+        build 緑 / dev サーバで新規13モジュール transform 200・エラー0。★ブラウザ実機(vp dev + mockIPC)と
+        Windows 実 backend の UI 動作確認は未 — headless で JS 実行検証は不可**。
+      - 4c〜4f: dialogs(trust/delete/duplicate/import) → detail タブ(build/runtime log・services・settings) →
+        banners/drag-drop/open/export + parity 総点検 + scaffold 残骸掃除(README/AGENTS/`shadcn` dep)。
 - [ ] Phase 5 — parity + docs + 退役（+ Windows 実機確認 #3）
