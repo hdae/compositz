@@ -594,6 +594,24 @@ pub async fn remove_instance_image(
     Ok(())
 }
 
+/// Remove the per-instance image tag SUPERSEDED by an in-place update, i.e. when
+/// the update changed the manifest version (the tag embeds it — a same-version
+/// rebuild overwrites the tag instead, nothing to reclaim). No-op for an
+/// `image`-based recipe (shared/external image, MUST never be removed). Call
+/// after `down`: best-effort and unforced, like [`remove_instance_image`].
+pub async fn remove_superseded_image(
+    engine: &EngineHandle,
+    instance: &Instance,
+    old_version: &str,
+) -> Result<(), Error> {
+    if instance.manifest.image.is_some() || instance.manifest.version == old_version {
+        return Ok(());
+    }
+    let tag = image_tag(&instance.instance_id, old_version);
+    let _ = engine.remove_image(&tag).await;
+    Ok(())
+}
+
 // --- helpers ---------------------------------------------------------------
 
 /// The persisted override (config.yaml) as a launch overlay base (no data_root).

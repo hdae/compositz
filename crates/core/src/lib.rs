@@ -46,12 +46,13 @@ pub use recipe::manifest::{
 pub use recipe::operations::{
     BindDirFailure, PortBump, RemoveDataOpts, RemoveDataResult, UpResult, VolumeFailure,
     deconflict_host_ports, defined_host_ports, down, export_mount, install_instance,
-    remove_instance_data, remove_instance_image, up,
+    remove_instance_data, remove_instance_image, remove_superseded_image, up,
 };
 pub use recipe::run::{
     LaunchConfig, WebEndpoint, effective_host_port, instance_container_name, instance_image_tag,
     merge_launch, persisted_mounts, resolve_host_ports, to_create_spec, web_endpoints, web_url,
 };
+pub use recipe::update::{UpdatePreview, commit_update, discard_update, prepare_update};
 pub use view::{
     ContainerStatus, EngineSnapshot, EnvSetting, InstanceRow, InstanceSettings, InstanceView,
     MountSetting, PortSetting, PublishedPort, Service, WebPort, build_settings,

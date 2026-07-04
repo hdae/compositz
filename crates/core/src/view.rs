@@ -89,6 +89,9 @@ pub struct InstanceView {
     /// Provenance: ISO-8601 creation time (`meta.json` `createdAt`), if recorded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
+    /// Provenance: ISO-8601 time of the last in-place update, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
     /// Declared web ports (`web: true`). Live URLs are resolved against the container.
     pub web_ports: Vec<WebPort>,
     /// The image tag this instance builds to (e.g. `compositz/hello-a1b2c3:0.1.0`).
@@ -133,6 +136,9 @@ pub struct InstanceRow {
     /// Provenance: ISO-8601 creation time (`meta.json` `createdAt`), if recorded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
+    /// Provenance: ISO-8601 time of the last in-place update, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
     pub web_ports: Vec<WebPort>,
     /// Declared services, always listed from the definition; the live port fills in
     /// when running.
@@ -289,6 +295,7 @@ pub fn to_instance_view(instance: &Instance, over: &Override) -> InstanceView {
         description: m.description.clone().unwrap_or_default(),
         source: instance.meta.source.clone(),
         created_at: instance.meta.created_at.clone(),
+        updated_at: instance.meta.updated_at.clone(),
         web_ports: m
             .ports
             .iter()
@@ -343,6 +350,7 @@ pub fn to_instance_rows(
                 description: v.description.clone(),
                 source: v.source.clone(),
                 created_at: v.created_at.clone(),
+                updated_at: v.updated_at.clone(),
                 web_ports: v.web_ports.clone(),
                 services: instance_services(&v.web_ports, live_ports),
                 installed,
@@ -437,6 +445,7 @@ mod tests {
             description: "demo".to_string(),
             source: Some("github:owner/repo".to_string()),
             created_at: Some("2026-01-01T00:00:00Z".to_string()),
+            updated_at: None,
             web_ports: vec![web_port()],
             image_tag: "compositz/hello-web-a1b2c3:0.1.0".to_string(),
         }
@@ -772,6 +781,7 @@ mod tests {
             meta: InstanceMeta {
                 source: Some("github:owner/repo".to_string()),
                 created_at: Some("2026-01-01T00:00:00Z".to_string()),
+                updated_at: None,
                 name: None,
             },
         }

@@ -127,6 +127,7 @@ pub fn ingest_bundle(
     let meta = InstanceMeta {
         source: Some(opts.source.unwrap_or(described)),
         created_at: Some(opts.created_at.unwrap_or_else(now_iso8601)),
+        updated_at: None,
         // A fresh import shows the manifest brand name (no per-instance override).
         name: None,
     };
@@ -198,6 +199,7 @@ pub fn duplicate_instance(instances_dir: &str, src_instance_id: &str) -> Result<
     let meta = InstanceMeta {
         source: Some(format!("duplicate:{src_instance_id}")),
         created_at: Some(now_iso8601()),
+        updated_at: None,
         name: Some(format!("{base_name} (copy)")),
     };
     write_meta(
@@ -316,7 +318,7 @@ fn safe_join(dest: &Path, entry_path: &str) -> Result<PathBuf, Error> {
 }
 
 /// Recursively copy a directory tree, skipping symlinks (never follow out of tree).
-fn copy_tree_to(src: &Path, dest: &Path) -> Result<(), Error> {
+pub(crate) fn copy_tree_to(src: &Path, dest: &Path) -> Result<(), Error> {
     fs::create_dir_all(dest)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
@@ -342,7 +344,7 @@ fn copy_tree_to(src: &Path, dest: &Path) -> Result<(), Error> {
 /// a GitHub codeload tarball `<repo>-<ref>/…`). When `subdir` is given, descend
 /// into it under each candidate root first. Zero or multiple matches are
 /// ambiguous → reject.
-fn locate_bundle_root(staging: &Path, subdir: Option<&str>) -> Result<PathBuf, Error> {
+pub(crate) fn locate_bundle_root(staging: &Path, subdir: Option<&str>) -> Result<PathBuf, Error> {
     let manifest = brand::MANIFEST_FILE;
     let sub = match subdir {
         Some(s) => safe_rel_subdir(s)?,
@@ -473,7 +475,7 @@ fn describe_source(source: &BundleSource) -> String {
 
 /// Current UTC time as an ISO-8601 string (`…Z`), the `meta.json` `createdAt`
 /// default.
-fn now_iso8601() -> String {
+pub(crate) fn now_iso8601() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 

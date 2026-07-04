@@ -9,6 +9,7 @@ pub mod loader;
 pub mod manifest;
 pub mod operations;
 pub mod run;
+pub mod update;
 
 /// Normalize a directory path to forward-slash separators with no trailing slash.
 /// Instance ids are the last path segment, and the build

@@ -160,8 +160,28 @@ pub fn ingest_github(
     opts: GithubIngestOpts,
 ) -> Result<Instance, Error> {
     let spec = parse_github_spec(input)?;
-    let url = github_tarball_url(&spec);
-    let described = format_spec(&spec);
+    let reader = open_github_tarball(&spec)?;
+    ingest_bundle(
+        BundleSource::Archive {
+            reader,
+            subdir: spec.subdir.clone(),
+        },
+        instances_dir,
+        IngestOpts {
+            source: Some(github_source(&spec)),
+            created_at: opts.created_at,
+        },
+    )
+}
+
+/// Open a streaming reader over a spec's codeload tarball (blocking ureq call;
+/// the per-read timeout bounds a stalled connection). Shared by the fresh ingest
+/// and the in-place update — one download path, one error shape.
+pub(crate) fn open_github_tarball(
+    spec: &GithubSpec,
+) -> Result<Box<dyn std::io::Read + Send>, Error> {
+    let url = github_tarball_url(spec);
+    let described = format_spec(spec);
 
     // One Agent = one pooled client (rustls/ring, redirect-follow by default).
     let agent = ureq::AgentBuilder::new()
@@ -192,18 +212,7 @@ pub fn ingest_github(
 
     // `into_reader` streams the body (per-read timeout applies), so an arbitrarily
     // large tarball is never buffered whole — it flows straight into extraction.
-    let reader: Box<dyn std::io::Read + Send> = Box::new(response.into_reader());
-    ingest_bundle(
-        BundleSource::Archive {
-            reader,
-            subdir: spec.subdir.clone(),
-        },
-        instances_dir,
-        IngestOpts {
-            source: Some(github_source(&spec)),
-            created_at: opts.created_at,
-        },
-    )
+    Ok(Box::new(response.into_reader()))
 }
 
 /// Options for a GitHub ingest: `source` is fixed to the spec's provenance string,
@@ -231,7 +240,7 @@ fn format_spec(spec: &GithubSpec) -> String {
 /// A git ref may contain `/` but never whitespace, control chars, or a `.`/`..`
 /// (or empty) path segment. The segment rules keep a slashed ref from smuggling
 /// `..` into the codeload URL path.
-fn validate_ref(git_ref: &str, input: &str) -> Result<(), Error> {
+pub(crate) fn validate_ref(git_ref: &str, input: &str) -> Result<(), Error> {
     // Reject control chars / whitespace by scalar value (≤ 0x20 covers space + all
     // C0 controls; 0x7f is DEL), and any empty / `.` / `..` path segment.
     let has_bad_char = git_ref

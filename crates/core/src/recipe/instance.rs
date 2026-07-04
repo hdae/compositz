@@ -60,6 +60,10 @@ pub struct InstanceMeta {
     /// ISO-8601 creation time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
+    /// ISO-8601 time of the last in-place update (`created_at` stays the original
+    /// import time; this marks when the bundle was last replaced).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
     /// Per-instance display-name override. Absent for a fresh import (the manifest
     /// brand name is shown); a duplicate sets it to `"<name> (copy)"` so two
     /// deployments of the same recipe are distinguishable at a glance.
