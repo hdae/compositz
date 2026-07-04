@@ -80,6 +80,48 @@ fn list_instances_sorts_by_name_and_skips_junk_and_staging_dirs() {
 }
 
 #[test]
+fn list_instances_sorts_by_the_effective_display_name_not_the_manifest_brand() {
+    let store = TempDir::new().unwrap();
+    create_instance(store.path(), "apex-4d5e6f", "apex", "Apex", None);
+    create_instance(store.path(), "apex-7g8h9i", "apex", "Apex", None);
+    // Rename the first deployment past "Apex" alphabetically — the list must
+    // follow the name the user actually sees, not the shared manifest brand.
+    write_meta(
+        store
+            .path()
+            .join("apex-4d5e6f")
+            .join(META_FILE)
+            .to_str()
+            .unwrap(),
+        &InstanceMeta {
+            name: Some("Zulu (copy)".to_string()),
+            ..InstanceMeta::default()
+        },
+    )
+    .unwrap();
+
+    let list = list_instances(store_path(&store));
+    assert_eq!(
+        list.iter().map(|i| i.display_name()).collect::<Vec<_>>(),
+        vec!["Apex", "Zulu (copy)"]
+    );
+    assert_eq!(list[0].instance_id, "apex-7g8h9i");
+    assert_eq!(list[1].instance_id, "apex-4d5e6f");
+}
+
+#[test]
+fn load_instance_rejects_a_directory_whose_name_is_not_a_valid_instance_id() {
+    let store = TempDir::new().unwrap();
+    // A well-formed bundle under an id-violating dir name (uppercase + underscore).
+    create_instance(store.path(), "Bad_Dir", "hello", "Hello", None);
+
+    let err = load_instance(store.path().join("Bad_Dir").to_str().unwrap());
+    assert!(err.is_err(), "an id-violating dir must fail loud");
+    // …and the store listing skips it rather than surfacing a broken instance.
+    assert_eq!(list_instances(store_path(&store)).len(), 0);
+}
+
+#[test]
 fn load_instance_derives_id_from_directory_name_and_reads_meta() {
     let store = TempDir::new().unwrap();
     create_instance(store.path(), "hello-abc123", "hello", "Hello", Some("test"));

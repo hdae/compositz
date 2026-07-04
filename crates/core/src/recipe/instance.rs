@@ -83,11 +83,24 @@ pub struct Instance {
     pub meta: InstanceMeta,
 }
 
+impl Instance {
+    /// The name shown to the user: the per-instance override if set, else the
+    /// manifest brand name. The ONE derivation — display (`to_instance_view`)
+    /// and ordering (`list_instances`) MUST both go through it, or a renamed
+    /// duplicate sorts under a name the user never sees.
+    pub fn display_name(&self) -> &str {
+        self.meta.name.as_deref().unwrap_or(&self.manifest.name)
+    }
+}
+
 /// Load one instance from its directory (reads the embedded bundle + provenance).
 pub fn load_instance(instance_dir: &str) -> Result<Instance, Error> {
     let dir = norm_dir(instance_dir);
     let instance_id = dir.rsplit('/').next().unwrap_or("").to_string();
-    if instance_id.is_empty() {
+    // The derived id keys every Docker resource name; a dir that violates the id
+    // charset MUST fail loud here (same self-defense as `remove_instance_dir`),
+    // not surface an instance whose actions would all be rejected downstream.
+    if !is_valid_instance_id(&instance_id) {
         return Err(Error::Instance(format!(
             "invalid instance directory: {instance_dir}"
         )));
@@ -126,12 +139,13 @@ pub fn list_instances(instances_dir: &str) -> Vec<Instance> {
             out.push(instance);
         }
     }
-    // Case-insensitive by display name (approximates the Deno `localeCompare`).
+    // Case-insensitive by the effective display name — the same key the UI
+    // renders, so a duplicate named "Hello (copy)" sorts under that, not under
+    // its manifest brand.
     out.sort_by(|a, b| {
-        a.manifest
-            .name
+        a.display_name()
             .to_lowercase()
-            .cmp(&b.manifest.name.to_lowercase())
+            .cmp(&b.display_name().to_lowercase())
     });
     out
 }

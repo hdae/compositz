@@ -275,7 +275,7 @@ pub fn to_instance_view(instance: &Instance, over: &Override) -> InstanceView {
         instance_id: instance.instance_id.clone(),
         app_id: instance.app_id.clone(),
         // Per-instance display name (a duplicate's "<name> (copy)") ▷ manifest brand.
-        name: instance.meta.name.clone().unwrap_or_else(|| m.name.clone()),
+        name: instance.display_name().to_string(),
         version: m.version.clone(),
         description: m.description.clone().unwrap_or_default(),
         web_ports: m
