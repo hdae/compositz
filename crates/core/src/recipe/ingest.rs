@@ -129,6 +129,8 @@ pub fn ingest_bundle(
     let meta = InstanceMeta {
         source: Some(opts.source.unwrap_or(described)),
         created_at: Some(opts.created_at.unwrap_or_else(now_iso8601)),
+        // A fresh import shows the manifest brand name (no per-instance override).
+        name: None,
     };
     write_meta(
         publish
@@ -165,10 +167,17 @@ pub fn duplicate_instance(instances_dir: &str, src_instance_id: &str) -> Result<
     let instances_dir = norm_dir(instances_dir);
     let src_dir = Path::new(&instances_dir).join(src_instance_id);
     let src_app = src_dir.join(APP_SUBDIR);
-    // Validates the source is a real instance.
-    let id = load_recipe(src_app.to_str().ok_or_else(non_utf8)?)?
-        .manifest
-        .id;
+    // Validates the source is a real instance (bundle + provenance).
+    let src = load_instance(src_dir.to_str().ok_or_else(non_utf8)?)?;
+    let id = src.app_id.clone();
+    // Derive the copy's display name from the SOURCE's effective name (its own
+    // override, else the manifest brand) so a duplicate — which otherwise shares
+    // the recipe name — is distinguishable at a glance from its origin.
+    let base_name = src
+        .meta
+        .name
+        .clone()
+        .unwrap_or_else(|| src.manifest.name.clone());
     let src_override = load_instance_config(src_dir.to_str().ok_or_else(non_utf8)?)?;
     let inherited = Override {
         host_ports: None,
@@ -191,6 +200,7 @@ pub fn duplicate_instance(instances_dir: &str, src_instance_id: &str) -> Result<
     let meta = InstanceMeta {
         source: Some(format!("duplicate:{src_instance_id}")),
         created_at: Some(now_iso8601()),
+        name: Some(format!("{base_name} (copy)")),
     };
     write_meta(
         staging

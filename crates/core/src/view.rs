@@ -274,7 +274,8 @@ pub fn to_instance_view(instance: &Instance, over: &Override) -> InstanceView {
     InstanceView {
         instance_id: instance.instance_id.clone(),
         app_id: instance.app_id.clone(),
-        name: m.name.clone(),
+        // Per-instance display name (a duplicate's "<name> (copy)") ▷ manifest brand.
+        name: instance.meta.name.clone().unwrap_or_else(|| m.name.clone()),
         version: m.version.clone(),
         description: m.description.clone().unwrap_or_default(),
         web_ports: m
@@ -756,6 +757,7 @@ mod tests {
             meta: InstanceMeta {
                 source: Some("github:owner/repo".to_string()),
                 created_at: Some("2026-01-01T00:00:00Z".to_string()),
+                name: None,
             },
         }
     }
@@ -795,6 +797,22 @@ mod tests {
         m.description = None;
         let v = to_instance_view(&instance_with(m), &Override::default());
         assert_eq!(v.description, "");
+    }
+
+    #[test]
+    fn to_instance_view_prefers_the_per_instance_name_over_the_manifest_brand() {
+        // No override ⇒ the manifest brand name.
+        let mut instance = instance_with(base_manifest());
+        assert_eq!(
+            to_instance_view(&instance, &Override::default()).name,
+            "Hello"
+        );
+        // A per-instance name (a duplicate's "<name> (copy)") takes precedence.
+        instance.meta.name = Some("Hello (copy)".to_string());
+        assert_eq!(
+            to_instance_view(&instance, &Override::default()).name,
+            "Hello (copy)"
+        );
     }
 
     #[test]

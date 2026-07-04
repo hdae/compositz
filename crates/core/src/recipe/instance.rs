@@ -61,6 +61,11 @@ pub struct InstanceMeta {
     /// ISO-8601 creation time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
+    /// Per-instance display-name override. Absent for a fresh import (the manifest
+    /// brand name is shown); a duplicate sets it to `"<name> (copy)"` so two
+    /// deployments of the same recipe are distinguishable at a glance.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 /// A deployed instance: its id, the app it runs, the embedded bundle, provenance.

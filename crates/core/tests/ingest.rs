@@ -222,6 +222,22 @@ fn duplicate_copies_only_app_and_mints_a_new_id() {
 }
 
 #[test]
+fn duplicate_names_the_copy_from_the_source_effective_name() {
+    let store = store();
+    let a = ingest_bundle(archive(valid_tar()), s(&store), IngestOpts::default()).unwrap();
+    // A fresh import carries no display-name override (the manifest brand is shown).
+    assert_eq!(a.meta.name, None);
+
+    // The copy is renamed so it is distinguishable from its source at a glance.
+    let b = duplicate_instance(s(&store), &a.instance_id).unwrap();
+    assert_eq!(b.meta.name.as_deref(), Some("Hello (copy)"));
+
+    // Duplicating a copy builds on the copy's EFFECTIVE name, not the manifest brand.
+    let c = duplicate_instance(s(&store), &b.instance_id).unwrap();
+    assert_eq!(c.meta.name.as_deref(), Some("Hello (copy) (copy)"));
+}
+
+#[test]
 fn duplicate_rejects_a_path_shaped_source_id_before_touching_the_filesystem() {
     // Fault injection: a real, LOADABLE instance sits one level ABOVE the store. Without
     // the self-guard, `duplicate_instance(store, "../victim")` would resolve to it and

@@ -151,6 +151,7 @@ fn write_meta_persists_provenance_read_back_on_load() {
     let meta = InstanceMeta {
         source: Some("github:owner/repo@main".to_string()),
         created_at: Some("2026-07-03T00:00:00Z".to_string()),
+        name: None,
     };
     write_meta(dir.join(META_FILE).to_str().unwrap(), &meta).unwrap();
     assert_eq!(load_instance(dir.to_str().unwrap()).unwrap().meta, meta);
