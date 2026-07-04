@@ -385,6 +385,10 @@ export function installBrowserMock(): () => void {
         return { warning: null } satisfies DeleteView;
       }
 
+      case "export_mount":
+        // The browser mock can't write files — the real backend streams the tar to `dest`.
+        return null;
+
       case "get_config":
         return settingsOf(String(field(payload, "id")));
 

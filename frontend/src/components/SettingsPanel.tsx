@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { FileDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { getConfig, setConfig } from "@/ipc/client";
+import { exportMount, getConfig, pickSaveDest, setConfig } from "@/ipc/client";
 import type { InstanceSettings, Override, Placement } from "@/ipc/client";
+import { Tip } from "./Tip";
 
 type Props = {
   instanceId: string;
@@ -34,6 +35,8 @@ export const SettingsPanel = ({ instanceId, running, onRestart }: Props) => {
   // when a restart would actually apply a change.
   const [restartNeeded, setRestartNeeded] = useState(false);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
+  const [exporting, setExporting] = useState<string | undefined>(undefined); // mount name in flight
+  const [exportError, setExportError] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     let alive = true;
@@ -83,6 +86,22 @@ export const SettingsPanel = ({ instanceId, running, onRestart }: Props) => {
       setRestartNeeded(false);
     } finally {
       setRestarting(false);
+    }
+  };
+
+  // Export a mount's data as a tar: pick a destination (native save dialog), then the
+  // backend streams it there. Works on a stopped instance (a throwaway helper reads it).
+  const doExport = async (mountName: string) => {
+    setExportError(undefined);
+    setExporting(mountName);
+    try {
+      const dest = await pickSaveDest(`${instanceId}-${mountName}.tar`);
+      if (dest === undefined) return; // cancelled
+      await exportMount(instanceId, mountName, dest);
+    } catch (e) {
+      setExportError(`export ${mountName} failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setExporting(undefined);
     }
   };
 
@@ -255,20 +274,36 @@ export const SettingsPanel = ({ instanceId, running, onRestart }: Props) => {
                   <p className="truncate text-xs text-muted-foreground">{m.description}</p>
                 )}
               </div>
-              <select
-                value={placement[m.name] ?? m.manifestPlacement}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === "bind" || v === "volume") editPlace(m.name, v);
-                }}
-                aria-label={`Placement for ${m.name}`}
-                className={cn(SELECT_CLASS, "w-28")}
-              >
-                <option value="volume">volume</option>
-                <option value="bind">bind</option>
-              </select>
+              <div className="flex shrink-0 items-center gap-2">
+                <select
+                  value={placement[m.name] ?? m.manifestPlacement}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === "bind" || v === "volume") editPlace(m.name, v);
+                  }}
+                  aria-label={`Placement for ${m.name}`}
+                  className={cn(SELECT_CLASS, "w-24")}
+                >
+                  <option value="volume">volume</option>
+                  <option value="bind">bind</option>
+                </select>
+                <Tip label="Export this mount's data as a tar">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={exporting !== undefined}
+                    onClick={() => void doExport(m.name)}
+                  >
+                    {exporting === m.name ? <Loader2 className="animate-spin" /> : <FileDown />}
+                    Export
+                  </Button>
+                </Tip>
+              </div>
             </div>
           ))}
+          {exportError !== undefined && (
+            <span className="text-xs text-destructive">{exportError}</span>
+          )}
         </section>
       )}
 

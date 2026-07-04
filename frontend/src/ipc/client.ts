@@ -142,6 +142,25 @@ export async function pickRecipeFile(): Promise<string | undefined> {
   return typeof selected === "string" ? selected : undefined;
 }
 
+/** Export one persisted mount's data as a tar written to `dest` (works on a stopped instance). */
+export async function exportMount(id: string, mount: string, dest: string): Promise<void> {
+  unwrap(await commands.exportMount(id, mount, dest));
+}
+
+/**
+ * Pick a save destination via the OS-native save dialog; `undefined` if cancelled. Under
+ * plain `vp dev` (no Tauri) there is no dialog, so a synthetic path is handed to the mock.
+ */
+export async function pickSaveDest(defaultName: string): Promise<string | undefined> {
+  if (!hasTauriBackend()) return `mock://${defaultName}`;
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  const dest = await save({
+    defaultPath: defaultName,
+    filters: [{ name: "Tar archive", extensions: ["tar"] }],
+  });
+  return dest ?? undefined;
+}
+
 /** The Settings view-model for an instance (manifest ⊕ saved override, restartNeeded). */
 export async function getConfig(id: string): Promise<InstanceSettings> {
   return unwrap(await commands.getConfig(id));
