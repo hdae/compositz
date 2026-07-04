@@ -11,10 +11,11 @@ use compositz_core::brand::label;
 use compositz_core::{
     BundleSource, EngineSnapshot, GithubIngestOpts, IngestOpts, Instance, InstanceRow,
     InstanceSettings, InstanceView, LaunchConfig, Override, PortBump, RemoveDataOpts,
-    build_settings, deconflict_host_ports, defined_host_ports, down, duplicate_instance,
-    export_mount as core_export_mount, ingest_bundle, ingest_github, install_instance,
-    instance_image_tag, is_valid_instance_id, list_instances, load_instance, load_instance_config,
-    load_launched_config, remove_instance_data, remove_instance_dir, remove_instance_image,
+    UpdatePreview, build_settings, commit_update, deconflict_host_ports, defined_host_ports,
+    discard_update, down, duplicate_instance, export_mount as core_export_mount, ingest_bundle,
+    ingest_github, install_instance, instance_image_tag, is_valid_instance_id, list_instances,
+    load_instance, load_instance_config, load_launched_config, prepare_update,
+    remove_instance_data, remove_instance_dir, remove_instance_image, remove_superseded_image,
     same_override, save_instance_config, set_instance_name, to_container_statuses,
     to_instance_rows, to_instance_view, up, validate_override, web_url,
 };
@@ -353,6 +354,68 @@ pub async fn rename_instance(
     tokio::task::spawn_blocking(move || set_instance_name(&store, &id, name))
         .await
         .map_err(|e| AppError::internal(format!("rename task failed: {e}")))??;
+    Ok(())
+}
+
+/// Stage an in-place update for a GitHub-sourced instance: re-fetch its recorded
+/// spec (optionally overriding the ref; empty ⇒ default branch) into the
+/// instance's pending-update staging, and return the preview for the re-trust
+/// gate. Nothing live changes until `update_commit`.
+#[tauri::command]
+#[specta::specta]
+pub async fn update_prepare(
+    state: State<'_, AppState>,
+    id: String,
+    new_ref: Option<String>,
+) -> Result<UpdatePreview, AppError> {
+    if !is_valid_instance_id(&id) {
+        return Err(AppError::bad_request(format!("invalid instance id: {id}")));
+    }
+    let store = state.store.clone();
+    let preview =
+        tokio::task::spawn_blocking(move || prepare_update(&store, &id, new_ref.as_deref()))
+            .await
+            .map_err(|e| AppError::internal(format!("update task failed: {e}")))??;
+    Ok(preview)
+}
+
+/// Apply a prepared update (the user trusted it): swap the bundle, stop the
+/// container still running the OLD code, and reclaim the superseded image tag
+/// when the version changed. The client rebuilds next via `instance_install`
+/// (streamed) and refetches the rows.
+#[tauri::command]
+#[specta::specta]
+pub async fn update_commit(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<InstanceView, AppError> {
+    let old = load_by_id(&state.store, &id)?;
+    let old_version = old.manifest.version.clone();
+    let store = state.store.clone();
+    let commit_id = id.clone();
+    let updated = tokio::task::spawn_blocking(move || commit_update(&store, &commit_id))
+        .await
+        .map_err(|e| AppError::internal(format!("update task failed: {e}")))??;
+    // The bundle is swapped — a still-running container executes retired code, so
+    // stop it as part of the update (the flow rebuilds + restarts right after).
+    down(&state.engine, &id, None).await?;
+    remove_superseded_image(&state.engine, &updated, &old_version).await?;
+    let over = load_instance_config(&updated.dir)?;
+    Ok(to_instance_view(&updated, &over))
+}
+
+/// Drop a prepared update (the user declined the re-trust gate). The instance is
+/// untouched; idempotent.
+#[tauri::command]
+#[specta::specta]
+pub async fn update_discard(state: State<'_, AppState>, id: String) -> Result<(), AppError> {
+    if !is_valid_instance_id(&id) {
+        return Err(AppError::bad_request(format!("invalid instance id: {id}")));
+    }
+    let store = state.store.clone();
+    tokio::task::spawn_blocking(move || discard_update(&store, &id))
+        .await
+        .map_err(|e| AppError::internal(format!("update task failed: {e}")))??;
     Ok(())
 }
 

@@ -87,6 +87,46 @@ async renameInstance(id: string, name: string | null) : Promise<Result<null, App
 }
 },
 /**
+ * Stage an in-place update for a GitHub-sourced instance: re-fetch its recorded
+ * spec (optionally overriding the ref; empty ⇒ default branch) into the
+ * instance's pending-update staging, and return the preview for the re-trust
+ * gate. Nothing live changes until `update_commit`.
+ */
+async updatePrepare(id: string, newRef: string | null) : Promise<Result<UpdatePreview, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_prepare", { id, newRef }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Apply a prepared update (the user trusted it): swap the bundle, stop the
+ * container still running the OLD code, and reclaim the superseded image tag
+ * when the version changed. The client rebuilds next via `instance_install`
+ * (streamed) and refetches the rows.
+ */
+async updateCommit(id: string) : Promise<Result<InstanceView, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_commit", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Drop a prepared update (the user declined the re-trust gate). The instance is
+ * untouched; idempotent.
+ */
+async updateDiscard(id: string) : Promise<Result<null, AppError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_discard", { id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * The Settings view-model for an instance: each manifest port/env/mount with its
  * author default + saved override, plus the host ports DEFINED by OTHER instances
  * and whether a restart is needed.
@@ -270,7 +310,11 @@ source?: string | null;
 /**
  * Provenance: ISO-8601 creation time (`meta.json` `createdAt`), if recorded.
  */
-createdAt?: string | null; webPorts: WebPort[]; 
+createdAt?: string | null; 
+/**
+ * Provenance: ISO-8601 time of the last in-place update, if any.
+ */
+updatedAt?: string | null; webPorts: WebPort[]; 
 /**
  * Declared services, always listed from the definition; the live port fills in
  * when running.
@@ -317,6 +361,10 @@ source?: string | null;
  * Provenance: ISO-8601 creation time (`meta.json` `createdAt`), if recorded.
  */
 createdAt?: string | null; 
+/**
+ * Provenance: ISO-8601 time of the last in-place update, if any.
+ */
+updatedAt?: string | null; 
 /**
  * Declared web ports (`web: true`). Live URLs are resolved against the container.
  */
@@ -416,6 +464,14 @@ export type UpView = { id: string; usedGpu: boolean;
  * ACTUALLY published after any conflict bump).
  */
 url: string | null }
+/**
+ * What a prepared update would do — the trust prompt's content.
+ */
+export type UpdatePreview = { instanceId: string; 
+/**
+ * The provenance the update will record (`github:owner/repo[/subdir][@ref]`).
+ */
+source: string; currentVersion: string; newVersion: string; newName: string; newDescription?: string | null }
 /**
  * A manifest port that serves a browser UI (`web: true`). An app may declare many.
  */
