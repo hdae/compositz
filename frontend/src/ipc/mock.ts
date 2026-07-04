@@ -1,48 +1,124 @@
 // Dev-only IPC mock: lets `vp dev` run in a plain browser with no Tauri backend.
 //
-// This module is imported ONLY behind `import.meta.env.DEV` (see installMock in
-// ./index.ts), so a production `vp build` tree-shakes it away entirely.
+// Imported ONLY behind `import.meta.env.DEV` (see installMockIfNeeded), so a
+// production `vp build` tree-shakes it away. It is a small STATEFUL fake of the
+// backend for the current vertical slice: `list_instance_rows` + the snapshot
+// subscription + up/down + the streaming install. Actions mutate the fake state and
+// the next snapshot push reflects it — so the browser demo exercises the same
+// server-confirmed flow the real backend drives (no optimistic shortcuts to test).
 //
-// It leans on one implementation detail of @tauri-apps/api's mockIPC: a Channel
-// serializes to the string "__CHANNEL__:<id>" and its registered callback (in
-// window.__TAURI_INTERNALS__.callbacks) expects order-indexed envelopes shaped
-// { index, message } / { index, end }. This is the exact fragility the plan
-// flags; the "Channel delivers messages under mockIPC" test is its tripwire.
+// It leans on one @tauri-apps/api mockIPC detail: a `Channel` registers its callback
+// in `window.__TAURI_INTERNALS__.callbacks`, keyed by the channel id, expecting
+// order-indexed `{ index, message }` / `{ index, end }` envelopes. `channelPusher`
+// encapsulates that so the rest reads as ordinary pushes.
 
 import type { InvokeArgs } from "@tauri-apps/api/core";
 import { mockIPC } from "@tauri-apps/api/mocks";
-import type { ContainerSummary } from "./types";
+import { deriveServices } from "@/lib/rows";
+import type {
+  ContainerStatus,
+  InstallEvent,
+  InstanceRow,
+  PublishedPort,
+  SnapshotEvent,
+  UpView,
+  WebPort,
+} from "./bindings";
 
-const FIXTURE_CONTAINERS: ContainerSummary[] = [
+// --- fake instances -------------------------------------------------------
+
+type Def = {
+  instanceId: string;
+  appId: string;
+  name: string;
+  version: string;
+  description: string;
+  webPorts: WebPort[];
+};
+
+function webPort(name: string, container: number, host: number, path = "/"): WebPort {
+  return { name, container, protocol: "tcp", path, host, description: null };
+}
+
+const DEFS: Def[] = [
   {
-    id: "a1b2c3d4e5f6",
-    name: "compositz-comfyui-a1b2c3",
-    state: "running",
-    image: "compositz/comfyui-a1b2c3:latest",
-    ports: ["8188->8188/tcp"],
+    instanceId: "comfyui-a1b2c3",
+    appId: "comfyui",
+    name: "ComfyUI",
+    version: "0.3.1",
+    description: "Node-based Stable Diffusion UI.",
+    webPorts: [webPort("web", 8188, 8188)],
   },
   {
-    id: "0f1e2d3c4b5a",
-    name: "compositz-whisper-0f1e2d",
-    state: "exited",
-    image: "compositz/whisper-0f1e2d:latest",
-    ports: [],
+    instanceId: "whisper-0f1e2d",
+    appId: "whisper",
+    name: "Whisper WebUI",
+    version: "1.0.0",
+    description: "Speech-to-text transcription UI.",
+    webPorts: [webPort("web", 7860, 7861)],
   },
   {
-    id: "9988776655aa",
-    name: "compositz-sd-webui-998877",
-    state: "created",
-    image: "compositz/sd-webui-998877:latest",
-    ports: ["7860->7860/tcp", "8080->80/tcp"],
+    instanceId: "hello-web-778899",
+    appId: "hello-web",
+    name: "Hello Web",
+    version: "0.1.0",
+    description: "A tiny demo web app.",
+    webPorts: [webPort("web", 8080, 8090)],
   },
 ];
 
-/**
- * Recover a Channel's numeric callback id from whatever mockIPC handed us. Under
- * mockIPC the arg is the live Channel object (its public `id` IS the callback
- * id); a serialized "__CHANNEL__:<id>" string is also accepted for robustness.
- */
-export function channelCallbackId(arg: unknown): number | undefined {
+type Status = { installed: boolean; running: boolean; accepting: boolean };
+
+const state: Record<string, Status> = {
+  "comfyui-a1b2c3": { installed: true, running: false, accepting: false },
+  "whisper-0f1e2d": { installed: false, running: false, accepting: false },
+  "hello-web-778899": { installed: true, running: true, accepting: true },
+};
+
+function def(id: string): Def {
+  const d = DEFS.find((x) => x.instanceId === id);
+  if (!d) throw new Error(`mock: unknown instance "${id}"`);
+  return d;
+}
+
+function publishedPorts(id: string): PublishedPort[] {
+  const s = state[id]!;
+  return def(id).webPorts.map((wp) => ({
+    container: wp.container,
+    public: wp.host,
+    protocol: wp.protocol,
+    accepting: s.accepting,
+  }));
+}
+
+function buildRow(d: Def): InstanceRow {
+  const s = state[d.instanceId]!;
+  const live = s.running ? publishedPorts(d.instanceId) : [];
+  return {
+    instanceId: d.instanceId,
+    appId: d.appId,
+    name: d.name,
+    version: d.version,
+    description: d.description,
+    webPorts: d.webPorts,
+    services: deriveServices(d.webPorts, live),
+    installed: s.installed,
+    running: s.running,
+  };
+}
+
+function currentContainers(): ContainerStatus[] {
+  return DEFS.filter((d) => state[d.instanceId]!.running).map((d) => ({
+    instance: d.instanceId,
+    state: "running",
+    ports: publishedPorts(d.instanceId),
+  }));
+}
+
+// --- Channel plumbing -----------------------------------------------------
+
+/** Recover a Channel's numeric callback id from whatever mockIPC handed us. */
+function channelCallbackId(arg: unknown): number | undefined {
   if (typeof arg === "object" && arg !== null && "id" in arg) {
     const id = (arg as { id: unknown }).id;
     if (typeof id === "number") return id;
@@ -54,52 +130,22 @@ export function channelCallbackId(arg: unknown): number | undefined {
   return undefined;
 }
 
-/**
- * Resolve the raw callback a Channel registered under mockIPC and return a
- * pusher that emits correctly-indexed { index, message } envelopes (and a
- * matching `end`). Returns undefined when the arg is not a resolvable channel.
- */
-export function channelPusher(
-  arg: unknown,
-): { push: (message: string) => void; end: () => void } | undefined {
+/** A resolved Channel: push correctly-indexed envelopes to its registered callback. */
+type Pusher<T> = { push: (message: T) => void; end: () => void };
+
+function channelPusher<T>(arg: unknown): Pusher<T> | undefined {
   const id = channelCallbackId(arg);
   if (id === undefined) return undefined;
   const callback = window.__TAURI_INTERNALS__?.callbacks?.get(id);
   if (!callback) return undefined;
-
   let index = 0;
   return {
-    push: (message: string) => callback({ index: index++, message }),
+    push: (message: T) => callback({ index: index++, message }),
     end: () => callback({ index, end: id }),
   };
 }
 
-const LOG_LINES = [
-  "Loading model weights from /compositz/huggingface ...",
-  "Startup time: 4.2s",
-  "Running on http://0.0.0.0:8188",
-  "GET /queue 200 OK",
-  "POST /prompt 200 OK",
-];
-
-const EVENT_LINES = [
-  "container start comfyui-a1b2c3 (image=compositz/comfyui-a1b2c3:latest)",
-  "container health_status: healthy comfyui-a1b2c3",
-  "image pull compositz/whisper-0f1e2d:latest",
-  "container die whisper-0f1e2d (image=compositz/whisper-0f1e2d:latest)",
-];
-
-/** Timers started by the mock, cleared by the returned disposer. */
-const timers = new Set<ReturnType<typeof setInterval>>();
-
-/**
- * Install the browser-dev IPC mock. Idempotent-enough for HMR: registers a
- * single mockIPC handler that serves fixture containers and streams fake
- * log/event lines on a timer. Returns a disposer that stops all timers.
- */
-/** Read a named field from an invoke payload. `InvokeArgs` is a union (record
- * or binary); only the record form carries named args, so anything else yields
- * undefined. */
+/** Read a named field from an invoke payload (only the record form carries args). */
 function field(payload: InvokeArgs | undefined, key: string): unknown {
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
     return (payload as Record<string, unknown>)[key];
@@ -107,38 +153,128 @@ function field(payload: InvokeArgs | undefined, key: string): unknown {
   return undefined;
 }
 
+// --- subscriptions --------------------------------------------------------
+
+let nextSubscriptionId = 1;
+/** Live snapshot subscribers — every state change re-pushes to all of them. */
+const snapshotPushers = new Map<number, Pusher<SnapshotEvent>>();
+/** Disposers for every subscription id (snapshot pumps + install streams). */
+const disposers = new Map<number, () => void>();
+
+function broadcastSnapshot(): void {
+  const event: SnapshotEvent = { type: "snapshot", containers: currentContainers() };
+  for (const pusher of snapshotPushers.values()) pusher.push(event);
+}
+
+/** Timers started by the mock (warming timeouts + install intervals), all cleared by
+ *  the disposer the installer returns. */
+const timers = new Set<ReturnType<typeof setTimeout>>();
+
+/** Simulate an app "warming up": Docker publishes the port at start, the probe only
+ *  goes green a moment later — so `ready` transitions after the row is already live. */
+function scheduleWarming(id: string): void {
+  const timer = setTimeout(() => {
+    if (state[id]?.running) {
+      state[id]!.accepting = true;
+      broadcastSnapshot();
+    }
+  }, 2500);
+  timers.add(timer);
+}
+
+const INSTALL_LOG = [
+  "Step 1/6 : FROM python:3.12-slim",
+  "Step 2/6 : RUN pip install -r requirements.txt",
+  " ---> Running in a9f3c1e2",
+  "Collecting torch, transformers, accelerate ...",
+  "Step 5/6 : COPY . /app",
+  'Step 6/6 : CMD ["python", "app.py"]',
+  "Successfully built the image",
+];
+
 export function installBrowserMock(): () => void {
   mockIPC((cmd: string, payload?: InvokeArgs) => {
     switch (cmd) {
-      case "list_containers":
-        return FIXTURE_CONTAINERS;
+      case "list_instance_rows":
+        return DEFS.map(buildRow);
 
-      case "stream_logs": {
-        const pusher = channelPusher(field(payload, "onLog"));
+      case "subscribe_instances": {
+        const pusher = channelPusher<SnapshotEvent>(field(payload, "onEvent"));
+        const id = nextSubscriptionId++;
         if (pusher) {
-          let i = 0;
-          const rawId = field(payload, "containerId");
-          const containerId = typeof rawId === "string" ? rawId : "unknown";
-          pusher.push(`--- streaming logs for ${containerId} (mock) ---`);
-          const timer = setInterval(() => {
-            pusher.push(LOG_LINES[i % LOG_LINES.length]!);
-            i += 1;
-          }, 1200);
-          timers.add(timer);
+          snapshotPushers.set(id, pusher);
+          pusher.push({ type: "snapshot", containers: currentContainers() });
+          disposers.set(id, () => snapshotPushers.delete(id));
+        }
+        return id;
+      }
+
+      case "instance_up": {
+        const id = String(field(payload, "id"));
+        const s = state[id];
+        if (s) {
+          s.installed = true; // `up` builds silently if missing
+          s.running = true;
+          s.accepting = false;
+          scheduleWarming(id);
+          broadcastSnapshot();
+        }
+        const d = def(id);
+        const url = d.webPorts[0]
+          ? `http://localhost:${d.webPorts[0].host}${d.webPorts[0].path}`
+          : null;
+        return { id, usedGpu: false, url } satisfies UpView;
+      }
+
+      case "instance_down": {
+        const id = String(field(payload, "id"));
+        const s = state[id];
+        if (s) {
+          s.running = false;
+          s.accepting = false;
+          broadcastSnapshot();
         }
         return null;
       }
 
-      case "stream_events": {
-        const pusher = channelPusher(field(payload, "onEvent"));
+      case "instance_install": {
+        const id = String(field(payload, "id"));
+        const pusher = channelPusher<InstallEvent>(field(payload, "onProgress"));
+        const subId = nextSubscriptionId++;
         if (pusher) {
           let i = 0;
           const timer = setInterval(() => {
-            pusher.push(EVENT_LINES[i % EVENT_LINES.length]!);
-            i += 1;
-          }, 2500);
+            if (i < INSTALL_LOG.length) {
+              pusher.push({ type: "log", line: INSTALL_LOG[i]! });
+              i += 1;
+              return;
+            }
+            clearInterval(timer);
+            timers.delete(timer);
+            disposers.delete(subId);
+            if (state[id]) state[id]!.installed = true;
+            pusher.push({ type: "done", tag: `compositz/${id}:latest` });
+            broadcastSnapshot();
+          }, 350);
           timers.add(timer);
+          disposers.set(subId, () => {
+            clearInterval(timer);
+            timers.delete(timer);
+          });
         }
+        return subId;
+      }
+
+      case "unsubscribe": {
+        const subId = Number(field(payload, "subscriptionId"));
+        disposers.get(subId)?.();
+        disposers.delete(subId);
+        return null;
+      }
+
+      case "open_service_url": {
+        const url = String(field(payload, "url"));
+        window.open(url, "_blank", "noopener");
         return null;
       }
 
@@ -150,8 +286,10 @@ export function installBrowserMock(): () => void {
   return () => {
     for (const timer of timers) clearInterval(timer);
     timers.clear();
+    disposers.clear();
+    snapshotPushers.clear();
   };
 }
 
 /** Exposed for tests that assert list rendering from known fixture data. */
-export { FIXTURE_CONTAINERS };
+export { DEFS };

@@ -1,36 +1,39 @@
 import { useEffect } from "react";
-import { ContainerList } from "@/components/ContainerList";
-import { StreamPane } from "@/components/StreamPane";
+import { RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { hasTauriBackend, installMockIfNeeded } from "@/ipc";
-import { useContainersStore } from "@/store/containers";
+import { InstanceTable } from "@/components/InstanceTable";
+import { cn } from "@/lib/utils";
+import { hasTauriBackend, installMockIfNeeded } from "@/ipc/client";
+import { useInstancesStore } from "@/store/instances";
+import { ThemeToggle } from "@/theme/ThemeToggle";
+
+function engineStatusLabel(kind: "connecting" | "online" | "offline"): string {
+  if (kind === "offline") return "engine offline";
+  if (kind === "connecting") return "connecting…";
+  return "engine online";
+}
 
 export const App = () => {
-  const containers = useContainersStore((s) => s.containers);
-  const loading = useContainersStore((s) => s.loading);
-  const error = useContainersStore((s) => s.error);
-  const selectedId = useContainersStore((s) => s.selectedId);
-  const logs = useContainersStore((s) => s.logs);
-  const events = useContainersStore((s) => s.events);
-  const refresh = useContainersStore((s) => s.refresh);
-  const selectContainer = useContainersStore((s) => s.selectContainer);
-  const startEvents = useContainersStore((s) => s.startEvents);
-  const teardown = useContainersStore((s) => s.teardown);
+  const init = useInstancesStore((s) => s.init);
+  const teardown = useInstancesStore((s) => s.teardown);
+  const refresh = useInstancesStore((s) => s.refresh);
+  const loading = useInstancesStore((s) => s.loading);
+  const error = useInstancesStore((s) => s.error);
+  const dismissError = useInstancesStore((s) => s.dismissError);
+  const snapshot = useInstancesStore((s) => s.snapshot);
 
   useEffect(() => {
     let disposed = false;
     let disposeMock: (() => void) | undefined;
 
-    // Install the browser-dev mock (no-op under real Tauri / in prod), then do
-    // the initial load and start the shared event stream.
+    // Install the browser-dev mock first (no-op under real Tauri), then load + subscribe.
     void installMockIfNeeded().then((dispose) => {
       if (disposed) {
         dispose();
         return;
       }
       disposeMock = dispose;
-      void refresh();
-      void startEvents();
+      void init();
     });
 
     return () => {
@@ -38,45 +41,50 @@ export const App = () => {
       teardown();
       disposeMock?.();
     };
-  }, [refresh, startEvents, teardown]);
+  }, [init, teardown]);
 
   const backend = hasTauriBackend() ? "Tauri" : "browser (mock IPC)";
 
   return (
-    <div className="mx-auto flex h-screen max-w-6xl flex-col gap-4 p-6">
+    <div className="mx-auto flex min-h-screen max-w-5xl flex-col gap-4 p-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">compositz</h1>
-          <p className="text-muted-foreground text-sm">Managed containers · backend: {backend}</p>
+          <h1 className="text-2xl font-semibold tracking-tight">compositz</h1>
+          <p className="text-sm text-muted-foreground">
+            {backend} · {engineStatusLabel(snapshot.kind)}
+          </p>
         </div>
-        <Button onClick={() => void refresh()} disabled={loading}>
-          {loading ? "Refreshing…" : "Refresh"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
+            <RefreshCw className={cn(loading && "animate-spin")} />
+            Refresh
+          </Button>
+          <ThemeToggle />
+        </div>
       </header>
 
-      {error !== undefined && (
-        <div className="border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-4 py-2 text-sm">
-          {error}
+      {snapshot.kind === "offline" && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-700 dark:text-amber-400">
+          Docker engine unreachable — instances are listed, but actions are disabled.{" "}
+          <span className="text-amber-600/80 dark:text-amber-400/70">{snapshot.error}</span>
         </div>
       )}
 
-      <div className="min-h-0 flex-1">
-        <ContainerList
-          containers={containers}
-          selectedId={selectedId}
-          loading={loading}
-          onSelect={(id) => void selectContainer(id)}
-        />
-      </div>
+      {error !== undefined && (
+        <div className="flex items-start justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          <span>{error}</span>
+          <button
+            type="button"
+            aria-label="Dismiss error"
+            onClick={dismissError}
+            className="shrink-0 opacity-70 hover:opacity-100"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-2 gap-4">
-        <StreamPane
-          title={selectedId !== undefined ? "Logs" : "Logs (select a container)"}
-          lines={logs}
-          emptyHint="Select a container to stream its logs."
-        />
-        <StreamPane title="Docker events" lines={events} emptyHint="Waiting for Docker events…" />
-      </div>
+      <InstanceTable />
     </div>
   );
 };
