@@ -6,8 +6,8 @@ import type { Service } from "@/ipc/bindings";
 import { useInstancesStore } from "@/store/instances";
 import type { RowVM } from "@/store/instances";
 import { ActionButton } from "./ActionButton";
-import { BuildLogPanel } from "./BuildLogPanel";
 import { CopyId } from "./CopyId";
+import { DetailPanel } from "./DetailPanel";
 import { StatusPill } from "./StatusPill";
 import { Tip } from "./Tip";
 
@@ -21,7 +21,7 @@ function serviceState(service: Service, running: boolean): { dot: string; label:
 }
 
 export const InstanceRow = ({ vm, engineOnline }: Props) => {
-  const { row, busy, duplicating, deleting, buildLog, expanded } = vm;
+  const { row, busy, duplicating, deleting, expanded } = vm;
   const up = useInstancesStore((s) => s.up);
   const down = useInstancesStore((s) => s.down);
   const install = useInstancesStore((s) => s.install);
@@ -29,9 +29,6 @@ export const InstanceRow = ({ vm, engineOnline }: Props) => {
   const duplicate = useInstancesStore((s) => s.duplicate);
   const requestDelete = useInstancesStore((s) => s.requestDelete);
   const toggleExpanded = useInstancesStore((s) => s.toggleExpanded);
-
-  const hasBuildLog = (buildLog?.length ?? 0) > 0;
-  const hasDetail = row.services.length > 0 || hasBuildLog || row.description !== "";
 
   return (
     <>
@@ -116,7 +113,6 @@ export const InstanceRow = ({ vm, engineOnline }: Props) => {
               variant="ghost"
               aria-label={expanded ? "Hide details" : "Show details"}
               aria-expanded={expanded}
-              disabled={!hasDetail}
               onClick={() => toggleExpanded(row.instanceId)}
             >
               {expanded ? <ChevronDown /> : <ChevronRight />}
@@ -132,22 +128,7 @@ export const InstanceRow = ({ vm, engineOnline }: Props) => {
               {row.description !== "" && (
                 <p className="text-sm break-words text-muted-foreground">{row.description}</p>
               )}
-              {hasBuildLog && <BuildLogPanel lines={buildLog ?? []} />}
-              {row.services.length > 0 && (
-                <div className="flex flex-col gap-1.5 text-sm">
-                  {row.services.map((service) => {
-                    const { dot, label } = serviceState(service, row.running);
-                    return (
-                      <div key={service.name} className="flex items-center gap-2">
-                        <span className={cn("size-2 rounded-full", dot)} />
-                        <span className="font-medium">{service.name}</span>
-                        <span className="text-muted-foreground">{service.url}</span>
-                        <span className="text-xs text-muted-foreground">{label}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              <DetailPanel vm={vm} />
             </div>
           </TableCell>
         </TableRow>
