@@ -204,6 +204,9 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
         `#[test] export_bindings` に一本化（run() の debug-only export 撤去）、`frontend/src/ipc/
         bindings.ts`(15 コマンド+23 型) 生成・格納（決定的）。specta-typescript を dev-deps へ。
         clippy(collapsible_if) 2件を let-chains へ collapse（CI は desktop 非対象のため flake で初検出）。
+        624c055 で生成 bindings.ts を有効 TS 化（衝突 placeholder 除去 + `// @ts-nocheck` + vite.config
+        fmt/lint `ignorePatterns` 除外）= 4b でそのまま consume 可。desktop の CI ゲート追加は後回し（user 合意）。
       - 4b〜4f: skeleton 破棄 → shadcn/theme/shell → list/actions → dialogs → detail tabs →
-        banners/parity。既知 quirk: bindings の `TAURI_CHANNEL` 名前衝突を配線時に潰す。
+        banners/parity。★user 優先(07-04): まず「ちゃんと動く」を確認したい → 完全性より runnable
+        縦切り優先、ローカルは vp dev + browser + mockIPC（mock を bindings 準拠へ書換）、実 backend は Windows。
 - [ ] Phase 5 — parity + docs + 退役（+ Windows 実機確認 #3）
