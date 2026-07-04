@@ -18,12 +18,19 @@ import { deriveServices } from "@/lib/rows";
 import type {
   ContainerStatus,
   DeleteView,
+  EnvSetting,
   ImportView,
   InstallEvent,
   InstanceRow,
+  InstanceSettings,
   InstanceView,
+  LogEvent,
+  MountSetting,
+  Override,
   PortBump,
+  PortSetting,
   PublishedPort,
+  SetConfigView,
   SnapshotEvent,
   UpView,
   WebPort,
@@ -161,6 +168,55 @@ function synthImport(source: string): ImportView {
   state[instanceId] = { installed: false, running: false, accepting: false };
   return { view: viewOf(d), bumps: [] };
 }
+
+// --- settings + runtime logs (for the detail tabs) ------------------------
+
+/** Per-instance saved launch override (mirrors config.yaml) — drives get/set_config. */
+const savedOverrides: Record<string, Override> = {};
+
+/** Synthesize a Settings view-model: ports from the def + a sample env var + a mount. */
+function settingsOf(id: string): InstanceSettings {
+  const d = def(id);
+  const over = savedOverrides[id] ?? {};
+  const ports: PortSetting[] = d.webPorts.map((wp) => ({
+    name: wp.name,
+    container: wp.container,
+    web: true,
+    description: `Web UI on container port ${wp.container}.`,
+    manifestHost: wp.host,
+    override: over.hostPorts?.[wp.name] ?? null,
+  }));
+  const env: EnvSetting[] = [
+    {
+      name: "LOG_LEVEL",
+      description: "Logging verbosity (debug | info | warn | error).",
+      required: false,
+      default: "info",
+      override: over.env?.["LOG_LEVEL"] ?? null,
+    },
+  ];
+  const mounts: MountSetting[] = [
+    {
+      name: "data",
+      target: "/data",
+      description: "Persistent application data.",
+      manifestPlacement: "volume",
+      override: over.placement?.["data"] ?? null,
+    },
+  ];
+  // Host ports DEFINED by OTHER instances (their override ▷ manifest host).
+  const takenByOthers = DEFS.filter((x) => x.instanceId !== id).flatMap((x) =>
+    x.webPorts.map((wp) => savedOverrides[x.instanceId]?.hostPorts?.[wp.name] ?? wp.host),
+  );
+  return { ports, env, mounts, takenByOthers, restartNeeded: false };
+}
+
+const RUNTIME_LOG = [
+  "[boot] loading configuration from /app/config.yaml",
+  "[boot] initializing model registry",
+  "[server] listening on http://0.0.0.0",
+  "[server] ready — waiting for requests",
+];
 
 // --- Channel plumbing -----------------------------------------------------
 
@@ -327,6 +383,40 @@ export function installBrowserMock(): () => void {
         delete state[id];
         broadcastSnapshot(); // reflect it leaving the running set, if it was up
         return { warning: null } satisfies DeleteView;
+      }
+
+      case "get_config":
+        return settingsOf(String(field(payload, "id")));
+
+      case "set_config": {
+        const id = String(field(payload, "id"));
+        savedOverrides[id] = (field(payload, "over") as Override | undefined) ?? {};
+        // A running instance needs a restart to apply; a stopped one applies on next up.
+        return { restartNeeded: !!state[id]?.running } satisfies SetConfigView;
+      }
+
+      case "stream_logs": {
+        const id = String(field(payload, "id"));
+        const pusher = channelPusher<LogEvent>(field(payload, "onLog"));
+        const subId = nextSubscriptionId++;
+        if (pusher) {
+          if (!state[id]?.running) {
+            pusher.push({ type: "end" });
+          } else {
+            let i = 0;
+            const timer = setInterval(() => {
+              if (i < RUNTIME_LOG.length) {
+                pusher.push({ type: "log", line: RUNTIME_LOG[i]! });
+                i += 1;
+                return;
+              }
+              clearInterval(timer); // streamed the startup log; go quiet (stays open)
+              disposers.delete(subId); // drop the now-dead disposer (matches instance_install)
+            }, 500);
+            disposers.set(subId, () => clearInterval(timer));
+          }
+        }
+        return subId;
       }
 
       case "instance_install": {

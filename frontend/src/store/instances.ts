@@ -33,6 +33,9 @@ import type { DeleteOpts, InstanceRow, InstanceView, PortBump, Subscription } fr
 /** The three run-state actions that spin the primary Start/Stop/Install control. */
 export type BusyKind = "starting" | "stopping" | "installing";
 
+/** The detail-panel tabs. The active one follows an explicit pick, else a per-state default. */
+export type TabKey = "build" | "logs" | "services" | "settings";
+
 /** A freshly-imported instance awaiting the trust ("install?") decision. */
 export type TrustState = { view: InstanceView; source: string; bumps: PortBump[] };
 
@@ -52,6 +55,8 @@ type InstancesState = {
   /** Accumulated build-log lines per instance (the streaming install output). */
   buildLog: Record<string, string[]>;
   expanded: Record<string, boolean>;
+  /** The explicitly-selected detail tab per instance (absent ⇒ a per-state default). */
+  tabByInstance: Record<string, TabKey>;
   loading: boolean;
   ready: boolean;
   error: string | undefined;
@@ -71,6 +76,7 @@ type InstancesState = {
   reloadRows: () => Promise<void>;
   up: (id: string) => Promise<void>;
   down: (id: string) => Promise<void>;
+  restart: (id: string) => Promise<void>;
   install: (id: string) => Promise<void>;
   open: (url: string) => Promise<void>;
   duplicate: (id: string) => Promise<void>;
@@ -84,6 +90,7 @@ type InstancesState = {
   submitGithub: () => Promise<void>;
   trustInstall: () => Promise<void>;
   trustReject: () => Promise<void>;
+  setTab: (id: string, tab: TabKey) => void;
   toggleExpanded: (id: string) => void;
   dismissError: () => void;
   dismissNotice: () => void;
@@ -123,6 +130,7 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
   deleting: {},
   buildLog: {},
   expanded: {},
+  tabByInstance: {},
   loading: false,
   ready: false,
   error: undefined,
@@ -198,7 +206,15 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
   },
 
   up: async (id) => {
-    set((s) => ({ busy: { ...s.busy, [id]: "starting" }, error: undefined }));
+    // Starting → open the panel on the runtime log so the app's own startup output is
+    // in view (the action-driven tab flow: install→build, build done→settings,
+    // start→runtime log, ready→services).
+    set((s) => ({
+      busy: { ...s.busy, [id]: "starting" },
+      expanded: { ...s.expanded, [id]: true },
+      tabByInstance: { ...s.tabByInstance, [id]: "logs" },
+      error: undefined,
+    }));
     try {
       await instanceUp(id);
       // `running` is confirmed by the snapshot stream, not set here.
@@ -220,11 +236,27 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
     }
   },
 
+  // Restart in place to apply a just-saved override (down → up). Unlike `up`, it does
+  // NOT switch the detail tab — the user stays on Settings where they clicked Restart.
+  restart: async (id) => {
+    set((s) => ({ busy: { ...s.busy, [id]: "stopping" }, error: undefined }));
+    try {
+      await instanceDown(id);
+      set((s) => ({ busy: { ...s.busy, [id]: "starting" } }));
+      await instanceUp(id);
+    } catch (error) {
+      set({ error: describe(error) });
+    } finally {
+      set((s) => ({ busy: without(s.busy, id) }));
+    }
+  },
+
   install: async (id) => {
     set((s) => ({
       busy: { ...s.busy, [id]: "installing" },
       buildLog: { ...s.buildLog, [id]: [] },
       expanded: { ...s.expanded, [id]: true },
+      tabByInstance: { ...s.tabByInstance, [id]: "build" },
       error: undefined,
     }));
 
@@ -252,9 +284,12 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
             break;
           case "done":
             append(id, `✓ built ${event.tag}`);
+            // Build finished → configuration is the natural next step before first start.
+            // A FAILED build keeps the build tab (the error stays in view).
             set((s) => ({
               busy: without(s.busy, id),
               installedOverride: { ...s.installedOverride, [id]: true },
+              tabByInstance: { ...s.tabByInstance, [id]: "settings" },
             }));
             disposeInstall(id);
             break;
@@ -308,6 +343,7 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
       set((s) => ({
         buildLog: without(s.buildLog, id),
         expanded: without(s.expanded, id),
+        tabByInstance: without(s.tabByInstance, id),
         installedOverride: without(s.installedOverride, id),
         notice: warning ? `delete ${id}: ${warning}` : s.notice,
       }));
@@ -376,6 +412,8 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
     await get().remove(t.view.instanceId, { volumes: true, bindData: false });
   },
 
+  setTab: (id, tab) => set((s) => ({ tabByInstance: { ...s.tabByInstance, [id]: tab } })),
+
   toggleExpanded: (id) =>
     set((s) => ({ expanded: { ...s.expanded, [id]: !(s.expanded[id] ?? false) } })),
 
@@ -401,6 +439,8 @@ export type RowVM = {
   deleting: boolean;
   buildLog: string[] | undefined;
   expanded: boolean;
+  /** The explicitly-picked detail tab, if any (the panel falls back to a per-state default). */
+  tab: TabKey | undefined;
 };
 
 /** Merge the base rows with the live snapshot into render-ready view-models. */
@@ -413,6 +453,7 @@ export function useRowVMs(): RowVM[] {
   const deleting = useInstancesStore((s) => s.deleting);
   const buildLog = useInstancesStore((s) => s.buildLog);
   const expanded = useInstancesStore((s) => s.expanded);
+  const tabByInstance = useInstancesStore((s) => s.tabByInstance);
 
   return useMemo(
     () =>
@@ -423,7 +464,18 @@ export function useRowVMs(): RowVM[] {
         deleting: deleting[base.instanceId] ?? false,
         buildLog: buildLog[base.instanceId],
         expanded: expanded[base.instanceId] ?? false,
+        tab: tabByInstance[base.instanceId],
       })),
-    [baseRows, snapshot, installedOverride, busy, duplicating, deleting, buildLog, expanded],
+    [
+      baseRows,
+      snapshot,
+      installedOverride,
+      busy,
+      duplicating,
+      deleting,
+      buildLog,
+      expanded,
+      tabByInstance,
+    ],
   );
 }

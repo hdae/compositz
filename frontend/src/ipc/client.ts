@@ -17,7 +17,11 @@ import type {
   ImportView,
   InstallEvent,
   InstanceRow,
+  InstanceSettings,
+  LogEvent,
+  Override,
   Result,
+  SetConfigView,
   SnapshotEvent,
   UpView,
 } from "./bindings";
@@ -25,11 +29,20 @@ import type {
 export type {
   DeleteOpts,
   DeleteView,
+  EnvSetting,
   ImportView,
   InstallEvent,
   InstanceRow,
+  InstanceSettings,
   InstanceView,
+  LogEvent,
+  MountSetting,
+  Override,
+  Placement,
   PortBump,
+  PortSetting,
+  Service,
+  SetConfigView,
   SnapshotEvent,
   UpView,
 } from "./bindings";
@@ -129,6 +142,16 @@ export async function pickRecipeFile(): Promise<string | undefined> {
   return typeof selected === "string" ? selected : undefined;
 }
 
+/** The Settings view-model for an instance (manifest ⊕ saved override, restartNeeded). */
+export async function getConfig(id: string): Promise<InstanceSettings> {
+  return unwrap(await commands.getConfig(id));
+}
+
+/** Persist a launch override (validated server-side); returns whether a restart is needed. */
+export async function setConfig(id: string, over: Override): Promise<SetConfigView> {
+  return unwrap(await commands.setConfig(id, over));
+}
+
 // --- push streams ---------------------------------------------------------
 
 /**
@@ -159,5 +182,16 @@ export async function installInstance(
   const channel = new Channel<InstallEvent>();
   channel.onmessage = onProgress;
   const subscriptionId = unwrap(await commands.instanceInstall(id, channel));
+  return { unsubscribe: () => stopPump(subscriptionId) };
+}
+
+/** Stream a running container's logs until end/error (or `unsubscribe`). */
+export async function streamLogs(
+  id: string,
+  onLog: (event: LogEvent) => void,
+): Promise<Subscription> {
+  const channel = new Channel<LogEvent>();
+  channel.onmessage = onLog;
+  const subscriptionId = unwrap(await commands.streamLogs(id, channel));
   return { unsubscribe: () => stopPump(subscriptionId) };
 }
