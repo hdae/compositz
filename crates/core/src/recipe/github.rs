@@ -1,13 +1,12 @@
 //! Ingest a recipe straight from GitHub (ADR-014, RI-3): the codeload tarball over
-//! HTTPS, no `git` binary, public repos only (private-repo auth deferred). Ported
-//! from `packages/core/src/recipe/github.ts`.
+//! HTTPS, no `git` binary, public repos only (private-repo auth deferred).
 //!
-//! This sub-step (1d) ports the PURE spec layer — the `owner/repo[/subdir][@ref]`
-//! grammar (ADR-021), the codeload URL builder, and the provenance round-trip. The
-//! download glue `ingestGithub` (fetch → `ingestBundle`) lands in 1e together with
-//! `ingest_bundle`: it is only a pipe into it, and both codeload network tests
-//! exercise the full download → gunzip → untar → locate pipeline (neither passes
-//! without ingestion), so the transport half is built and tested as one unit there.
+//! The pure spec layer here — the `owner/repo[/subdir][@ref]` grammar (ADR-021),
+//! the codeload URL builder, and the provenance round-trip — is paired with the
+//! download glue `ingest_github`, which is only a pipe into `ingest_bundle`.
+//! Both codeload network tests exercise the full download → gunzip → untar →
+//! locate pipeline (neither passes without ingestion), so the transport half is
+//! built and tested as one unit.
 //!
 //! GRAMMAR (ADR-021, amends ADR-014's `owner/repo[@ref][/subdir]`):
 //!
@@ -153,8 +152,8 @@ const DOWNLOAD_READ_TIMEOUT: Duration = Duration::from_secs(60);
 /// ingestion to a path inside the repo. Public repos only.
 ///
 /// This is BLOCKING (the whole extract pipeline is sync); async callers wrap it in
-/// `spawn_blocking`. It is the download half deferred from Phase 1d, landing here
-/// with `ingest_bundle` so the fetch → gunzip → untar → locate pipeline is one unit.
+/// `spawn_blocking`. It is the download half, paired with `ingest_bundle` so the
+/// fetch → gunzip → untar → locate pipeline is one unit.
 pub fn ingest_github(
     input: &str,
     instances_dir: &str,
@@ -207,8 +206,8 @@ pub fn ingest_github(
     )
 }
 
-/// Options for a GitHub ingest (mirrors the Deno `opts`; `source` is fixed to the
-/// spec's provenance string, so only `created_at` is caller-overridable).
+/// Options for a GitHub ingest: `source` is fixed to the spec's provenance string,
+/// so only `created_at` is caller-overridable.
 #[derive(Debug, Default, Clone)]
 pub struct GithubIngestOpts {
     pub created_at: Option<String>,
@@ -230,8 +229,8 @@ fn format_spec(spec: &GithubSpec) -> String {
 }
 
 /// A git ref may contain `/` but never whitespace, control chars, or a `.`/`..`
-/// (or empty) path segment. Mirrors the Deno `validateRef`; the segment rules keep
-/// a slashed ref from smuggling `..` into the codeload URL path.
+/// (or empty) path segment. The segment rules keep a slashed ref from smuggling
+/// `..` into the codeload URL path.
 fn validate_ref(git_ref: &str, input: &str) -> Result<(), Error> {
     // Reject control chars / whitespace by scalar value (≤ 0x20 covers space + all
     // C0 controls; 0x7f is DEL), and any empty / `.` / `..` path segment.
@@ -249,9 +248,8 @@ fn validate_ref(git_ref: &str, input: &str) -> Result<(), Error> {
 
 /// Percent-encode one URL path component exactly as JS `encodeURIComponent` does:
 /// every byte except the unreserved set `A-Za-z0-9` and `- _ . ! ~ * ' ( )` is
-/// escaped as `%XX` (uppercase hex, UTF-8 bytes). Matching the Deno source keeps
-/// the codeload URL byte-identical; a `/`-free component stays intact (slashes are
-/// the segment delimiter, re-joined by the caller).
+/// escaped as `%XX` (uppercase hex, UTF-8 bytes). A `/`-free component stays intact
+/// (slashes are the segment delimiter, re-joined by the caller).
 fn percent_encode_component(component: &str) -> String {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let mut out = String::with_capacity(component.len());
@@ -272,8 +270,7 @@ fn percent_encode_component(component: &str) -> String {
     out
 }
 
-/// Build a uniform `invalid GitHub spec "<input>": <detail>` error (mirrors the
-/// Deno `CompositzError` message shape so callers/UI see identical text).
+/// Build a uniform `invalid GitHub spec "<input>": <detail>` error.
 fn bad(input: &str, detail: &str) -> Error {
     Error::Github(format!("invalid GitHub spec \"{input}\": {detail}"))
 }

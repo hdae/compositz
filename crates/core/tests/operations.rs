@@ -1,8 +1,7 @@
-//! Behavior tests for the engine-FREE instance operations, ported from
-//! `packages/core/src/recipe/operations_test.ts`. `deconflict_host_ports` reads only
-//! the manifests ⊕ config.yaml of the OTHER instances, so it is hermetically
-//! testable; `up`/`down`/`install`/`export` need a live engine and are verified by
-//! the gated E2E round-trip.
+//! Behavior tests for the engine-FREE instance operations.
+//! `deconflict_host_ports` reads only the manifests ⊕ config.yaml of the OTHER
+//! instances, so it is hermetically testable; `up`/`down`/`install`/`export` need
+//! a live engine and are verified by the gated E2E round-trip.
 
 use std::collections::BTreeMap;
 use std::fs;

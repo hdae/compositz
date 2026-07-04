@@ -1,9 +1,10 @@
 [workspace]
 members = ["crates/*"]
 # The desktop crate links webkit2gtk/dbus, which are absent in this headless
-# dev environment — it compiles only in CI (windows-latest). Excluding it from
-# default-members keeps `cargo build`/`test`/`clippy` green locally while it
-# still stays a first-class workspace member (metadata/tree resolve it).
+# dev environment — it needs the nix devShell locally (flake.nix); installers
+# build in CI windows-latest. Excluding it from default-members keeps
+# `cargo build`/`test`/`clippy` green locally while it still stays a first-class
+# workspace member (metadata/tree resolve it).
 default-members = ["crates/core", "crates/cli"]
 resolver = "3"
 
@@ -31,27 +32,26 @@ serde_json = "1"
 # YAML for recipe manifests. serde_norway is the RustSec-recommended, drop-in
 # successor to the unmaintained serde_yaml (serde_yml is banned: RUSTSEC-2025-0068).
 serde_norway = "0.9"
-# JSON Schema generation from the manifest types — replaces the Deno
-# scripts/gen_schema.ts (zod → JSON Schema) path.
+# JSON Schema generation from the manifest types — generates
+# spec/compositz.schema.json (written by core's export_schema test).
 schemars = "1"
 # Charset validation for manifest fields (recipe id, names, image tags, …),
-# porting the Zod regexes 1:1. Compiled once via LazyLock at the parse boundary.
+# compiled once via LazyLock at the parse boundary.
 regex = "1"
-# Atomic instance-store writes (temp file in the same dir → fsync → rename),
-# structurally resolving the Deno tree's non-atomic config.yaml write.
+# Atomic instance-store writes (temp file in the same dir → fsync → rename).
 tempfile = "3"
-# Recipe-bundle ingestion (Phase 1e): stream-extract a tar / tar.gz archive to
-# disk entry-by-entry. tar-rs is SYNC (extraction runs under spawn_blocking at the
+# Recipe-bundle ingestion: stream-extract a tar / tar.gz archive to disk
+# entry-by-entry. tar-rs is SYNC (extraction runs under spawn_blocking at the
 # async edges) — async-tar / tokio-tar are intentionally NOT used. flate2's
-# MultiGzDecoder gunzips (multi-member safe). The recipe archive format is
-# tar/tar.gz ONLY — the Deno source has no zip path, so neither does this port.
+# MultiGzDecoder gunzips (multi-member safe). Recipe archives are tar/tar.gz only
+# (GitHub codeload ships tar.gz; zip is out of scope).
 tar = "0.4"
 flate2 = "1"
-# OS CSPRNG for the instance-id random suffix (parity with crypto.getRandomValues).
+# OS CSPRNG for the instance-id random suffix.
 getrandom = "0.2"
 # ISO-8601 timestamps for instance provenance (meta.json `createdAt` default).
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-# GitHub codeload download (Phase 1e-2): ONE blocking Agent, rustls over RING
+# GitHub codeload download: ONE blocking Agent, rustls over RING
 # (reuses bollard's provider — no second crypto backend, no aws-lc-rs C build, no
 # openssl), redirect-follow, per-read timeout. Chosen over reqwest because reqwest
 # 0.13's rustls path pulls aws-lc-rs; ureq keeps the whole tree on ring. `tls` =
@@ -66,7 +66,7 @@ bytes = "1"
 # `'static` stream must OWN a cloned `Docker` in its body — an `async_stream`
 # generator does exactly that with zero runtime coupling (vs a spawn+channel).
 async-stream = "0.3"
-# Rust type → TypeScript reflection for the desktop IPC contract (Phase 3), wired
+# Rust type → TypeScript reflection for the desktop IPC contract, wired
 # to `tauri-specta` in the desktop crate. Core needs only the `Type` derive + serde
 # attribute compat, so it stays an OPTIONAL dep behind core's `specta` feature (the
 # CLI never compiles it). PINNED EXACT to rc.22 — the version `tauri-specta`

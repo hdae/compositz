@@ -1,8 +1,7 @@
-//! Behavior tests for the GitHub source grammar, ported from the PURE half of
-//! `packages/core/src/recipe/github_test.ts` (the `parseGithubSpec` /
-//! `githubTarballUrl` / `githubSource` cases). The two network integration tests
-//! call `ingestGithub`, which streams into `ingestBundle` (Phase 1e); they arrive
-//! there with the download glue, since neither passes without the untar pipeline.
+//! Behavior tests for the GitHub source grammar (the `parse_github_spec` /
+//! `github_tarball_url` / `github_source` cases). The two network integration
+//! tests call `ingest_github`, which streams into `ingest_bundle`; they live with
+//! the download glue, since neither passes without the untar pipeline.
 
 use compositz_core::recipe::github::{GithubIngestOpts, ingest_github};
 use compositz_core::recipe::github::{
@@ -203,7 +202,7 @@ fn source_round_trips_through_parse() {
     }
 }
 
-// --- security regressions (not in the Deno suite; guard the Rust port) -------
+// --- security regressions -------
 
 // A JS `$` (no `m` flag) never matches before a trailing newline; Rust's regex
 // `$` must behave the same, or a control char at a segment's END would slip past

@@ -8,8 +8,7 @@
 //!     meta.json       ← { source, createdAt }  (instanceId == the directory name)
 //!     config.yaml     ← per-instance override (RI-4)
 //!
-//! Ported from `packages/core/src/recipe/instance.ts`. Two hardening notes carry
-//! over from the Deno tree: the destructive [`remove_instance_dir`] validates the
+//! Two hardening notes: the destructive [`remove_instance_dir`] validates the
 //! id ITSELF (ADR-025 — a path-shaped id must never become a recursive delete of
 //! the whole store), and the config/meta writes are ATOMIC (temp file + fsync +
 //! rename), structurally closing the non-atomic-write known issue.
@@ -128,9 +127,9 @@ pub fn list_instances(instances_dir: &str) -> Vec<Instance> {
         if name.starts_with('.') {
             continue; // skip staging dirs
         }
-        // `file_type()` is `lstat`-based (does NOT follow symlinks), matching the
-        // Deno `entry.isDirectory` and the loader's own walk — a symlinked entry
-        // is not treated as an instance directory.
+        // `file_type()` is `lstat`-based (does NOT follow symlinks), like the
+        // loader's own walk — a symlinked entry is not treated as an instance
+        // directory.
         if !entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
             continue;
         }

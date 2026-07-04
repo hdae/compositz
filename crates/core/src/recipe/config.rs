@@ -4,8 +4,8 @@
 //! the manifest `name`. The manifest is never mutated; at `up` the effective spec
 //! is derived from manifest ⊕ override (see `run.rs`).
 //!
-//! Ported from `packages/core/src/recipe/config.ts`. `dataRoot` is intentionally
-//! NOT part of the persisted override — it is a global install concern.
+//! `dataRoot` is intentionally NOT part of the persisted override — it is a
+//! global install concern.
 
 use std::collections::BTreeMap;
 

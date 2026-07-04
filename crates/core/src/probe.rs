@@ -1,6 +1,4 @@
-//! Readiness probe + dashboard snapshot assembly — the Rust home of the Deno tree's
-//! `packages/ui/lib/probe.ts` and the data-gathering half of `routes/api/events.ts`
-//! (`doPush`).
+//! Readiness probe + dashboard snapshot assembly.
 //!
 //! The probe answers ONE question a bare TCP connect cannot: is an app actually
 //! listening behind a published port? Docker publishes the host→container mapping
@@ -24,13 +22,13 @@ use crate::recipe::instance::list_instances;
 use crate::view::{ContainerStatus, to_container_statuses};
 use crate::{DOCKER_HOST_ENV, EngineHandle, Error, brand};
 
-/// Probe budget per port (parity with the Deno `PROBE_TIMEOUT_MS`).
+/// Probe budget per port.
 const PROBE_TIMEOUT: Duration = Duration::from_millis(800);
 
 /// A managed-container snapshot for the dashboard: the probed container statuses
 /// plus a `warming` flag — a running web port is published but not yet accepting,
 /// so the caller should poll FAST until it flips (no Docker event fires when the
-/// app finally binds its socket). Mirrors the Deno events.ts `doPush` result.
+/// app finally binds its socket).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SnapshotPush {
     pub containers: Vec<ContainerStatus>,
@@ -40,8 +38,8 @@ pub struct SnapshotPush {
 /// True iff an HTTP GET to `host:port` gets ANY response (2xx/3xx/4xx/5xx) within
 /// `timeout`. A bare TCP connect is deliberately NOT enough (docker-proxy accepts
 /// it with nothing behind), so only a real HTTP answer counts. Redirects are NOT
-/// followed — a 3xx is itself a response (`redirects(0)`), matching the Deno
-/// `redirect: "manual"`. Blocking (ureq); callers run it under `spawn_blocking`.
+/// followed — a 3xx is itself a response (`redirects(0)`). Blocking (ureq);
+/// callers run it under `spawn_blocking`.
 fn probe_accepts(host: &str, port: u32, timeout: Duration) -> bool {
     let agent = ureq::AgentBuilder::new()
         .timeout_connect(timeout)
@@ -146,9 +144,8 @@ pub async fn enrich_with_probes(
 }
 
 /// Assemble one dashboard snapshot: list managed containers → reduce to statuses →
-/// probe the running web ports → detect `warming`. The Rust port of the Deno
-/// events.ts `doPush` data-gathering. An engine error propagates (the caller turns
-/// it into an "offline" push).
+/// probe the running web ports → detect `warming`. An engine error propagates (the
+/// caller turns it into an "offline" push).
 pub async fn build_snapshot(handle: &EngineHandle, store: &str) -> Result<SnapshotPush, Error> {
     let raw = handle.list_managed_raw().await?;
     let statuses = to_container_statuses(&raw, &brand::label("instance"));

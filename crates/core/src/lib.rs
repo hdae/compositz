@@ -1,10 +1,11 @@
-//! Compositz engine-access core.
+//! Compositz core.
 //!
-//! A thin, read-only wrapper over [`bollard`] scoped to what the Phase 0 walking
-//! skeleton needs: connect to the Docker engine, list Compositz-managed
-//! containers (label-filtered), and stream a container's logs and the daemon's
-//! system events as plain lines. Everything here is read-only — no create /
-//! start / stop / build / pull / prune.
+//! The engine-access and recipe layer shared by the CLI and the Tauri desktop
+//! backend: [`bollard`]-based Docker engine access (connect, list
+//! Compositz-managed containers, create / start / stop / build / pull / remove
+//! containers, images, and volumes, and stream logs and system events) plus the
+//! recipe model, archive ingestion, the instance store, and the lifecycle
+//! operations built on top.
 //!
 //! The connection target follows `COMPOSITZ_DOCKER_HOST` when set, else
 //! bollard's platform-local default (Windows named pipe / unix socket).
@@ -63,12 +64,10 @@ use bollard::query_parameters::{
 use futures_util::{Stream, StreamExt};
 use std::collections::HashMap;
 
-/// Environment variable that overrides the engine endpoint. This *replaces* the
-/// Deno side's plain `DOCKER_HOST` (`packages/core/src/transport.ts`) with a
-/// deliberately namespaced variable, so the two toolchains never fight over the
-/// same env slot during the migration. Whether to also honor `DOCKER_HOST` as a
-/// fallback is a later-phase decision. When unset, bollard's local default is
-/// used.
+/// Environment variable that overrides the engine endpoint. `COMPOSITZ_DOCKER_HOST`
+/// is deliberately namespaced so it never fights over the ambient `DOCKER_HOST`
+/// slot. Whether to also honor plain `DOCKER_HOST` as a fallback remains an open
+/// decision. When unset, bollard's local default is used.
 pub(crate) const DOCKER_HOST_ENV: &str = "COMPOSITZ_DOCKER_HOST";
 
 /// A live handle to the Docker engine. Cheap to clone (bollard's `Docker` is an
@@ -107,7 +106,7 @@ pub fn connect() -> Result<EngineHandle, Error> {
 /// `connect` itself fails on a missing unix socket). Reads the same env
 /// [`connect`] does: `COMPOSITZ_DOCKER_HOST` when set, else the platform local
 /// default. An unparseable value is echoed verbatim (connect surfaces the real
-/// error). Mirrors the Deno `EngineClient.endpoint` describe.
+/// error).
 pub fn resolved_endpoint_description() -> String {
     match std::env::var(DOCKER_HOST_ENV) {
         Ok(raw) if !raw.is_empty() => match parse_docker_host(&raw) {
@@ -118,8 +117,8 @@ pub fn resolved_endpoint_description() -> String {
     }
 }
 
-/// Render an [`Endpoint`] as a `DOCKER_HOST`-style string (mirrors the Deno
-/// `describeEndpoint`), for the `doctor` diagnostic.
+/// Render an [`Endpoint`] as a `DOCKER_HOST`-style string, for the `doctor`
+/// diagnostic.
 fn describe_endpoint(endpoint: &Endpoint) -> String {
     match endpoint {
         Endpoint::Unix { path } => format!("unix://{path}"),
@@ -183,8 +182,8 @@ fn connect_endpoint(endpoint: Endpoint) -> Result<Docker, Error> {
 ///
 /// NOTE: this lists CONTAINERS (the `ps`/`ls` engine view), not store instances —
 /// [`list_instances`] (re-exported from `recipe::instance`) reads the on-disk
-/// instance definitions. The two are deliberately distinct (Deno: `client.ps` vs
-/// `listInstances`).
+/// instance definitions. The two are deliberately distinct: the engine container
+/// view versus the on-disk instance list.
 pub async fn list_managed_containers(
     handle: &EngineHandle,
 ) -> Result<Vec<ContainerSummary>, Error> {

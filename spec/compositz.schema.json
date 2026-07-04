@@ -28,7 +28,7 @@
       "type": "string"
     },
     "CacheSpec": {
-      "description": "Opt-in managed cache. Presets (`venv`, `huggingface`) inject well-known env\nvars; `custom` names its own volume + injected env var.\n\n`Deserialize` is hand-written rather than derived: the Zod source uses a\n`strictObject` per variant, so an unknown key *inside* a cache entry must be\nrejected. serde's internally-tagged enums (`#[serde(tag = ...)]`) cannot carry\n`deny_unknown_fields`, so the derive would silently drop such keys — a parity\nregression against the source-of-truth spec. The impl below buffers each entry,\nreads its `type`, and re-deserializes through a per-variant struct that *does*\ndeny unknown fields. `Serialize` / `JsonSchema` stay derived (internally tagged).",
+      "description": "Opt-in managed cache. Presets (`venv`, `huggingface`) inject well-known env\nvars; `custom` names its own volume + injected env var.",
       "oneOf": [
         {
           "description": "Per-instance uv venv + co-located uv cache/interpreters on one shared\nvolume (hardlink-safe). Injects `VIRTUAL_ENV` + `UV_PROJECT_ENVIRONMENT`\n(same path) + `UV_CACHE_DIR` + `UV_PYTHON_INSTALL_DIR`.",

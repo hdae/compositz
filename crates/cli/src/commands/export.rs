@@ -72,7 +72,7 @@ pub async fn run(
     Ok(0)
 }
 
-/// Human-readable byte size (binary units), mirroring the Deno `formatSize`.
+/// Human-readable byte size (binary units).
 fn format_size(bytes: u64) -> String {
     if bytes < 1024 {
         return format!("{bytes} B");

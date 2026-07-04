@@ -4,8 +4,6 @@
 //! consumes as a discriminated union `{ kind, message }`. `badRequest` = the request
 //! was malformed (bad id / unknown mount / unknown override key / bad recipe or
 //! override input) — the UI's fault; `internal` = an engine / OS failure — ours.
-//! Mirrors the Deno routes' 400-vs-500 split (`CompositzBadRequest` + bad-input
-//! `CompositzError` → 400, engine / OS → 500).
 
 use compositz_core::Error as CoreError;
 use serde::Serialize;

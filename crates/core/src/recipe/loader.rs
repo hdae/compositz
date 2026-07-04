@@ -1,8 +1,8 @@
 //! Load a recipe BUNDLE from a directory: parse + validate its manifest and read
 //! the build context (Dockerfile + assets) into memory. Recipes are small.
 //!
-//! Ported from `packages/core/src/recipe/loader.ts`. A bundle is what an instance
-//! is created from (it lives at `<instance>/app/`); the deployed unit is an
+//! A bundle is what an instance is created from (it lives at `<instance>/app/`);
+//! the deployed unit is an
 //! [`crate::recipe::instance::Instance`]. Used by ingestion to validate, and by
 //! instance loading to read the embedded bundle.
 

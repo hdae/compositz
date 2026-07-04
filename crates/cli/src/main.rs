@@ -4,8 +4,7 @@
 //! Each subcommand handler returns the process exit code (`Result<i32>`): `Ok(0)`
 //! on success, `Ok(1)` for a handled business failure that already printed its own
 //! message, and `Err` for an unexpected error `main` renders as `error: …`. clap
-//! handles `--help`/`--version` and argument-shape errors (exiting 2, its default —
-//! the Phase 0 convention carried forward).
+//! handles `--help`/`--version` and argument-shape errors (exiting 2, its default).
 
 mod cli;
 mod commands;

@@ -1,6 +1,6 @@
 //! Terminal color helpers, TTY- and `NO_COLOR`-aware.
 //!
-//! Mirrors the Deno CLI's `@std/fmt/colors` usage: colors are emitted only when
+//! Colors are emitted only when
 //! stdout is a terminal and `NO_COLOR` is unset (a single global gate, evaluated
 //! once). Piping the output or setting `NO_COLOR` yields plain text, so redirected
 //! logs never carry escape sequences. Each helper returns an owned `String` so
@@ -9,8 +9,7 @@
 use std::io::IsTerminal;
 use std::sync::LazyLock;
 
-/// Whether to emit ANSI color — decided once from stdout's TTY-ness + `NO_COLOR`
-/// (parity with Deno's `Deno.noColor`, which keys off the same two signals).
+/// Whether to emit ANSI color — decided once from stdout's TTY-ness + `NO_COLOR`.
 static COLOR: LazyLock<bool> =
     LazyLock::new(|| std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal());
 

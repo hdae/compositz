@@ -3,10 +3,9 @@
 //! container up (GPU tri-state + host-port auto-increment), tear it down, and
 //! remove data / images. Everything keys off the instance id (ADR-017).
 //!
-//! Ported from `packages/core/src/recipe/operations.ts`. The engine-touching
-//! functions take the concrete [`EngineHandle`] (verified by the gated E2E
-//! round-trip); [`deconflict_host_ports`] and [`defined_host_ports`] are
-//! engine-free and unit-tested.
+//! The engine-touching functions take the concrete [`EngineHandle`] (verified by
+//! the gated E2E round-trip); [`deconflict_host_ports`] and [`defined_host_ports`]
+//! are engine-free and unit-tested.
 
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
@@ -321,9 +320,9 @@ const EXPORT_MOUNT_ROOT: &str = "/compositz-export";
 /// via the archive API, and the helper is removed once the stream ends (or errors).
 /// Requires the instance image locally (the helper reuses it — nothing is pulled).
 ///
-/// NOTE (vs Deno): if the consumer DROPS the stream mid-way (cancel), the helper is
-/// not torn down eagerly here — it is reclaimed by `remove_instance_data`'s
-/// label-scoped helper sweep, which exists as exactly this backstop.
+/// NOTE: if the consumer DROPS the stream mid-way (cancel), the helper is not torn
+/// down eagerly here — it is reclaimed by `remove_instance_data`'s label-scoped
+/// helper sweep, which exists as exactly this backstop.
 pub async fn export_mount(
     engine: &EngineHandle,
     instance: &Instance,
@@ -480,8 +479,8 @@ pub struct VolumeFailure {
 }
 
 /// The data-root bind dir could not be removed (typically EACCES — a root-owned
-/// tree the app wrote). Carries the PATH (not a volume name), matching the Deno
-/// `{ path, error }` shape so a future IPC serialization stays contract-faithful.
+/// tree the app wrote). Carries the PATH (not a volume name) as `{ path, error }`,
+/// so a future IPC serialization stays contract-faithful.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BindDirFailure {
     pub path: String,

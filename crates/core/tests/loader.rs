@@ -1,5 +1,4 @@
-//! Behavior tests for recipe-bundle loading. loader.ts has no dedicated Deno
-//! test (it's exercised via ingest/instance); these pin the context-assembly and
+//! Behavior tests for recipe-bundle loading: these pin the context-assembly and
 //! validation directly, since the context feeds `docker build`.
 
 use std::fs;

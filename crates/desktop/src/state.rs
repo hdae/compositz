@@ -12,8 +12,8 @@ pub struct AppState {
     pub engine: EngineHandle,
     pub store: String,
     /// Live push-stream tasks (snapshot / logs / install), keyed by subscription id
-    /// so the frontend can `unsubscribe` and window teardown can stop them all —
-    /// replacing Phase 0's fire-and-forget streams (which leaked one task per open).
+    /// so the frontend can `unsubscribe` and window teardown can stop them all. This
+    /// explicit lifecycle prevents a still-live pump from leaking past its consumer.
     pub streams: Mutex<StreamRegistry>,
 }
 

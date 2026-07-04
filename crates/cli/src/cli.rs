@@ -1,12 +1,10 @@
 //! Shared CLI helpers: the instance store location, boundary-validated instance
 //! resolution, and the build-progress stream driver.
 //!
-//! Ported from the Deno `packages/cli/lib.ts`, with one hardening that is a
-//! REQUIREMENT of the Phase 1 review (finding F5): the core lifecycle functions
-//! take a raw `&str` id (parity with the Deno UI routes), so the boundary — here —
-//! MUST validate the id before it flows into a filesystem path or a destructive
-//! engine op. [`resolve_instance`] validates first; the direct-id commands
-//! (`down`) validate inline.
+//! The core lifecycle functions take a raw `&str` id, so every command that
+//! accepts an instance id MUST validate it at this boundary before any core
+//! function touches paths or runs a destructive engine op. [`resolve_instance`]
+//! validates first; the direct-id commands (`down`) validate inline.
 
 use std::io::Write;
 
@@ -23,9 +21,9 @@ pub fn store_dir() -> Result<String> {
 
 /// Resolve an instance by id from the store.
 ///
-/// Validates the id at the boundary (★ F5) BEFORE it reaches any path/engine op,
+/// Validates the id at the boundary BEFORE it reaches any path/engine op,
 /// then loads it — mapping a load failure to a friendly not-found message that
-/// points at `compositz ls` (parity with the Deno `resolveInstance`).
+/// points at `compositz ls`.
 pub fn resolve_instance(instance_id: &str) -> Result<Instance> {
     if !is_valid_instance_id(instance_id) {
         anyhow::bail!("invalid instance id: \"{instance_id}\"");

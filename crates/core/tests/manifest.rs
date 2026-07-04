@@ -1,7 +1,6 @@
-//! Behavior tests for the recipe manifest parser, ported from
-//! `packages/core/src/recipe/manifest_test.ts`. These pin the public contract of
-//! `parse_manifest`: defaults applied, cross-field rules, and every rejection
-//! path — asserted through the same substrings the Deno suite checked.
+//! Behavior tests for the recipe manifest parser. These pin the public contract
+//! of `parse_manifest`: defaults applied, cross-field rules, and every rejection
+//! path — asserted through the error-message substrings.
 
 use compositz_core::recipe::manifest::{
     CacheScope, CacheSpec, EnvSpec, GpuMode, Manifest, MountMapping, Placement, PortMapping,
@@ -229,7 +228,7 @@ fn rejects_bad_gpu_mode() {
 
 #[test]
 fn rejects_unknown_keys_strict() {
-    // No substring — any rejection is enough (Zod strict / serde deny_unknown_fields).
+    // No substring — any rejection is enough (unknown keys are rejected via deny_unknown_fields).
     assert!(
         parse_manifest("manifestVersion: 2\nid: x\nname: X\nversion: '1'\nbuild: {}\ntypo: true")
             .is_err()
@@ -277,10 +276,9 @@ fn allows_two_custom_caches_with_distinct_names() {
     assert_eq!(m.cache.len(), 2);
 }
 
-// Parity with the Zod `strictObject` per cache variant: an unknown key *inside*
-// a cache entry must be rejected, not silently dropped. serde's internally-tagged
-// enum can't express this, so the port hand-writes CacheSpec's Deserialize — these
-// pin that strictness (not in the Deno suite, but required for spec parity).
+// Per cache variant, an unknown key *inside* a cache entry must be rejected, not
+// silently dropped. serde's internally-tagged enum can't express this, so
+// CacheSpec's Deserialize is hand-written — these pin that strictness.
 #[test]
 fn rejects_an_unknown_key_inside_a_preset_cache_entry() {
     assert!(
@@ -378,11 +376,11 @@ fn rejects_an_image_reference_with_unsafe_characters() {
     );
 }
 
-// Hardening beyond the Deno suite: the charsets are security guards (id/version/
-// image reach Docker labels, filesystem paths, and the Engine HTTP request line).
-// A JS `$` (no `m` flag) never matches before a trailing newline; Rust's regex `$`
-// must behave the same, or an embedded/trailing newline would slip an injection
-// past the charset. These pin that anchoring rather than trust the engine default.
+// The charsets are security guards (id/version/image reach Docker labels,
+// filesystem paths, and the Engine HTTP request line). Rust's regex `$` must not
+// match before a trailing newline, or an embedded/trailing newline would slip an
+// injection past the charset. These pin that anchoring rather than trust the
+// engine default.
 #[test]
 fn rejects_an_id_with_a_trailing_newline() {
     // YAML double-quoted `\n` decodes to a real newline appended to the id.
@@ -423,8 +421,8 @@ fn export_schema() {
 
 #[test]
 fn manifest_json_schema_describes_the_manifest() {
-    // The schemars derive is the replacement for the Deno scripts/gen_schema.ts —
-    // smoke-test that it produces a titled object schema over the manifest fields.
+    // Smoke-test that the schemars derive produces a titled object schema over
+    // the manifest fields.
     let schema = manifest_json_schema();
     let value = schema.as_value();
     assert_eq!(

@@ -4,10 +4,9 @@
 //! (image / container / volume / bind / venv / labels) keys off the instance id —
 //! one flat namespace, no recipe×instance nesting (ADR-017).
 //!
-//! Ported from `packages/core/src/recipe/run.ts`. The spec type is bollard's own
-//! [`ContainerCreateBody`] (the Docker-API shape the Deno `ContainerCreateSpec`
-//! mirrored), so the lifecycle ops (Phase 1g) hand it straight to `create_container`
-//! with no translation layer — and [`persisted_mounts`] is the SINGLE mount-name →
+//! The spec type is bollard's own [`ContainerCreateBody`] (the Docker-API shape),
+//! so the lifecycle ops hand it straight to `create_container` with no translation
+//! layer — and [`persisted_mounts`] is the SINGLE mount-name →
 //! source derivation shared by create and the data operations (export / deletion),
 //! so they can never silently diverge on which volume or bind a mount name means.
 

@@ -1,7 +1,7 @@
 //! Single source of truth for the project's externally-visible names.
 //!
-//! Ported from `packages/core/src/brand.ts`. "compositz" is a WORKING TITLE: the
-//! project name, the per-recipe manifest filename, the Docker label namespace,
+//! "compositz" is a WORKING TITLE: the project name, the per-recipe manifest
+//! filename, the Docker label namespace,
 //! and the image namespace may all change. Keep every such string here so a
 //! rename is a one-file edit — never hard-code these elsewhere.
 
@@ -61,9 +61,9 @@ pub fn env_var(suffix: &str) -> String {
 mod tests {
     use super::*;
 
-    // brand.ts has no dedicated Deno test (it's exercised indirectly). These pin
-    // the string shapes directly, because every name here keys a Docker resource
-    // (container / volume / image / label) — a format drift silently orphans them.
+    // These pin the string shapes directly, because every name here keys a Docker
+    // resource (container / volume / image / label) — a format drift silently
+    // orphans them.
     #[test]
     fn constants_match_the_working_title() {
         assert_eq!(BRAND_NAME, "compositz");

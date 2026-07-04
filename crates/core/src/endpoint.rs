@@ -1,5 +1,4 @@
-//! `COMPOSITZ_DOCKER_HOST` parsing — the Rust port of `packages/core/src/transport.ts`'s
-//! `parseDockerHost`, kept behavior-identical so the two toolchains agree.
+//! `COMPOSITZ_DOCKER_HOST` parsing into a resolved [`Endpoint`].
 
 use crate::error::Error;
 
@@ -10,15 +9,14 @@ pub enum Endpoint {
     Unix { path: String },
     /// Windows named pipe.
     Npipe { path: String },
-    /// TCP host:port (plain HTTP; TLS is out of Phase 0 scope).
+    /// TCP host:port (plain HTTP; TLS is not supported).
     Tcp { host: String, port: u16 },
 }
 
 /// Parse a `DOCKER_HOST`-style string into an [`Endpoint`].
 ///
 /// Accepts `unix://`, `npipe://`, `tcp://`, and `http://`. A `tcp`/`http` URL
-/// without an explicit port defaults to 2375 (the plain-HTTP engine port),
-/// matching the Deno transport.
+/// without an explicit port defaults to 2375 (the plain-HTTP engine port).
 pub fn parse_docker_host(raw: &str) -> Result<Endpoint, Error> {
     if let Some(path) = raw.strip_prefix("unix://") {
         return Ok(Endpoint::Unix {

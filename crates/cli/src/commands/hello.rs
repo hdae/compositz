@@ -1,6 +1,5 @@
 //! `hello` — a full container round-trip against the engine: pull → create → start
-//! → stream logs → wait → remove. The Phase 0 diagnostic, kept as a real-engine
-//! smoke test (parity with the Deno `hello.ts`).
+//! → stream logs → wait → remove. A diagnostic kept as a real-engine smoke test.
 
 use std::collections::HashMap;
 

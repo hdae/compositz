@@ -1,10 +1,8 @@
-//! Behavior tests for the instance store, ported from
-//! `packages/core/src/recipe/instance_test.ts`.
+//! Behavior tests for the instance store.
 //!
-//! The Deno suite created fixtures via `ingestBundle` (ingest.ts, ported later in
-//! Phase 1e). Here each instance directory is laid down directly — an equivalent
-//! fixture that exercises the SAME load / list / remove / config behaviors without
-//! depending on the not-yet-ported ingestion path.
+//! Each instance directory is laid down directly — an equivalent fixture that
+//! exercises the SAME load / list / remove / config behaviors without depending
+//! on the full ingestion path.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -164,9 +162,9 @@ fn remove_instance_dir_rejects_a_path_shaped_id_and_the_store_survives() {
     assert_eq!(list_instances(store_path(&store)).len(), 0);
 }
 
-// Parity with the Deno `entry.isDirectory` (lstat, not stat): a symlink whose
-// target is a valid bundle must NOT be listed as an instance. Guards against a
-// regression to the symlink-following `Path::is_dir()`.
+// Listing uses lstat, not stat: a symlink whose target is a valid bundle must
+// NOT be listed as an instance. Guards against a regression to the
+// symlink-following `Path::is_dir()`.
 #[cfg(unix)]
 #[test]
 fn list_instances_does_not_follow_a_symlinked_entry() {

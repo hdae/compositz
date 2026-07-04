@@ -1,5 +1,4 @@
-//! Behavior tests for the per-instance override parser, ported from
-//! `packages/core/src/recipe/config_test.ts`.
+//! Behavior tests for the per-instance override parser.
 
 use std::collections::BTreeMap;
 

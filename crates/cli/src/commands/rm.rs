@@ -4,7 +4,7 @@
 //! `--keep-data` keeps the volumes (the old safe behavior); `--purge` also removes
 //! the host-browsable data-root dir. When a volume can't be removed (still mounted),
 //! the DEFINITION IS KEPT so a retry can still derive the volume names. Continues
-//! past a failing id and exits non-zero if any failed. Ported from the Deno `rm.ts`.
+//! past a failing id and exits non-zero if any failed.
 
 use anyhow::Result;
 use compositz_core::{

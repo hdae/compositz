@@ -12,7 +12,7 @@ use crate::style::{dim, green, red, yellow};
 
 /// Import from a `github:owner/repo[/subdir][@ref]` source, a directory, or a
 /// tar/tar.gz archive file. A missing local path prints a plain `not found: …`
-/// (parity with the Deno import — no `error:` prefix) and exits 1.
+/// (no `error:` prefix) and exits 1.
 pub async fn run(source: String) -> Result<i32> {
     let store = store_dir()?;
 
@@ -29,7 +29,7 @@ pub async fn run(source: String) -> Result<i32> {
     };
 
     // Reassign any host port that collides with another instance's DEFINED port,
-    // and say so (parity with the Deno import's deconflict-and-notify).
+    // and say so.
     for bump in deconflict_host_ports(&store, &instance)? {
         println!(
             "{}",

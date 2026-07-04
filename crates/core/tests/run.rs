@@ -1,6 +1,6 @@
-//! Behavior tests for the container-spec derivation, ported from
-//! `packages/core/src/recipe/run_test.ts`. Assertions are against bollard's own
-//! `ContainerCreateBody` / `Mount` / … (the spec type `run.rs` produces).
+//! Behavior tests for the container-spec derivation. Assertions are against
+//! bollard's own `ContainerCreateBody` / `Mount` / … (the spec type `run.rs`
+//! produces).
 
 use std::collections::{BTreeMap, HashSet};
 
@@ -451,7 +451,7 @@ fn resolve_host_ports_avoids_self_collision_among_own_ports() {
 
 #[test]
 fn create_spec_serializes_to_the_docker_api_wire_shape() {
-    // The spec feeds `create_container` (Phase 1g); prove it serializes to the
+    // The spec feeds `create_container`; prove it serializes to the
     // Docker API JSON shape without an engine. Guards the bollard-version quirk that
     // `exposed_ports` is a `Vec<String>` in Rust but a `{"8188/tcp":{}}` OBJECT on
     // the wire (custom serializer) — a bare array would be rejected by the daemon.

@@ -1,5 +1,5 @@
-//! Core error type. Phase 0 keeps it minimal; the structured, serde-tagged enum
-//! that crosses the Tauri boundary arrives in Phase 3 (see the migration plan).
+//! Core error type. Kept minimal here; the structured, serde-tagged enum that
+//! crosses the Tauri boundary lives in the desktop crate (its `AppError`).
 
 use thiserror::Error;
 
@@ -15,7 +15,7 @@ pub enum Error {
     UnsupportedDockerHost(String),
 
     /// A recipe manifest failed to parse or validate. The message already carries
-    /// the `manifest.<path> …` prefixes (mirrors the Deno `CompositzError` text).
+    /// the `manifest.<path> …` prefixes.
     #[error("{0}")]
     Manifest(String),
 
@@ -25,7 +25,7 @@ pub enum Error {
     HomeDirUnresolved(String),
 
     /// A per-instance override (`config.yaml`) failed to parse or validate. The
-    /// message carries the `config.<path> …` prefixes (mirrors the Deno text).
+    /// message carries the `config.<path> …` prefixes.
     #[error("{0}")]
     Config(String),
 
@@ -40,7 +40,7 @@ pub enum Error {
     Instance(String),
 
     /// A GitHub source spec (`owner/repo[/subdir][@ref]`) was malformed. The
-    /// message mirrors the Deno `CompositzError` text (`invalid GitHub spec …`).
+    /// message reads `invalid GitHub spec …`.
     #[error("{0}")]
     Github(String),
 

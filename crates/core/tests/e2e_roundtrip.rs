@@ -1,4 +1,4 @@
-//! The Phase 1g completion criterion: the full lifecycle round-trip
+//! The full lifecycle round-trip
 //! (import → install → up → down → remove data → remove image) against a REAL
 //! Docker engine.
 //!

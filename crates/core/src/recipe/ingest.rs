@@ -3,19 +3,18 @@
 //! tar / tar.gz archive byte stream (a UI upload, a CLI file, or a GitHub codeload
 //! tarball) or a local directory. Building the image stays the separate Install step.
 //!
-//! Ported from `packages/core/src/recipe/ingest.ts`. The archive is extracted
-//! STREAMING — each entry is written to disk as it is read — so an arbitrarily
-//! large bundle never buffers in RAM, and there is no size cap (the manager is
-//! trusted and recipes come from the user; resource-exhaustion "bombs" are out of
-//! scope per the threat model). The archive format is tar / tar.gz ONLY, matching
-//! the Deno source (there is no zip path).
+//! The archive is extracted STREAMING — each entry is written to disk as it is
+//! read — so an arbitrarily large bundle never buffers in RAM, and there is no
+//! size cap (the manager is trusted and recipes come from the user;
+//! resource-exhaustion "bombs" are out of scope per the threat model). The archive
+//! format is tar / tar.gz ONLY (there is no zip path).
 //!
 //! SECURITY (extract safely, regardless of size): archive entry paths are
 //! UNTRUSTED. Extraction rejects absolute paths, `..` traversal (after lexical
 //! normalization, so a legitimate `a/../b` still resolves inside), and
 //! symlink/hardlink/device entries — a bundle must not write outside the staging
 //! directory or plant a link. The subdir descent (`safe_rel_subdir`) is the same
-//! boundary for the GitHub monorepo case (the ★ hardening flagged in Phase 1d).
+//! boundary for the GitHub monorepo case.
 
 use std::fs::{self, File};
 use std::io::{self, Read};
@@ -35,15 +34,14 @@ use crate::recipe::instance::{
 use crate::recipe::loader::load_recipe;
 use crate::recipe::norm_dir;
 
-/// The random-suffix alphabet, matching the Deno `ID_ALPHABET`.
+/// The random-suffix alphabet for minted instance ids.
 const ID_ALPHABET: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
 
 /// A recipe bundle to ingest: a packed-archive byte reader, or a directory on disk.
 ///
-/// The archive variant carries a boxed reader rather than the Deno `ReadableStream`;
-/// extraction is synchronous (tar-rs), so async callers wrap the whole ingest in
-/// `spawn_blocking` and build the reader inside (a file handle, or a blocking
-/// `reqwest` response for GitHub).
+/// The archive variant carries a boxed reader; extraction is synchronous (tar-rs),
+/// so async callers wrap the whole ingest in `spawn_blocking` and build the reader
+/// inside (a file handle, or a blocking `ureq` response for GitHub).
 pub enum BundleSource {
     Archive {
         reader: Box<dyn Read + Send>,
@@ -55,8 +53,8 @@ pub enum BundleSource {
     },
 }
 
-/// Provenance overrides for an ingest — mirrors the Deno `opts`. Both default:
-/// `source` to a description of the [`BundleSource`], `created_at` to now (ISO-8601).
+/// Provenance overrides for an ingest. Both default: `source` to a description of
+/// the [`BundleSource`], `created_at` to now (ISO-8601).
 #[derive(Debug, Default, Clone)]
 pub struct IngestOpts {
     pub source: Option<String>,
@@ -396,7 +394,7 @@ fn locate_bundle_root(staging: &Path, subdir: Option<&str>) -> Result<PathBuf, E
 /// Validate an untrusted subdir is a relative path that stays inside the bundle,
 /// and return it normalized (forward slashes, no trailing slash). Empty / "." ⇒ "".
 ///
-/// This is the ★ boundary flagged in Phase 1d: the GitHub spec parser is
+/// This is the ★ security boundary for GitHub subdirs: the GitHub spec parser is
 /// deliberately lenient on `subdir` (it splits only on `/`, so `a\..\b` reaches
 /// here intact) — the real defense is HERE, replacing `\` with `/` first so a
 /// Windows-style traversal can't slip through, then rejecting absolute / `..`.
@@ -414,12 +412,11 @@ fn safe_rel_subdir(subdir: &str) -> Result<String, Error> {
     Ok(norm.to_string())
 }
 
-/// POSIX lexical path normalization matching Deno `@std/path` `normalize` for
-/// forward-slash input: collapse `.` / `//` and resolve `..` lexically (a leading
-/// `..` is preserved for relative paths, dropped at an absolute root); a leading
-/// `/` and a trailing `/` are preserved; empty ⇒ ".". No filesystem access, so it
-/// never follows a symlink. Verified byte-for-byte against `@std/path` for a
-/// traversal corpus (see the unit tests).
+/// POSIX lexical path normalization for forward-slash input: collapse `.` / `//`
+/// and resolve `..` lexically (a leading `..` is preserved for relative paths,
+/// dropped at an absolute root); a leading `/` and a trailing `/` are preserved;
+/// empty ⇒ ".". No filesystem access, so it never follows a symlink. Covered by a
+/// traversal corpus in the unit tests.
 fn normalize_posix(path: &str) -> String {
     let is_abs = path.starts_with('/');
     let had_trailing = path.len() > 1 && path.ends_with('/');
@@ -475,7 +472,7 @@ fn describe_source(source: &BundleSource) -> String {
 }
 
 /// Current UTC time as an ISO-8601 string (`…Z`), the `meta.json` `createdAt`
-/// default — mirrors the Deno `new Date().toISOString()`.
+/// default.
 fn now_iso8601() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
@@ -488,10 +485,9 @@ fn non_utf8() -> Error {
 mod tests {
     use super::*;
 
-    // Byte-for-byte truth table generated from Deno `@std/path` `normalize` (POSIX,
-    // the server runtime) — the security boundary for `safe_join` / `safe_rel_subdir`
-    // rests on this matching exactly. Regenerate with `scripts`-style deno if the
-    // path lib is ever swapped; a drift here is a traversal risk, not a cosmetic one.
+    // Byte-for-byte truth table pinning POSIX lexical normalization — the security
+    // boundary for `safe_join` / `safe_rel_subdir` rests on this matching exactly.
+    // A drift here is a traversal risk, not a cosmetic one.
     #[test]
     fn normalize_posix_matches_std_path() {
         let cases = [

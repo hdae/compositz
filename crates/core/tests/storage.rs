@@ -1,12 +1,11 @@
-//! Behavior tests for host-path derivation, ported from
-//! `packages/core/src/storage_test.ts`. A fake `Platform` injects the OS + env,
+//! Behavior tests for host-path derivation. A fake `Platform` injects the OS + env,
 //! so the per-OS branch logic is verified without touching the real environment.
 //!
 //! Core tests run on Linux (the dev host and CI ubuntu), so the runtime path
 //! separator is `/` and expectations are written with `/` literally — including
 //! the Windows-branch cases, which exercise the `%APPDATA%`/`%USERPROFILE%`
-//! branch while still joining with the Linux separator (exactly as the Deno
-//! suite does, since `join` there also uses the runtime separator).
+//! branch while still joining with the Linux separator (`join` uses the runtime
+//! separator).
 
 use std::collections::HashMap;
 

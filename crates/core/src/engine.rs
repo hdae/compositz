@@ -1,10 +1,9 @@
 //! Compositz engine-access core — the *write* surface.
 //!
-//! Where `lib.rs` holds the read-only skeleton (connect / list / log+event
+//! Where `lib.rs` holds the read-only entry points (connect / list / log+event
 //! streams), this module adds the mutating Docker operations the CLI and desktop
 //! app drive: create/start/stop/remove containers, pull/build/inspect/remove
-//! images, list/remove volumes, and tar-download a container path. Ported from
-//! the Deno `packages/core` transport calls (Phase 1h).
+//! images, list/remove volumes, and tar-download a container path.
 //!
 //! Everything here is a thin, typed pass-through to [`bollard`]: option builders
 //! set only the fields the callers use, and errors flow through `?` into
@@ -50,8 +49,8 @@ pub struct VolumeSummary {
 /// The engine's self-reported version, distilled from bollard's `SystemVersion`.
 ///
 /// An owned view (every field `Option`, matching the daemon's optional response)
-/// so the `doctor` diagnostic never depends on bollard's model surface. Mirrors the
-/// Deno `EngineClient.version()`'s `{ Version, ApiVersion, MinAPIVersion, Os, Arch }`.
+/// so the `doctor` diagnostic never depends on bollard's model surface. Exposes
+/// `{ Version, ApiVersion, MinAPIVersion, Os, Arch }`.
 #[derive(Debug, Clone)]
 pub struct EngineVersion {
     pub version: Option<String>,
@@ -100,10 +99,9 @@ impl EngineHandle {
     }
 
     /// Remove a container. `force` kills a running one first. Anonymous volumes are
-    /// NOT removed (`v` stays false, matching the Deno `client.remove(name,
-    /// {force})`): a recipe's `VOLUME`-declared anon volume must survive a
-    /// `down`/restart — only [`Self::remove_volume`], driven by the explicit delete
-    /// path, reclaims per-instance data.
+    /// NOT removed (`v` stays false): a recipe's `VOLUME`-declared anon volume must
+    /// survive a `down`/restart — only [`Self::remove_volume`], driven by the
+    /// explicit delete path, reclaims per-instance data.
     pub async fn remove_container(&self, name: &str, force: bool) -> Result<(), crate::Error> {
         let options = RemoveContainerOptionsBuilder::new().force(force).build();
         self.docker().remove_container(name, Some(options)).await?;
@@ -169,8 +167,8 @@ impl EngineHandle {
     /// callers on this path), so any stream item that is an `Err` aborts the
     /// pull; otherwise draining to the end means the pull finished.
     ///
-    /// The ref is split into name + tag ([`split_image_ref`], mirroring the Deno
-    /// `splitImageRef`): a bare `from_image` with no `tag` makes `POST /images/create`
+    /// The ref is split into name + tag ([`split_image_ref`]): a bare `from_image`
+    /// with no `tag` makes `POST /images/create`
     /// pull EVERY tag of the repository, so an untagged ref (e.g. `image: python`,
     /// valid per the manifest regex) must default to `:latest`.
     pub async fn pull_image(&self, image: &str) -> Result<(), crate::Error> {
@@ -245,11 +243,11 @@ impl EngineHandle {
         }
     }
 
-    /// Remove an image — UNFORCED (matching the Deno `client.removeImage(tag)`).
-    /// An unforced delete leaves the image intact if a container still references it,
-    /// so a stale/running instance is never left pointing at a vanished image; the
-    /// delete path calls `down` first. Forcing here would untag it out from under a
-    /// live container — the safety guard this port must NOT drop.
+    /// Remove an image — UNFORCED. An unforced delete leaves the image intact if a
+    /// container still references it, so a stale/running instance is never left
+    /// pointing at a vanished image; the delete path calls `down` first. Forcing
+    /// here would untag it out from under a live container — a safety guard this
+    /// MUST NOT drop.
     pub async fn remove_image(&self, image: &str) -> Result<(), crate::Error> {
         let options = RemoveImageOptionsBuilder::new().build();
         self.docker()
@@ -280,8 +278,8 @@ impl EngineHandle {
 
     /// Remove a volume by name (no force — a volume still in use should fail loudly
     /// rather than be yanked out from under a running container). A 404 is tolerated
-    /// as success (matching the Deno `removeVolume`'s `{ ok: [404] }`): the delete
-    /// path checks existence first, so a 404 here means the volume vanished in a
+    /// as success: the delete path checks existence first, so a 404 here means the
+    /// volume vanished in a
     /// TOCTOU race — which is exactly the "already gone" outcome we wanted.
     pub async fn remove_volume(&self, name: &str) -> Result<(), crate::Error> {
         // bollard's `None` option arm is generic (`Option<impl Into<…>>`), so the
@@ -339,8 +337,7 @@ impl EngineHandle {
         })
     }
 
-    /// Block until a container exits, returning its exit status code (mirrors the
-    /// Deno `client.wait(id).StatusCode`).
+    /// Block until a container exits, returning its exit status code.
     ///
     /// The `/wait` endpoint (default condition `not-running`) returns immediately
     /// with the exit code if the container has already stopped — so `hello`'s
@@ -396,7 +393,7 @@ fn build_progress_from_bollard(info: bollard::models::BuildInfo) -> BuildProgres
     }
 }
 
-/// Split an image reference into `(name, tag)`, mirroring the Deno `splitImageRef`.
+/// Split an image reference into `(name, tag)`.
 /// A digest-pinned ref (`repo@sha256:…`) keeps the whole ref as `name` with an empty
 /// tag; a `repo:tag` splits on the LAST colon after the last `/` (so a registry-port
 /// `host:5000/repo` is not mistaken for a tag); a bare `repo` defaults to `latest`.

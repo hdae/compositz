@@ -1,9 +1,7 @@
 //! The Compositz recipe manifest (`compositz.yaml`): a single-container app
 //! description, kept separate from the Dockerfile (Umbrel-style). Authored in YAML.
 //!
-//! Ported from `packages/core/src/recipe/manifest.ts`. In the Deno tree a single
-//! Zod schema was the source of truth (validator + inferred types + JSON Schema).
-//! Here that splits cleanly along Rust's grain:
+//! Validation splits along two axes:
 //!
 //! - **Structure** — shapes, types, enum variants, the `type`-tagged cache union,
 //!   and unknown-key rejection (`deny_unknown_fields`) — is handled by serde while
@@ -11,11 +9,10 @@
 //!   error text (e.g. `gpu: unknown variant ...`), so those messages stay legible.
 //! - **Refinements** — the per-field regex/range/literal rules and the cross-field
 //!   rules (build XOR image, uniqueness, duplicate mount targets) that a schema
-//!   can't express — are the explicit code in [`validate`], which reproduces the
-//!   Zod `superRefine` messages verbatim, path-tagged as `manifest.<path> <msg>`.
+//!   can't express — are the explicit code in [`validate`], path-tagged as
+//!   `manifest.<path> <msg>`.
 //!
-//! The [`schemars::JsonSchema`] derives back the JSON Schema document that the
-//! Deno `scripts/gen_schema.ts` used to emit from Zod.
+//! The [`schemars::JsonSchema`] derives the JSON Schema document for the manifest.
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::LazyLock;
@@ -29,7 +26,7 @@ use crate::Error;
 /// The only manifest schema version this build understands.
 pub const MANIFEST_VERSION: u32 = 2;
 
-// --- Charsets (the single source of truth, ported 1:1 from the Zod regexes) ---
+// --- Charsets (the single source of truth) ---
 
 /// The recipe `id` charset. It keys the image, container, data dirs, and labels,
 /// and flows into filesystem paths, so any id accepted from outside (e.g. a UI
@@ -164,14 +161,15 @@ pub struct MountMapping {
 
 /// Opt-in managed cache. Presets (`venv`, `huggingface`) inject well-known env
 /// vars; `custom` names its own volume + injected env var.
-///
-/// `Deserialize` is hand-written rather than derived: the Zod source uses a
-/// `strictObject` per variant, so an unknown key *inside* a cache entry must be
-/// rejected. serde's internally-tagged enums (`#[serde(tag = ...)]`) cannot carry
-/// `deny_unknown_fields`, so the derive would silently drop such keys — a parity
-/// regression against the source-of-truth spec. The impl below buffers each entry,
-/// reads its `type`, and re-deserializes through a per-variant struct that *does*
-/// deny unknown fields. `Serialize` / `JsonSchema` stay derived (internally tagged).
+//
+// (Plain comment, NOT rustdoc — the doc comment above flows into the generated
+// JSON Schema description, which is author-facing.)
+// `Deserialize` is hand-written rather than derived: an unknown key *inside* a
+// cache entry must be rejected, and serde's internally-tagged enums
+// (`#[serde(tag = ...)]`) cannot carry `deny_unknown_fields` — the derive would
+// silently drop such keys. The impl below buffers each entry, reads its `type`,
+// and re-deserializes through a per-variant struct that *does* deny unknown
+// fields. `Serialize` / `JsonSchema` stay derived (internally tagged).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum CacheSpec {
@@ -201,7 +199,7 @@ impl<'de> Deserialize<'de> for CacheSpec {
         use serde::de::Error as _;
 
         // A preset entry (`venv`/`huggingface`) carries only `type`; anything else
-        // is an unrecognized key, matching the Zod `strictObject`.
+        // is an unrecognized key and is rejected.
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct PresetEntry {
@@ -301,7 +299,7 @@ pub struct Manifest {
 }
 
 /// Parse + validate a manifest from YAML text. Returns [`Error::Manifest`] on any
-/// problem, with a message mirroring the Deno `CompositzError` text.
+/// problem, with a `manifest.<path> …` message.
 pub fn parse_manifest(yaml_text: &str) -> Result<Manifest, Error> {
     // serde handles structure (types, enum variants, the tagged cache union,
     // unknown keys) and YAML syntax; its message already names the offending field.
@@ -314,8 +312,7 @@ pub fn parse_manifest(yaml_text: &str) -> Result<Manifest, Error> {
 /// The manifest schema as a JSON Schema document (for recipe authors / agents).
 ///
 /// Generated from the structural types: the cross-field refinements (XOR,
-/// uniqueness) are enforced by [`validate`] but have no faithful JSON Schema form,
-/// exactly as in the Deno `manifestJsonSchema()`.
+/// uniqueness) are enforced by [`validate`] but have no faithful JSON Schema form.
 pub fn manifest_json_schema() -> schemars::Schema {
     schemars::schema_for!(Manifest)
 }
@@ -327,7 +324,7 @@ struct Issue {
 }
 
 /// Apply the refinements a structural deserialize cannot express, collecting
-/// every problem before failing (mirrors Zod's issue list, joined with `; `).
+/// every problem before failing, joined with `; `.
 fn validate(m: &Manifest) -> Result<(), Error> {
     let mut issues: Vec<Issue> = Vec::new();
     let mut add = |path: String, message: &str| {
@@ -337,8 +334,8 @@ fn validate(m: &Manifest) -> Result<(), Error> {
         })
     };
 
-    // manifestVersion is a literal in the Zod schema; serde reads it as a number,
-    // so the "must be 2" check lives here.
+    // manifestVersion is a fixed literal; serde reads it as a number, so the
+    // "must be 2" check lives here.
     if m.manifest_version != MANIFEST_VERSION {
         add(
             "manifestVersion".into(),

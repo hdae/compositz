@@ -1,10 +1,9 @@
-//! Behavior tests for recipe-bundle ingestion, ported from
-//! `packages/core/src/recipe/ingest_test.ts`. The `ingestGithub` network cases live
-//! separately (Phase 1e-2, opt-in `COMPOSITZ_NET_TESTS`); everything here is offline.
+//! Behavior tests for recipe-bundle ingestion. The `ingest_github` network cases
+//! live separately (opt-in `COMPOSITZ_NET_TESTS`); everything here is offline.
 //!
-//! Like the Deno suite, malicious archives are built with a hand-rolled ustar writer
-//! so we can craft entries (absolute / `..` / symlink / device) that a well-behaved
-//! tar builder would refuse to emit.
+//! Malicious archives are built with a hand-rolled ustar writer so we can craft
+//! entries (absolute / `..` / symlink / device) that a well-behaved tar builder
+//! would refuse to emit.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -21,7 +20,7 @@ use tempfile::TempDir;
 const MANIFEST: &str = "manifestVersion: 2\nid: hello\nname: Hello\nversion: \"0.1.0\"\nbuild: { dockerfile: Dockerfile }\ngpu: none\n";
 const DOCKERFILE: &str = "FROM scratch\n";
 
-// --- a hand-rolled ustar tar builder (parity with the Deno test helper) ------
+// --- a hand-rolled ustar tar builder ------
 
 struct TarEntry {
     path: String,

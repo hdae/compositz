@@ -1,12 +1,9 @@
-//! Pure view-model derivation for the desktop dashboard — the Rust home of what
-//! the Deno tree kept in `packages/ui/lib/dashboard.ts` + `instance-view.ts`.
+//! Pure view-model derivation for the desktop dashboard.
 //!
-//! In the Fresh app these functions ran in both the server route and the client
-//! island (shared, DOM-free). Under Tauri the split is different: the Rust backend
-//! derives every view-model and hands the finished, typed shape to the React UI
-//! over IPC — so this logic moves into `core` (locally testable) rather than the
-//! CI-only desktop crate. The types serialize `camelCase` to match the frontend
-//! contract and (under the `specta` feature) generate the TS types via
+//! The Rust backend derives every view-model and hands the finished, typed shape
+//! to the React UI over IPC — so this logic lives in `core` (locally testable)
+//! rather than the desktop crate. The types serialize `camelCase` to match the
+//! frontend contract and (under the `specta` feature) generate the TS types via
 //! `tauri-specta`, so there is exactly ONE definition of each shape.
 //!
 //! Everything here is a pure function of its inputs; the engine / store / probe I/O
@@ -864,7 +861,7 @@ mod tests {
         assert_eq!(v.image_tag, "ollama/ollama:0.6.0");
     }
 
-    // --- buildSettings (new coverage; config.ts had no Deno test) ----------
+    // --- buildSettings ----------
 
     #[test]
     fn build_settings_maps_each_manifest_item_with_its_saved_override() {

@@ -1,6 +1,6 @@
 //! Where Compositz keeps host-side state, and how host paths are derived.
 //!
-//! Ported from `packages/core/src/storage.ts`. Instance-centric (ADR-017):
+//! Instance-centric (ADR-017):
 //!   - app-data:  the instance store (`instances/<instanceId>/`) + settings.
 //!   - data-root: per-instance host-VISIBLE data (bind mounts); user-configurable.
 //!   - volumes:   Docker-managed named volumes (everything else; named via brand).
@@ -37,10 +37,9 @@ impl Platform for HostPlatform {
     }
 }
 
-/// Join path components with the runtime separator, mirroring the Deno
-/// `@std/path` `join`. Core tests run on Linux, so the separator is `/`; the
-/// injected `Platform.os` only steers which env branch is taken, never the
-/// separator (identical to the Deno source).
+/// Join path components with the runtime separator. Core tests run on Linux, so
+/// the separator is `/`; the injected `Platform.os` only steers which env branch
+/// is taken, never the separator.
 fn path_join(parts: &[&str]) -> String {
     let mut path = PathBuf::new();
     for part in parts {

@@ -1,10 +1,9 @@
-//! `ps` — list Compositz-managed containers as an aligned table.
+//! `ps` — list Compositz-managed containers as an aligned table via
+//! [`list_managed_containers`].
 //!
-//! Re-hosts the Phase 0 walking-skeleton implementation on the renamed core API
-//! ([`list_managed_containers`]). NOTE: this keeps the Phase 0 table shape
-//! (NAME/STATE/IMAGE/PORTS, label-`instance` filter) rather than the Deno `ps`
-//! (NAME/STATE/APP/PORTS, `managed=true` filter) — an accepted, pre-existing
-//! divergence carried forward per the migration plan.
+//! NOTE: the table shape is NAME/STATE/IMAGE/PORTS with a label-`instance`
+//! filter (rather than NAME/STATE/APP/PORTS with a `managed=true` filter) — an
+//! accepted, pre-existing divergence.
 
 use anyhow::Result;
 use compositz_core::{ContainerSummary, connect, list_managed_containers};

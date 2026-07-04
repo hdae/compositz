@@ -1,4 +1,4 @@
-//! One module per subcommand, mirroring the Deno `packages/cli/commands/`.
+//! One module per subcommand.
 //!
 //! Every `run` returns the process exit code (`Result<i32>`): `Ok(0)` on success,
 //! `Ok(1)` for a handled business failure that prints its own message (`doctor`

@@ -1,12 +1,11 @@
-//! The non-streaming IPC commands — the Rust port of the Deno `routes/api/*`
-//! request/response handlers (the SSE/stream routes arrive with the Channel pump).
+//! The non-streaming request/response IPC commands (the streaming commands live in
+//! `stream.rs`, driven over the Channel pump).
 //!
-//! Every command that takes an instance id validates it at the boundary BEFORE it
-//! reaches a filesystem path or a destructive engine op (★ Phase 1 review F5: the
-//! core lifecycle fns take a raw `&str` for Deno parity, so the boundary — here —
-//! MUST guard). [`load_by_id`] validates + reconciles the loaded id; the direct-id
-//! commands validate inline. The heavy blocking ingest paths run under
-//! `spawn_blocking`, off the async runtime.
+//! Every command that accepts an instance id MUST validate it at the boundary BEFORE
+//! it reaches a filesystem path or a destructive engine op: the core lifecycle fns
+//! take a raw `&str`, so this boundary is the guard. [`load_by_id`] validates +
+//! reconciles the loaded id; the direct-id commands validate inline. The heavy
+//! blocking ingest paths run under `spawn_blocking`, off the async runtime.
 
 use compositz_core::brand::label;
 use compositz_core::{
@@ -30,7 +29,7 @@ use crate::state::AppState;
 
 // --- DTOs -----------------------------------------------------------------
 
-/// The result of bringing an instance up (mirrors the Deno `up` action response).
+/// The result of bringing an instance up.
 #[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct UpView {
@@ -58,8 +57,7 @@ pub struct DeleteView {
     pub warning: Option<String>,
 }
 
-/// Delete options (mirrors the Deno delete body): remove the data volumes, and the
-/// host-browsable bind data.
+/// Delete options: remove the data volumes, and the host-browsable bind data.
 #[derive(Debug, Clone, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteOpts {
@@ -79,7 +77,7 @@ pub struct SetConfigView {
 /// Load an instance for a URL id, validating against the id charset (the single
 /// source of truth) and reconciling the loaded id with the requested id — so a
 /// path-shaped id can neither traverse out of the store nor load an unintended
-/// instance. Mirrors the Deno `loadById`. Shared with the streaming `instance_install`.
+/// instance. Shared with the streaming `instance_install`.
 pub(crate) fn load_by_id(store: &str, id: &str) -> Result<Instance, AppError> {
     if !is_valid_instance_id(id) {
         return Err(AppError::bad_request(format!("invalid instance id: {id}")));
@@ -96,7 +94,7 @@ pub(crate) fn load_by_id(store: &str, id: &str) -> Result<Instance, AppError> {
 
 /// Whether the saved override differs from what the (running) instance was last
 /// launched with — a restart is needed iff the instance was launched and its saved
-/// config has diverged. Mirrors the Deno `restartNeeded`.
+/// config has diverged.
 fn restart_needed(instance: &Instance, saved: &Override) -> Result<bool, AppError> {
     let launched = load_launched_config(&instance.dir)?;
     Ok(launched.is_some_and(|l| !same_override(saved, &l)))
@@ -118,8 +116,7 @@ fn check_known_keys<V>(
     Ok(())
 }
 
-/// Reject any override key that does not name a manifest port / env / mount
-/// (mirrors the Deno `assertKnownKeys`).
+/// Reject any override key that does not name a manifest port / env / mount.
 fn assert_known_keys(instance: &Instance, over: &Override) -> Result<(), AppError> {
     let m = &instance.manifest;
     let port_names: Vec<String> = m.ports.iter().map(|p| p.name.clone()).collect();
@@ -156,8 +153,8 @@ async fn engine_snapshot(
 
 /// The initial dashboard: every stored instance as a row, joined with a live engine
 /// read (running + installed). When the engine is unreachable the rows still list
-/// (installed unknown, nothing running) — parity with the Deno index render. The
-/// live/probed updates arrive over `subscribe_instances`.
+/// (installed unknown, nothing running). The live/probed updates arrive over
+/// `subscribe_instances`.
 #[tauri::command]
 #[specta::specta]
 pub async fn list_instance_rows(state: State<'_, AppState>) -> Result<Vec<InstanceRow>, AppError> {
@@ -174,7 +171,7 @@ pub async fn list_instance_rows(state: State<'_, AppState>) -> Result<Vec<Instan
 
 /// Bring an instance up: build the image if it is missing (drained silently — the
 /// explicit build-with-log path is `instance_install`), create + start, and return
-/// the published web URL. Mirrors the Deno `up` action.
+/// the published web URL.
 #[tauri::command]
 #[specta::specta]
 pub async fn instance_up(state: State<'_, AppState>, id: String) -> Result<UpView, AppError> {
@@ -198,8 +195,8 @@ pub async fn instance_up(state: State<'_, AppState>, id: String) -> Result<UpVie
     })
 }
 
-/// Stop + remove an instance's container. The id is validated at the boundary (★ F5)
-/// before it reaches the engine op.
+/// Stop + remove an instance's container. The id is validated at the boundary before
+/// it reaches the engine op (every command that accepts an instance id MUST do so).
 #[tauri::command]
 #[specta::specta]
 pub async fn instance_down(state: State<'_, AppState>, id: String) -> Result<(), AppError> {
@@ -213,7 +210,7 @@ pub async fn instance_down(state: State<'_, AppState>, id: String) -> Result<(),
 /// Stop + remove the container, the per-instance built image, and (by default) the
 /// per-instance DATA VOLUMES; then the definition. A load of the (best-effort)
 /// definition precedes removal so the image tag + volume names are known; a missing
-/// definition still gets its dir removed. Mirrors the Deno `delete` action.
+/// definition still gets its dir removed.
 #[tauri::command]
 #[specta::specta]
 pub async fn instance_delete(
@@ -281,7 +278,7 @@ pub async fn instance_delete(
 
 /// Derive a fresh instance from an existing one (copies the bundle + Settings
 /// override minus ports; data starts empty), deconflict its DEFINED ports, and
-/// return the finished view + bumps. Mirrors the Deno `duplicate` action.
+/// return the finished view + bumps.
 #[tauri::command]
 #[specta::specta]
 pub async fn instance_duplicate(
@@ -304,7 +301,7 @@ pub async fn instance_duplicate(
 
 /// The Settings view-model for an instance: each manifest port/env/mount with its
 /// author default + saved override, plus the host ports DEFINED by OTHER instances
-/// and whether a restart is needed. Mirrors the Deno config `GET`.
+/// and whether a restart is needed.
 #[tauri::command]
 #[specta::specta]
 pub async fn get_config(
@@ -319,8 +316,7 @@ pub async fn get_config(
 }
 
 /// Validate an override (value ranges + keys must name manifest items) and persist
-/// it to `config.yaml`; it takes effect on the next `up`. Mirrors the Deno config
-/// `PUT`.
+/// it to `config.yaml`; it takes effect on the next `up`.
 #[tauri::command]
 #[specta::specta]
 pub async fn set_config(
@@ -341,8 +337,7 @@ pub async fn set_config(
 
 /// Import a recipe bundle from a local path (a tar / tar.gz archive file or a
 /// directory) into a new instance, then deconflict its host ports. The frontend
-/// picks the path via the dialog plugin. Mirrors the Deno file-upload import
-/// (path-based here rather than a streamed body).
+/// picks the path via the dialog plugin.
 #[tauri::command]
 #[specta::specta]
 pub async fn import_recipe(
@@ -362,7 +357,6 @@ pub async fn import_recipe(
 
 /// Import a recipe from a GitHub source spec (`owner/repo[/subdir][@ref]`, optional
 /// `github:` prefix), download + ingest it, then deconflict. Public repos only.
-/// Mirrors the Deno GitHub import.
 #[tauri::command]
 #[specta::specta]
 pub async fn import_github(
@@ -384,7 +378,7 @@ pub async fn import_github(
 
 /// Export one persisted mount's data as a tar written to `dest` (the frontend picks
 /// `dest` via the dialog plugin). Works on a stopped instance (a throwaway helper
-/// reads the data). Mirrors the Deno export route + CLI `export`.
+/// reads the data).
 #[tauri::command]
 #[specta::specta]
 pub async fn export_mount(
@@ -433,7 +427,7 @@ pub async fn export_mount(
 /// Open a LOCAL web-service URL in the OS default browser via the opener plugin.
 /// Locked down: only http(s) localhost URLs, passed as a direct arg (the plugin
 /// never shells out), so neither command injection nor an arbitrary opener
-/// (file://, app protocols, remote hosts) is possible. Mirrors the Deno `open`.
+/// (file://, app protocols, remote hosts) is possible.
 #[tauri::command]
 #[specta::specta]
 pub async fn open_service_url(app: tauri::AppHandle, url: String) -> Result<(), AppError> {
@@ -482,7 +476,7 @@ fn ingest_path(source: &str, store: &str, is_dir: bool) -> Result<Instance, comp
 /// Deconflict a freshly-created instance's host ports (persisting any reassignment)
 /// and build its view AFTER, so it reflects the assigned ports. The single import
 /// finalize shared by file + GitHub import, so the view shape cannot drift between
-/// them. Mirrors the Deno `finalizeImport`.
+/// them.
 fn finalize_import(state: &AppState, instance: Instance) -> Result<ImportView, AppError> {
     let bumps = deconflict_host_ports(&state.store, &instance)?;
     let over = load_instance_config(&instance.dir)?; // re-reads config.yaml → reflects bumps

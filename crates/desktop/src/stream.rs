@@ -1,12 +1,11 @@
-//! The push-stream IPC commands — the Rust port of the Deno SSE / NDJSON routes
-//! (`events.ts`, `logs.ts`, and the install stream in `[action].ts`), driven over
-//! `tauri::ipc::Channel` instead of an HTTP response body.
+//! The push-stream IPC commands (snapshots, container logs, and the install build
+//! log), driven over `tauri::ipc::Channel`.
 //!
 //! Each command spawns a pump task and registers its `AbortHandle` under a returned
 //! subscription id, so the frontend can `unsubscribe` and window teardown can stop
-//! every pump — the explicit lifecycle that replaces Phase 0's fire-and-forget
-//! streams. A pump also self-terminates when its `Channel::send` fails (the webview /
-//! receiver went away).
+//! every pump — an explicit lifecycle so a pump never outlives its consumer. A pump
+//! also self-terminates when its `Channel::send` fails (the webview / receiver went
+//! away).
 
 use std::time::Duration;
 
@@ -24,15 +23,14 @@ use crate::error::AppError;
 use crate::state::AppState;
 use compositz_core::ContainerStatus;
 
-// Refresh cadences (parity with the Deno events.ts constants).
+// Refresh cadences.
 const WARMING_TICK: Duration = Duration::from_millis(2_000); // poll rate while a port is warming
 const SAFETY_REFRESH: Duration = Duration::from_millis(15_000); // backstop re-push when idle
 const RECONNECT: Duration = Duration::from_millis(2_000); // backoff after the event stream ends
 
 // --- event payloads (each `type`-tagged for a TS discriminated union) ------
 
-/// A managed-container snapshot push, or an engine-offline notice — mirrors the Deno
-/// events.ts SSE `snapshot` / `offline` events.
+/// A managed-container snapshot push, or an engine-offline notice.
 #[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum SnapshotEvent {
@@ -40,9 +38,9 @@ pub enum SnapshotEvent {
     Offline { error: String },
 }
 
-/// One line of a container's logs, the end-of-stream marker, or an error — mirrors
-/// the Deno logs.ts SSE `log` / `end` / `logerror` events. (Core's `log_stream`
-/// yields already-demuxed lines, so there is no per-line stdout/stderr tag.)
+/// One line of a container's logs, the end-of-stream marker, or an error. (Core's
+/// `log_stream` yields already-demuxed lines, so there is no per-line stdout/stderr
+/// tag.)
 #[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum LogEvent {
@@ -51,8 +49,7 @@ pub enum LogEvent {
     Error { error: String },
 }
 
-/// One line of build output, the built image tag on success, or an error — mirrors
-/// the Deno install NDJSON (`{type:"log"}` … `{type:"done"}` / `{type:"error"}`).
+/// One line of build output, the built image tag on success, or an error.
 #[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum InstallEvent {
@@ -86,7 +83,8 @@ pub async fn stream_logs(
     id: String,
     on_log: Channel<LogEvent>,
 ) -> Result<u32, AppError> {
-    // ★ F5: validate before the id becomes a container name reaching the engine.
+    // Every command that accepts an instance id MUST validate it before any core fn
+    // touches paths — here, before the id becomes a container name reaching the engine.
     if !is_valid_instance_id(&id) {
         return Err(AppError::bad_request(format!("invalid instance id: {id}")));
     }
@@ -115,7 +113,7 @@ pub async fn stream_logs(
 }
 
 /// Build (or pull) an instance's image, streaming the build log. Returns a
-/// subscription id. Mirrors the Deno install stream.
+/// subscription id.
 #[tauri::command]
 #[specta::specta]
 pub async fn instance_install(
@@ -123,7 +121,8 @@ pub async fn instance_install(
     id: String,
     on_progress: Channel<InstallEvent>,
 ) -> Result<u32, AppError> {
-    // ★ F5 + reconcile before we build against a store-loaded definition.
+    // Validate + reconcile the id before we build against a store-loaded definition
+    // (every command that accepts an instance id MUST validate it first).
     let instance = load_by_id(&state.store, &id)?;
     let engine = state.engine.clone();
     let tag = instance_image_tag(&instance.manifest, &instance.instance_id);
@@ -171,9 +170,9 @@ pub async fn unsubscribe(state: State<'_, AppState>, subscription_id: u32) -> Re
 
 /// Push managed-container snapshots on a SINGLE loop: after each push, wait for the
 /// next relevant Docker event OR a refresh tick (fast while `warming`, else the slow
-/// safety backstop), then push again. A single pusher structurally rules out the
-/// stale-wins race the Deno events.ts guarded with serialize+coalesce — there is
-/// never more than one snapshot in flight. The event stream is re-opened after it
+/// safety backstop), then push again. A single pusher structurally rules out a
+/// stale-wins race — there is never more than one snapshot in flight (no serialize +
+/// coalesce needed). The event stream is re-opened after it
 /// ends/errors (reconnect backoff). Ends when a `Channel::send` fails or the task is
 /// aborted mid-await.
 async fn snapshot_pump(engine: EngineHandle, store: String, channel: Channel<SnapshotEvent>) {

@@ -1,9 +1,8 @@
 //! Build-context types and packing. A recipe's build context is a Dockerfile plus
 //! a few provisioning files, small enough to hold in memory.
 //!
-//! Ported from `packages/core/src/build.ts`. [`BuildFile`] is used by the instance
-//! store; [`tar_context`] packs the context into an uncompressed tar for the
-//! Engine's `POST /build` (Phase 1g install).
+//! [`BuildFile`] is used by the instance store; [`tar_context`] packs the context
+//! into an uncompressed tar for the Engine's `POST /build` during install.
 
 use std::io::Write;
 

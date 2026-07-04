@@ -15,8 +15,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
 # Distinct from the cli crate's `compositz` binary: both land in the shared
-# workspace `target/`, so a Phase 2 CI job that builds cli + desktop together
-# would otherwise clobber one artifact with the other.
+# workspace `target/`, so a CI job that builds cli + desktop together would
+# otherwise clobber one artifact with the other.
 name = "compositz-desktop"
 path = "src/main.rs"
 

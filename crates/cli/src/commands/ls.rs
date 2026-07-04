@@ -27,8 +27,8 @@ pub async fn run() -> Result<i32> {
         ))
     );
     for instance in &list {
-        // Pad the id BEFORE coloring (parity with the Deno `green(id.padEnd(28))`),
-        // so the escape sequence never counts toward the column width.
+        // Pad the id BEFORE coloring, so the escape sequence never counts toward
+        // the column width.
         println!(
             "{}{:<14}{:<10}{}",
             green(&format!("{:<28}", instance.instance_id)),
