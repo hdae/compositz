@@ -5,9 +5,11 @@
 
 ## Current focus
 
-**Tauri 全面移行 — Phase 1〜3 完了。Phase 4（React UI）着手中: 4a（flake+bindings）✅ / 4b（縦切り）✅ /
-4c（dialogs）✅ / 4d（detail タブ）✅ / 4e（drag-drop + export）✅（0251b57+a15ec3a・実ブラウザ 13/13）。
-banners は 4c で実装済み。次は 4f（parity 総点検 + scaffold 掃除＝Phase 4 最終）。** 計画:
+**Tauri 全面移行 — Phase 1〜4 完了。Phase 4（React UI）= 4a（flake+bindings）/ 4b（縦切り）/ 4c
+（dialogs）/ 4d（detail タブ）/ 4e（drag-drop+export）/ 4f（parity 監査+scaffold 掃除）すべて ✅。
+parity は Deno 仕様を5領域で並列敵対的監査 → connecting フリッカ bug 1件修正(d098520)、restart の
+タブ挙動1件は意図的逸脱として記録、他は全 parity。次は Phase 5（parity 総仕上げ + docs + Deno 退役 +
+Windows 実機確認 #3）。** 計画:
 [docs/plans/tauri-migration.md](../docs/plans/tauri-migration.md)（承認済み親計画）+
 [docs/plans/tauri-migration-execution.md](../docs/plans/tauri-migration-execution.md)
 （**実行詳細・例外時対応 — 実装セッションはこちらに従う**）。
@@ -146,7 +148,15 @@ exportMount)、ウィンドウ全体 drag-drop 取込(実 Tauri=onDragDropEvent 
 banners(offline/notice/error)は 4c で実装済み。実ブラウザ CDP 13/13 + 全回帰緑。**Tauri の onDragDropEvent
 と実 save ダイアログ・実 export は Windows 送り**(ブラウザは合成パス/no-op)。
 
-**NEXT: 4f（Phase 4 最終）— parity 総点検 + scaffold 残骸掃除**(frontend/README.md・AGENTS.md・
-`dependencies` の `shadcn`)。挙動 parity は各 ADR(execution 計画 Phase 4 節・InstanceList.tsx が仕様)。
-その後 Phase 5(parity+docs+Deno 退役+Windows 実機確認 #3)。**★user 優先(07-04): runnable 優先・テスト/CI
-後回し・ローカルは vp dev + browser + mockIPC、実 backend は Windows。**
+**4f ✅（d098520 fix + 1201ce7 chore）: parity 監査 + scaffold 掃除。** Deno `InstanceList.tsx` を5領域
+(import/trust・delete/duplicate・actions/status/tabs・detail(log/services/settings)・rows/snapshot/theme)
+で並列敵対的監査 → **connecting フリッカ bug 1件修正**(mergeRow が最初の snapshot 前に base の running/
+services をゼロ化＝毎起動で実行中→未実行表示、d098520)。他4領域は全 parity。掃除=README を実プロジェクト化・
+shadcn を devDeps へ(AGENTS.md は Vite+ 自動生成のため保持)。**DECIDED: restart は Deno と違い detail タブを
+動かさない**(Deno は logs へ切替 / React は Settings 維持＝不意なタブ移動を避ける方が良い、[[feedback-avoid-optimistic-ui]]
+と同系の anti-surprise 方針。参照: 監査 07-05)。
+
+**NEXT: Phase 5 — parity 総仕上げ + docs 整備 + Deno 退役 + Windows 実機確認 #3。** Deno `deno task test`
+(160本)を退役まで無傷維持。実 backend 依存の未検証(Settings の get/set_config・restart・drag-drop の
+onDragDropEvent・save/export・native picker)を Windows 実機で確認。**★user 優先(07-04): runnable 優先・
+テスト/CI 後回し・ローカルは vp dev + browser + mockIPC、実 backend は Windows。**

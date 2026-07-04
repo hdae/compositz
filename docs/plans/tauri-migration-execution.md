@@ -195,7 +195,7 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
         明示宣言。
       - 3e(90506d6): plugin 登録(single-instance 最初/dialog/log/window-state) + capabilities。
         review 0 ブロッカー。
-- [~] Phase 4 — React UI（**4a ✅ / 4b ✅ / 4c ✅ / 4d〜4f 未**）
+- [x] Phase 4 — React UI（**4a〜4f 全 ✅**）
       - 4a(c9ae23f): **flake.nix でローカルビルド環境確立**（単一 nixpkgs-unstable + rust-overlay
         1.96.1 の devShell。webkit2gtk-4.1/gtk3/dbus/libsoup の pkg-config を stdenv hook で配線）。
         **「desktop はローカル compile 不可・CI 専用」の前提を撤回** — 以後 fmt/clippy/test/bindings
@@ -267,5 +267,16 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
         tsc/vp check(既知warning3)/vp test(exit0)/vp build 緑 + 実ブラウザ CDP 13/13 + 全回帰緑。onDragDropEvent
         と実 save/export は Windows 送り(ブラウザは合成/no-op)。** NOTE: `@tauri-apps/api/webview` は既に静的
         bundle 済み→動的 import は無効、静的 import + guard 呼び出しに。
-      - 4f(Phase 4 最終): parity 総点検 + scaffold 残骸掃除(frontend/README.md・AGENTS.md・`shadcn` dep)。
+      - 4f(d098520 fix / 1201ce7 chore): **parity 監査 + scaffold 掃除**。Deno `InstanceList.tsx` を5領域
+        (import/trust・delete/duplicate・actions/status/tabs・detail(log/services/settings)・rows/snapshot/theme)
+        で並列敵対的監査(Opus×5、意図的逸脱=楽観排除/SSE→Channel/Tauri dialog は除外)。結果=4領域 全 parity、
+        **rows で connecting フリッカ bug 1件検出→修正**(mergeRow が最初の snapshot 前に base の running/services
+        をゼロ化＝毎起動で実行中インスタンスが一瞬「未実行」、d098520。base は list_instance_rows がフェッチ時に
+        join 済みなので connecting は base をそのまま使う)。**DECIDED: restart は Deno と違い detail タブを動かさ
+        ない**(Deno=logs へ切替 / React=Settings 維持、anti-surprise 方針で React 採用・記録)。掃除=README を
+        実プロジェクト化 / shadcn を devDeps へ(AGENTS.md は Vite+ 自動生成のため保持)。**検証: tsc/vp check/vp test
+        (exit0)/vp build 緑 + 実ブラウザ CDP 全回帰緑(28/12/20/13)。**
+      - **★Phase 4 完了**: React UI 移行完了。Deno skeleton 破棄 → 型付き IPC(client/bindings/mock) + zustand
+        (楽観排除) + Base UI + theme + 全ダイアログ + detail タブ + drag-drop/export。実 backend 依存
+        (Settings 実挙動・onDragDropEvent・native save/export)は Phase 5 の Windows 実機確認 #3 へ。
 - [ ] Phase 5 — parity + docs + 退役（+ Windows 実機確認 #3）
