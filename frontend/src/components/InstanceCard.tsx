@@ -1,4 +1,4 @@
-import { ChevronRight, Copy, Loader2, MoreVertical, Trash2 } from "lucide-react";
+import { ChevronRight, Copy, Loader2, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -6,6 +6,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { formatRelativeAge } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { useInstancesStore } from "@/store/instances";
 import type { RowVM } from "@/store/instances";
@@ -31,6 +32,7 @@ export const InstanceCard = ({ vm, engineOnline }: Props) => {
   const install = useInstancesStore((s) => s.install);
   const duplicate = useInstancesStore((s) => s.duplicate);
   const requestDelete = useInstancesStore((s) => s.requestDelete);
+  const requestRename = useInstancesStore((s) => s.requestRename);
   const toggleExpanded = useInstancesStore((s) => s.toggleExpanded);
 
   const menuBusy = duplicating || deleting;
@@ -86,6 +88,10 @@ export const InstanceCard = ({ vm, engineOnline }: Props) => {
               }
             />
             <DropdownMenuContent align="end" className="w-auto min-w-36">
+              <DropdownMenuItem disabled={menuBusy} onClick={() => requestRename(row)}>
+                <Pencil />
+                Rename
+              </DropdownMenuItem>
               <DropdownMenuItem disabled={menuBusy} onClick={() => void duplicate(row.instanceId)}>
                 <Copy />
                 Duplicate
@@ -109,6 +115,19 @@ export const InstanceCard = ({ vm, engineOnline }: Props) => {
             {row.description !== "" && (
               <p className="text-sm break-words whitespace-pre-line text-muted-foreground">
                 {row.description}
+              </p>
+            )}
+            {(row.source || row.createdAt) && (
+              <p className="text-xs text-muted-foreground/80">
+                {row.source && (
+                  <>
+                    From <span className="font-mono break-all">{row.source}</span>
+                  </>
+                )}
+                {row.source && row.createdAt && " · "}
+                {row.createdAt && (
+                  <span title={row.createdAt}>created {formatRelativeAge(row.createdAt)}</span>
+                )}
               </p>
             )}
             <DetailPanel vm={vm} />

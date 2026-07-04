@@ -26,6 +26,7 @@ import {
   listInstanceRows,
   openServiceUrl,
   pickRecipeFile,
+  renameInstance,
   subscribeInstances,
 } from "@/ipc/client";
 import type { DeleteOpts, InstanceRow, InstanceView, PortBump, Subscription } from "@/ipc/client";
@@ -41,6 +42,9 @@ export type TrustState = { view: InstanceView; source: string; bumps: PortBump[]
 
 /** The GitHub-import modal state: the in-progress spec, whether a fetch is running, last error. */
 export type GithubState = { spec: string; submitting: boolean; error: string | undefined };
+
+/** The rename dialog state: the target row and the name being edited. */
+export type RenameState = { row: InstanceRow; name: string; saving: boolean };
 
 type InstancesState = {
   baseRows: InstanceRow[];
@@ -70,6 +74,8 @@ type InstancesState = {
   github: GithubState | undefined;
   /** The instance whose delete-confirm dialog is open. */
   deleteTarget: InstanceRow | undefined;
+  /** The rename dialog, when open. */
+  rename: RenameState | undefined;
 
   init: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -82,6 +88,10 @@ type InstancesState = {
   duplicate: (id: string) => Promise<void>;
   requestDelete: (row: InstanceRow) => void;
   cancelDelete: () => void;
+  requestRename: (row: InstanceRow) => void;
+  setRenameName: (name: string) => void;
+  cancelRename: () => void;
+  submitRename: () => Promise<void>;
   remove: (id: string, opts: DeleteOpts) => Promise<void>;
   beginImportFile: () => Promise<void>;
   importFromPath: (source: string) => Promise<void>;
@@ -140,6 +150,7 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
   trust: undefined,
   github: undefined,
   deleteTarget: undefined,
+  rename: undefined,
 
   init: async () => {
     const token = ++sessionToken;
@@ -332,6 +343,30 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
 
   requestDelete: (row) => set({ deleteTarget: row }),
   cancelDelete: () => set({ deleteTarget: undefined }),
+
+  requestRename: (row) => set({ rename: { row, name: row.name, saving: false } }),
+  setRenameName: (name) => set((s) => (s.rename ? { rename: { ...s.rename, name } } : {})),
+  cancelRename: () => set((s) => (s.rename && !s.rename.saving ? { rename: undefined } : {})),
+
+  // Persist the display name server-side, then reflect it via the row refetch
+  // (server-confirmed, like every structural change). An empty name clears the
+  // override — the row returns to the recipe's own name.
+  submitRename: async () => {
+    const r = get().rename;
+    if (!r || r.saving) return;
+    set({ rename: { ...r, saving: true } });
+    try {
+      const trimmed = r.name.trim();
+      await renameInstance(r.row.instanceId, trimmed === "" ? null : trimmed);
+      set({ rename: undefined });
+      await get().reloadRows();
+    } catch (error) {
+      set({
+        rename: undefined,
+        error: `rename ${r.row.instanceId} failed: ${describe(error)}`,
+      });
+    }
+  },
 
   // Delete server-side, then drop the row via a refetch — the row lingers with a
   // `deleting` spinner through the round-trip rather than being optimistically removed

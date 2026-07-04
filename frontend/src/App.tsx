@@ -9,6 +9,7 @@ import { ImportBar } from "@/components/ImportBar";
 import { DropZone } from "@/components/DropZone";
 import { TrustDialog } from "@/components/TrustDialog";
 import { DeleteDialog } from "@/components/DeleteDialog";
+import { RenameDialog } from "@/components/RenameDialog";
 import { GithubImportDialog } from "@/components/GithubImportDialog";
 import { cn } from "@/lib/utils";
 import { installMockIfNeeded } from "@/ipc/client";
@@ -139,6 +140,7 @@ export const App = () => {
       <DropZone />
       <TrustDialog />
       <DeleteDialog />
+      <RenameDialog />
       <GithubImportDialog />
     </TooltipProvider>
   );

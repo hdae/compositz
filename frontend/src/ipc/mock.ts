@@ -41,9 +41,14 @@ import type {
 type Def = {
   instanceId: string;
   appId: string;
+  /** The recipe's own (manifest) name — what a cleared rename falls back to. */
+  brand: string;
+  /** The effective display name (rename override ▷ brand). */
   name: string;
   version: string;
   description: string;
+  source: string | null;
+  createdAt: string | null;
   webPorts: WebPort[];
 };
 
@@ -55,26 +60,35 @@ const DEFS: Def[] = [
   {
     instanceId: "comfyui-a1b2c3",
     appId: "comfyui",
+    brand: "ComfyUI",
     name: "ComfyUI",
     version: "0.3.1",
     description:
       "The most powerful and modular diffusion model GUI, with a graph/nodes interface for designing and executing advanced Stable Diffusion pipelines — supports SD1.x/SD2.x/SDXL/Flux, ControlNet, LoRAs, and fully offline local inference.",
+    source: "github:comfyanonymous/ComfyUI",
+    createdAt: "2026-06-20T12:00:00Z",
     webPorts: [webPort("web", 8188, 8188)],
   },
   {
     instanceId: "whisper-0f1e2d",
     appId: "whisper",
+    brand: "Whisper WebUI",
     name: "Whisper WebUI",
     version: "1.0.0",
     description: "Speech-to-text transcription UI.",
+    source: "file:C:/Users/dev/recipes/whisper-webui.tar.gz",
+    createdAt: "2026-07-01T08:30:00Z",
     webPorts: [webPort("web", 7860, 7861)],
   },
   {
     instanceId: "hello-web-778899",
     appId: "hello-web",
+    brand: "Hello Web",
     name: "Hello Web",
     version: "0.1.0",
     description: "A tiny demo web app.",
+    source: "upload",
+    createdAt: "2026-07-04T18:00:00Z",
     webPorts: [webPort("web", 8080, 8090)],
   },
 ];
@@ -112,6 +126,8 @@ function buildRow(d: Def): InstanceRow {
     name: d.name,
     version: d.version,
     description: d.description,
+    source: d.source,
+    createdAt: d.createdAt,
     webPorts: d.webPorts,
     services: deriveServices(d.webPorts, live),
     installed: s.installed,
@@ -138,6 +154,8 @@ function viewOf(d: Def): InstanceView {
     name: d.name,
     version: d.version,
     description: d.description,
+    source: d.source,
+    createdAt: d.createdAt,
     webPorts: d.webPorts,
     imageTag: `compositz/${d.instanceId}:${d.version}`,
   };
@@ -156,12 +174,16 @@ function synthImport(source: string): ImportView {
       .replace(/[^a-z0-9-]+/g, "-")
       .replace(/^-+|-+$/g, "") || "recipe";
   const instanceId = `${appId}-${short}`;
+  const brand = repo || "Imported recipe";
   const d: Def = {
     instanceId,
     appId,
-    name: repo || "Imported recipe",
+    brand,
+    name: brand,
     version: "0.1.0",
     description: `Imported from ${source}.`,
+    source: isGithub ? source : `file:${source}`,
+    createdAt: new Date().toISOString(),
     webPorts: [webPort("web", 8000, 9000 + importCounter)],
   };
   DEFS.push(d);
@@ -370,7 +392,14 @@ export function installBrowserMock(): () => void {
           return { ...wp, host: to };
         });
         // Mirror the core: a duplicate's display name is the source's "<name> (copy)".
-        const dupDef: Def = { ...src, instanceId: dupId, name: `${src.name} (copy)`, webPorts };
+        const dupDef: Def = {
+          ...src,
+          instanceId: dupId,
+          name: `${src.name} (copy)`,
+          source: `duplicate:${src.instanceId}`,
+          createdAt: new Date().toISOString(),
+          webPorts,
+        };
         DEFS.push(dupDef);
         state[dupId] = { installed: false, running: false, accepting: false };
         return { view: viewOf(dupDef), bumps } satisfies ImportView;
@@ -383,6 +412,16 @@ export function installBrowserMock(): () => void {
         delete state[id];
         broadcastSnapshot(); // reflect it leaving the running set, if it was up
         return { warning: null } satisfies DeleteView;
+      }
+
+      case "rename_instance": {
+        const id = String(field(payload, "id"));
+        const raw = field(payload, "name");
+        const d = def(id);
+        // Mirror the core normalization: empty / brand-equal clears the override.
+        const trimmed = typeof raw === "string" ? raw.trim() : "";
+        d.name = trimmed === "" || trimmed === d.brand ? d.brand : trimmed;
+        return null;
       }
 
       case "export_mount":

@@ -121,6 +121,15 @@ export async function importRecipe(source: string): Promise<ImportView> {
   return unwrap(await commands.importRecipe(source));
 }
 
+/**
+ * Set or clear the per-instance display name. `null` — or a name that trims to
+ * empty / equals the manifest brand — clears the override (display returns to
+ * tracking the recipe's own name).
+ */
+export async function renameInstance(id: string, name: string | null): Promise<void> {
+  unwrap(await commands.renameInstance(id, name));
+}
+
 /** Import a recipe from a GitHub spec (`owner/repo[/subdir][@ref]`, public repos only). */
 export async function importGithub(spec: string): Promise<ImportView> {
   return unwrap(await commands.importGithub(spec));
