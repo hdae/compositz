@@ -1,24 +1,12 @@
-# Deno
-.deno/
-deno.lock.bak
-
-# npm — workspace-root node_modules (packages/ui Vite member; nodeModulesDir=auto)
+# Node (frontend tooling run from the repo root, e.g. `pnpm dlx`)
 node_modules/
-
-# Build / dist
-/dist/
-/build/
-/desktop/        # `deno desktop` default bundle output (regenerate with `deno task desktop`)
-*.exe
-*.dll
-denort*
 
 # Rust (Cargo workspace: crates/*)
 /target/
 # tauri-build generated capability schemas (written on desktop-OS builds only)
 /crates/desktop/gen/schemas/
 
-# Frontend (Tauri SPA — pnpm project independent of the Deno tree)
+# Frontend (Tauri SPA — standalone pnpm project)
 /frontend/dist/
 
 # Editor / OS
@@ -28,10 +16,6 @@ denort*
 !.vscode/settings.json
 .DS_Store
 Thumbs.db
-
-# Local toolchain — downloaded Deno >= 2.9 (devbox global caps at 2.8.3; `deno desktop` needs 2.9)
-/bin/deno
-/bin/deno.exe
 
 # Local scratch
 /tmp/

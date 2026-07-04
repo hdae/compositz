@@ -1,5 +1,5 @@
-# Supply-chain guard: refuse packages published less than 24h ago (mirrors the
-# Deno side). Also marks the pnpm workspace boundary for this standalone project.
+# Supply-chain guard: refuse packages published less than 24h ago. Also marks
+# the pnpm workspace boundary for this standalone project.
 minimumReleaseAge: 1440
 # Pin the whole vite-plus toolchain to one coherent minor line. `@latest` skews:
 # core/CLI are at 0.2.x but @voidzero-dev/vite-plus-test still tops out at 0.1.24

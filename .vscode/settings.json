@@ -1,5 +1,6 @@
 {
   // default-members=[core, cli] を IDE flycheck が無視して desktop まで check し、
-  // webkit 依存欠落でエラー表示になるのを防ぐ (desktop は CI ビルドのみ)。
+  // webkit 依存欠落でエラー表示になるのを防ぐ (desktop のローカル検証は
+  // `nix develop -c cargo …`、配布ビルドは CI windows-latest)。
   "rust-analyzer.check.workspace": false
 }
