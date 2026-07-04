@@ -1,5 +1,11 @@
 # Tauri 全面移行計画 (2026-07-03 策定 / 同日ユーザー承認)
 
+> **✅ 完遂 (2026-07-05)**: Phase 0〜5 すべて完了。決定の恒久記録は
+> [ADR-028](../decisions.md)、現行アーキテクチャは [architecture.md](../architecture.md)。
+> 本書と [tauri-migration-execution.md](tauri-migration-execution.md) は実行当時の
+> 計画の歴史的記録として保存する（技術選定表の一部は実行中に更新された —
+> 例: HTTP client は reqwest → ureq, ADR-027 / tauri-specta は rc.25 → rc.21 pin）。
+
 **承認状況**: 計画全体 + 要判断 5 点のデフォルト（serde_norway / tauri-specta exact pin /
 router・Query なし開始 / shadcn preset nova / pnpm devEngines 10.32.1 固定）すべて承認済み。
 

@@ -1,161 +1,93 @@
 # Roadmap
 
-Status legend: ✅ done & verified · 🔄 in progress · ⏳ planned · ❓ open decision
+Status legend: ✅ done & verified · 🔄 in progress · ⏳ planned · 💡 idea
 
-## Phase 0 — Foundations PoC ✅
+## Done — foundations through migration
 
-De-risk the two load-bearing unknowns before building.
+The project reached feature parity twice: first on the Deno/Fresh prototype stack
+(where the recipe model, instance-centric storage, trust gate, deletion/export
+semantics, and definition-driven ports were designed and live-verified — ADR-001…027),
+then ported wholesale to **Tauri 2 + Rust core + React** ([ADR-028](decisions.md)) and
+re-verified on Windows. Highlights of what ships today:
 
-- ✅ Core Engine API client over the transport abstraction: build → run → logs → stop on **Windows
-  (node:net npipe)**. (Linux unix-socket path is code-symmetric; verify on a real Linux/CI host.)
-- ✅ Deno Desktop opens a window and navigates to a running container's web UI.
-- ✅ Permissions, chunked HTTP, multiplexed log framing characterized empirically.
+- ✅ **Recipe → instance pipeline**: manifest v2, contained tar/tar.gz extraction,
+  GitHub sourcing (`owner/repo[/subdir][@ref]`), atomic publish, per-instance images.
+- ✅ **Full CLI** (`doctor` / `hello` / `import` / `ls` / `duplicate` / `install` /
+  `up` / `down` / `rm` / `ps` / `export`) with boundary id validation on every
+  destructive path.
+- ✅ **Desktop app**: typed IPC (generated bindings), live snapshots over Channels,
+  trust-gated import (file / drag-drop / GitHub), install with streamed build log,
+  runtime logs, Settings (ports / env / placement, restart-needed detection), delete
+  with volume semantics + export safety valve, duplicate, dark mode.
+- ✅ **Shared caches** (`venv` / `huggingface` / `custom` presets) via create-time env
+  injection, exercised end-to-end on a real GPU host ([ADR-024](decisions.md)).
+- ✅ **Readiness** = HTTP probe + action-driven tab flow ([ADR-026](decisions.md)).
 
-## Phase 1 — Recipe → build → run ✅
+## Phase 3 — Hardening ⏳ (current)
 
-- ✅ Manifest model (`compositz.yaml`) as a **Zod** schema → validator + types + generated JSON
-  Schema.
-- ✅ Recipe loader + in-memory tar build context (`@std/tar`).
-- ✅ `EngineClient.build` (classic `POST /build`, streamed log).
-- ✅ `toCreateSpec` (ports / env / volumes / GPU / labels) + `up` / `down` with GPU tri-state
-  fallback.
-- ✅ CLI `install` / `up` / `down` / `ps`; example recipe `recipes/hello-web`.
-- ⏳ Build hardening: stream large contexts (not in-memory), honor `.dockerignore`, optional
-  BuildKit. (Deferred — classic builder is sufficient for now.)
-
-## Phase 2 — Management UI 🔄
-
-- ✅ ~~Hono API server (`packages/server`)~~ — built and verified live, then **retired** once the UI
-  proved in-process core calls
-  ([ADR-013](decisions.md#adr-013--retire-packagesserver-hono-the-ui-calls-core-in-process--accepted-reversible)).
-  Its `/api/*` + SSE design carries over to Fresh route handlers; no separate server process.
-- ✅ **UI framework decided: Fresh 2 (Vite).** All three candidates (Start / Fresh / SvelteKit) were
-  spiked on Deno 2.9.0; all are feasible for in-process `@compositz/core` with a clean client
-  boundary, so the choice turned on Deno-nativeness. Fresh won (no `@deno/vite-plugin` bridge,
-  cleanest `deno desktop` fit, Deno-aligned). See
-  [decisions.md ADR-008](decisions.md#adr-008--ui-framework-fresh-2-vite--accepted).
-- ✅ **`packages/ui` scaffolded (Increment 1)**: Fresh 2 (Vite) workspace member; a route handler
-  calls `listRecipes()` + `EngineClient.ps()` **in-process** and renders a read-only recipe list
-  (installed / running), degrading to an "engine offline" badge when Docker is unreachable.
-  View-model derivation is a pure, Docker-free, unit-tested function. Workspace integration
-  (membership mandatory, root `nodeModulesDir: "auto"`, server-only boundary fault-tested) in
-  [decisions.md ADR-012](decisions.md#adr-012--packagesui-joins-the-deno-workspace-root-nodemodulesdir-auto--accepted-verified).
-- ✅ **Live status + up/down actions (Increment 2)**: the recipe list is an island that live-updates
-  from a Fresh SSE route handler (`/api/events`, polls `EngineClient.ps` every 2s) and posts to
-  `/api/recipes/:id/:action` for up/down. `up` builds the image first if missing. SSE teardown keys
-  off `ReadableStream.cancel()` (client disconnect), not `request.signal` (deno#29111 legacy abort).
-  Runtime-smoked on the offline-degrade path (no Docker here).
-- ✅ **Explicit install + live build log (Increment 2c)**: an Install button streams the build log
-  (`POST /api/recipes/:id/install`, NDJSON read via `fetch`), then marks the recipe installed. "Open
-  UI" surfaces once running. POST-stream chosen over EventSource (GET) to avoid re-triggering the
-  build on reconnect.
-- ✅ **Real-time status (RT)** — `EngineClient.events()` streams Docker `GET /events`; the Fresh SSE
-  handler (`/api/events`) is event-driven (push on each container lifecycle change), with a 15 s
-  safety refresh + 2 s reconnect/offline fallback. Replaced the 2 s poll. **Verified against the
-  real engine** (a down→up cycle streamed `running→exited→[]→created→running` live), along with the
-  Increment 1/2/2c online paths.
-- ✅ **Recipe ingestion + storage + launch config — RI-1 (manifest v2 in core)**: manifest v2
-  (mounts with bind/volume `placement`, `cache` presets+custom with env-injected paths, multi-`web`
-  ports, `image`-or-`build`) + 3-tier storage + configurable host **data-root** for bind outputs +
-  effective-spec derivation (manifest ⊕ launch override). Structured `HostConfig.Mounts` with
-  `BindOptions.CreateMountpoint` (daemon-side bind-source creation). Breaking (unreleased);
-  consumers took only a 1-line change each (`up()` returns the resolved host ports for `webUrl`).
-  Full suite green + live-verified on the real engine. See
-  [recipe-ingestion.md](recipe-ingestion.md) /
-  [ADR-015](decisions.md#adr-015--manifest-v2-core-structured-mounts--createmountpoint-managed-cache-layout--accepted-verified).
-- ✅ **Instance-centric storage + ingestion (RI-2)**: no recipe store — a recipe **bundle** (tar /
-  tar.gz / dir) is ingested (security-hardened extract → Zod-validate → mint `instanceId`) to create
-  a self-contained **instance** in app-data; every Docker resource keys off `instanceId`
-  (per-instance image), and `duplicate` clones the bundle (not the data). CLI
-  `import`/`ls`/`duplicate`/ `rm`; UI instance list + drag-drop import. Full suite green +
-  live-verified (import→up→down→rm, managed-only/reversible). See [ADR-017](decisions.md) /
-  [recipe-ingestion.md](recipe-ingestion.md).
-- ✅ **Ingestion + launch UI (RI-3…RI-4)**: RI-3 = GitHub sourcing (`owner/repo[/subdir][@ref]` →
-  codeload tarball → instance, [ADR-021](decisions.md)); RI-4 = per-instance override
-  (`config.yaml` + Settings tab, [ADR-022](decisions.md)) + definition-driven ports
-  ([ADR-023](decisions.md)).
-- ✅ **Duplicate in the GUI**: a per-row action posts `/api/instances/:id/duplicate` —
-  server-confirmed (row added from the response), add-time port deconfliction with a visible notice.
-  `duplicateInstance` now also inherits the Settings override (env / placement) **minus
-  `hostPorts`** — a copy claims its own ports ([ADR-025](decisions.md) session). Route live-verified
-  (collision bump 8090→8091 reported end-to-end).
-- 🔄 **Desktop shell**: the desktop **is** the Fresh management UI, packaged by `deno desktop`
-  framework auto-detection (it embeds the built `_fresh/` into one native CEF binary — no separate
-  package; recipe ops happen in the UI via core in-process). Was a PoC that launched one recipe and
-  showed its web UI directly. Verified on Linux (`deno task desktop` → `dist/compositz.AppImage`).
-  See
-  [ADR-016](decisions.md#adr-016--desktop-app--the-fresh-ui-packaged-by-deno-desktop-framework-detection--accepted-verified).
-  Remaining: Windows `.msi` packaging + signing (Phase 4), and embedding each running app's web UI
-  as secondary windows (multi-window).
-
-## Phase 3 — Hardening ⏳
-
-- ✅ **Shared model cache** — via recipe-declared `cache:` presets (NOT injected into every
-  container; global default-on was rejected, [ADR-024](decisions.md)). Create-time env injection
-  overrides the image's own ENV; exercised live by `recipes/cocktail` (venv/HF/weights shared across
-  re-imports). Remaining hardening (poisoning/threat model) tracked below and in
-  [limitations.md](limitations.md).
-- ✅ **Deletion data semantics + volume export** ([ADR-025](decisions.md)): `EngineClient` gained
-  volume endpoints (`GET/DELETE /volumes`) + `archive`; **export** ships as `compositz export` and a
-  Settings-tab button (tar via a never-started helper container + the archive API — the safety valve
-  before deletes); **delete removes data volumes by default** (`--keep-data` / UI checkbox keeps;
-  `--purge` / opt-in checkbox adds the data-root bind dir), and CLI `rm` now reclaims the
-  per-instance image (parity with the UI delete). Live-verified on the real engine.
-- ⏳ **Volume lifecycle & GC (rest)**: `volumes prune` for already-orphaned volumes (see
-  known-issues); `gc --reclaim` for venv-subpath orphans; uv `repair` / `rebuild` wrappers (uv has
-  no venv-aware GC or verify — Compositz wraps it).
-- ⏳ **In-place instance update** (user wish): re-ingest a new ref/commit into the SAME instance
-  (`meta.source` already round-trips `github:owner/repo[/subdir][@ref]`) keeping instanceId /
-  volumes / `config.yaml`, behind a **re-trust gate** (new code = new trust, ADR-020) + image
-  rebuild. Companions: show provenance first (below), user-facing **build args** (cocktail's
-  `COCKTAIL_REF` pin is edit-manifest-only today; needs a "rebuild needed" state next to ADR-023's
-  "restart needed"), and an opt-in `--no-cache` rebuild action (build cache stays ON by default —
-  user decision 2026-07-03; `BuildOptions.noCache` is wired in core but nothing sets it).
-- ⏳ **CLI parity — `config` + `logs`**: the RI-4 override (ports/env/placement) is UI-only and log
-  streaming is UI-only; core has everything (`load/saveInstanceConfig`, `client.logs`) — headless
-  Linux needs thin `compositz config` / `compositz logs [-f]` wrappers.
-- ⏳ **Instance label + provenance display**: `meta.source`/`createdAt` are persisted but shown only
-  in the trust dialog; `ls` and the UI row show neither, and duplicates are distinguishable only by
-  the random id suffix. Add an optional user `label` to `InstanceMeta` + surface source/ref/age in
-  `ls` and the row — the display prerequisite for in-place update.
-- ⏳ **Manifest expressiveness for AI workloads**: `shmSize` (Docker's 64 MB `/dev/shm` default
-  OOM-kills multi-worker PyTorch DataLoaders — the most common local-AI footgun; `ipc: host` as the
-  alternative is **rejected**: it punches an isolation hole), `healthcheck`/readiness probe (the
-  declarative fix for the "first `up` looks stuck" issue; drives Docker health so Services badges
-  read real state), `stopGracePeriod`/`stopSignal` (`down` SIGKILLs after Docker's 10 s default —
-  deadly mid-checkpoint; `stopTimeout` plumbing exists with zero callers), opt-in `restartPolicy`
-  (nothing survives a host reboot today), `secret: true` env flag (presentation-only: masked
-  Settings input + excluded from future export/share — gated-model tokens like `HF_TOKEN` /
-  `CIVITAI_TOKEN` are first-class in local AI; OS-keychain integration is NOT planned), memory/CPU
-  limits (speculative — only on demand).
-- ⏳ **Ops visibility**: crashed≠stopped status + GPU-fallback badge + pull layer progress +
-  persistent build logs (all in [known-issues.md](known-issues.md)); a read-only **disk-usage view**
-  (images / volumes / shared caches — tens of GB with cocktail-class apps) staged BEFORE any
-  destructive reclaim UI.
+- ⏳ **In-place instance update** (user wish; frozen during the migration, now the
+  headline item): re-ingest a new ref/commit into the SAME instance (`meta.source`
+  already round-trips `github:owner/repo[/subdir][@ref]`) keeping instanceId / volumes /
+  `config.yaml`, behind a **re-trust gate** (new code = new trust, ADR-020) + image
+  rebuild. Companions: provenance display (below), user-facing **build args** (a
+  "rebuild needed" state next to ADR-023's "restart needed"), and an opt-in
+  `--no-cache` rebuild action (build cache stays ON by default — user decision;
+  `BuildOptions.noCache` is wired in core but nothing sets it).
+- ⏳ **Instance label + provenance display**: `meta.source`/`createdAt` are persisted
+  but shown only in the trust dialog. Surface source/ref/age in `ls` and the UI row,
+  and let the user edit the per-instance display name (`meta.name` exists — duplicates
+  set it to "<name> (copy)" — but there is no rename UI yet). The display prerequisite
+  for in-place update.
+- ⏳ **Volume lifecycle & GC**: `volumes prune` for already-orphaned volumes (see
+  [known-issues.md](known-issues.md)); `gc --reclaim` for venv-subpath orphans; uv
+  `repair` / `rebuild` wrappers. A read-only **disk-usage view** (images / volumes /
+  shared caches — tens of GB with cocktail-class apps) stages BEFORE any destructive
+  reclaim UI.
+- ⏳ **CLI parity — `config` + `logs`**: the per-instance override and log streaming
+  are desktop-only; core has everything — headless Linux needs thin
+  `compositz config` / `compositz logs [-f]` wrappers.
+- ⏳ **Manifest expressiveness for AI workloads**: `shmSize` (Docker's 64 MB `/dev/shm`
+  default OOM-kills multi-worker PyTorch DataLoaders; `ipc: host` is **rejected** — it
+  punches an isolation hole), `healthcheck` (declarative readiness for non-HTTP apps),
+  `stopGracePeriod`/`stopSignal` (`down` SIGKILLs after Docker's 10 s default — deadly
+  mid-checkpoint; `stop_container`'s timeout plumbing exists with zero callers), opt-in
+  `restartPolicy` (nothing survives a host reboot today), `secret: true` env flag
+  (presentation-only: masked Settings input, excluded from future export/share —
+  `HF_TOKEN`-class tokens are first-class in local AI; OS-keychain integration is NOT
+  planned), memory/CPU limits (speculative — only on demand).
+- ⏳ **Ops visibility**: crashed ≠ stopped status, GPU-fallback badge, pull layer
+  progress, persistent build logs (all tracked in [known-issues.md](known-issues.md)).
 - ⏳ **GPU runtime detection**: choose nvidia vs CDI from `/info` / `/version`.
 - ⏳ **s6-overlay v3** multi-daemon recipe pattern + an example recipe.
-- ⏳ **Strict isolation** opt-out per recipe (copy-mode cache, per-app cache) for troubleshooting.
-- ⏳ **Version-pinning policy** (committed): uv.lock hash pin; base/CUDA image tags pinned (no
-  `:latest`); Deno version pinned in CI; manifest `manifestVersion` with a min-platform gate.
+- ⏳ **Strict isolation** opt-out per recipe (copy-mode cache, per-app cache) for
+  troubleshooting.
+- ⏳ **Version-pinning policy** (committed): uv.lock hash pin; base/CUDA image tags
+  pinned (no `:latest`); toolchains pinned in CI; manifest `manifestVersion` with a
+  min-platform gate.
 
 ## Phase 4 — Packaging & distribution ⏳
 
-- ⏳ Windows packaging & **code signing** (`signtool` on the backend `.exe` + `denort.dll`).
-- ⏳ **Auto-update**: Deno's updater is unix-only — an external updater is required on Windows (the
-  primary platform).
-- ⏳ Revisit the **WebView2 backend** once the upstream crash fix lands (Deno 2.9.1/2.9.2) to drop
-  the ~440 MB CEF bundle for the lightweight system webview.
-- ⏳ **Catalog**: static `index.json` generated from the recipe repo, served via CDN/GitHub.
-- ⏳ **Recipe authoring tooling** for LLM agents (deferred; core currently just consumes recipes).
-- 💡 **Remote sharing via tunnel** (idea, user wish): expose a running app's web port through e.g. a
-  Cloudflare Tunnel — `cloudflared` could ride in the recipe image or as a manager-run sidecar
-  (sidecar keeps recipes tunnel-agnostic). MUST NOT ship without an auth story (a bare tunnel
-  publishes the app to the internet — Cloudflare Access or equivalent gate), plus a visible "this
-  instance is public" indicator in the UI.
+- ⏳ Windows **code signing** (CI already builds unsigned NSIS/MSI installers;
+  SmartScreen warns until signed).
+- ⏳ **Auto-update** via the Tauri updater plugin (needs a signing key — deferred to
+  release prep).
+- ⏳ **Catalog**: static `index.json` generated from a recipe repo, served via
+  CDN/GitHub.
+- ⏳ **Recipe authoring tooling** for LLM agents (the JSON Schema at `spec/` is the
+  seed; core currently just consumes recipes).
+- 💡 **Multi-window**: embed a running app's web UI as a secondary Tauri window
+  instead of jumping to the browser.
+- 💡 **Remote sharing via tunnel** (user wish): expose a running app's web port through
+  e.g. a Cloudflare Tunnel — `cloudflared` as a manager-run sidecar keeps recipes
+  tunnel-agnostic. MUST NOT ship without an auth story (a bare tunnel publishes the app
+  to the internet) plus a visible "this instance is public" indicator.
 
 ## Cross-cutting / always-on
 
-- Keep the Fresh route-handler data contract (JSON + SSE) stable — it is the durable interface for
-  the UI, and the shape a future headless `compositz serve` would re-expose if revived (ADR-013).
-- Verify the Linux unix-socket path on a real Linux host / CI (only Windows is exercised today).
-- Pin the Deno toolchain in CI (≥ 2.9).
+- The UI ⇄ backend contract is the **generated** `bindings.ts` — keep
+  `export_bindings` / `export_schema` outputs committed and fresh (a CI freshness gate
+  is still pending).
+- Verify the Linux unix-socket path on a real Linux host (CI exercises it read-only;
+  only Windows gets full manual verification today).
+- The frontend has no unit tests yet (`passWithNoTests`) — decide the testing story
+  when the UI stabilizes.

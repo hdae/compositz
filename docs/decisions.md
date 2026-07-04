@@ -2,6 +2,12 @@
 
 ADR-style. Each entry: status, the decision, why, and consequences. Newest concerns last.
 
+> NOTE: ADRs are a historical record — superseded entries keep their original body.
+> ADR-001…027 predate the Tauri migration ([ADR-028](#adr-028--full-migration-to-tauri-2--rust-core--react--accepted-verified)),
+> so their bodies may cite `packages/…` sources that were retired with the Deno tree;
+> the *decisions* themselves (naming, storage, trust gate, deletion semantics, ports,
+> caches, readiness) carried over into `crates/` unless a status line says otherwise.
+
 ---
 
 ## ADR-001 — One container per app; no Compose · ✅ Accepted
@@ -16,7 +22,7 @@ unit. s6-overlay gives real PID1, zombie reaping, and service dependencies.
 
 ---
 
-## ADR-002 — Hand-rolled Engine API client over a transport abstraction · ✅ Accepted (verified)
+## ADR-002 — Hand-rolled Engine API client over a transport abstraction · ⛔ Superseded by ADR-028 (bollard)
 
 A minimal Docker Engine HTTP client on a `DuplexConn` seam: unix socket (Linux), `node:net` named
 pipe (Windows), TCP fallback. Not `dockerode`.
@@ -56,7 +62,7 @@ available for Linux. nvidia-vs-CDI auto-detection is Phase 3.
 
 ---
 
-## ADR-005 — Manifest = YAML authored, **Zod** validated (single source) · ✅ Accepted
+## ADR-005 — Manifest = YAML authored, **Zod** validated (single source) · ⛔ Superseded by ADR-028 (serde + schemars, same single-source principle)
 
 `compositz.yaml` is authored in YAML and validated by a Zod schema that is the single source of
 truth for the runtime validator, the inferred TS types, and the generated JSON Schema
@@ -85,7 +91,7 @@ venv-aware GC or verify command).
 
 ---
 
-## ADR-007 — Desktop = Deno Desktop; CEF backend for now · ✅ Accepted (interim)
+## ADR-007 — Desktop = Deno Desktop; CEF backend for now · ⛔ Superseded by ADR-028 (Tauri 2)
 
 The desktop app is Deno Desktop. We build with the **CEF backend** today, not the default system
 WebView2.
@@ -107,7 +113,7 @@ re-test the WebView2 backend by swapping `--backend webview` on those tasks.
 
 ---
 
-## ADR-008 — UI framework: Fresh 2 (Vite) · ✅ Accepted
+## ADR-008 — UI framework: Fresh 2 (Vite) · ⛔ Superseded by ADR-028 (React SPA)
 
 `packages/ui` is built with **Fresh 2 on the Vite path** (`@fresh/plugin-vite`, Fresh's default;
 `--builder` is the non-Vite opt-out).
@@ -169,7 +175,7 @@ namespace live only in `packages/core/src/brand.ts`.
 
 ---
 
-## ADR-011 — Project-local Deno 2.9 binary (`bin/deno`) · ✅ Accepted
+## ADR-011 — Project-local Deno 2.9 binary (`bin/deno`) · ⛔ Obsolete — the Deno toolchain was retired (ADR-028)
 
 `deno desktop` is a Deno 2.9 feature, but this dev box's devbox-global Deno caps at **2.8.3**. We
 keep an official Deno **2.9.0** linux-x64 binary at `bin/deno` (SHA256-verified, **gitignored**) and
@@ -183,7 +189,7 @@ Deno (2.8.3) stays fine for everything else.
 
 ---
 
-## ADR-012 — `packages/ui` joins the Deno workspace; root `nodeModulesDir: "auto"` · ✅ Accepted (verified)
+## ADR-012 — `packages/ui` joins the Deno workspace; root `nodeModulesDir: "auto"` · ⛔ Obsolete — the Deno workspace was retired (ADR-028)
 
 The Fresh 2 (Vite) UI is a **member of the root Deno workspace**, and the workspace root sets
 `"nodeModulesDir": "auto"`.
@@ -211,7 +217,7 @@ islands. See [roadmap.md Phase 2](roadmap.md#phase-2--management-ui-).
 
 ---
 
-## ADR-013 — Retire `packages/server` (Hono); the UI calls core in-process · ✅ Accepted (reversible)
+## ADR-013 — Retire `packages/server` (Hono); the UI calls core in-process · ✅ Accepted (the in-process principle carried into ADR-028's IPC design)
 
 The Hono backend (`packages/server`, the `/api` + SSE layer) is **removed**. The management UI talks
 to `@compositz/core` **directly from Fresh route handlers** (the engine-online proof from ADR-008 /
@@ -321,7 +327,7 @@ unchanged because the breaking surface is the manifest YAML + internal derivatio
 port). Still open for later increments: live HF/venv cache exercise (no shipped recipe uses them
 yet), Docker Desktop Windows file-sharing for bind sources, and the reference uv entrypoint helper.
 
-## ADR-016 — Desktop app = the Fresh UI packaged by `deno desktop` (framework detection) · ✅ Accepted (verified)
+## ADR-016 — Desktop app = the Fresh UI packaged by `deno desktop` (framework detection) · ⛔ Superseded by ADR-028 (Tauri 2)
 
 The desktop window shows the **Compositz management UI**, which **is** the Fresh app
 (`packages/ui`). `deno desktop` auto-detects the Fresh project and embeds its built `_fresh/` into
@@ -412,7 +418,7 @@ Engine volume endpoints the client lacks today — deferred; `down` + removing t
 / symlink / hardlink entries). Layout reference:
 [recipe-ingestion.md](recipe-ingestion.md#storage--instance-centric).
 
-## ADR-018 — UI component library: Shadcn + Base UI via preact/compat · ✅ Accepted (spike-verified)
+## ADR-018 — UI component library: Shadcn + Base UI via preact/compat · ⛔ Superseded by ADR-028 (real React; Shadcn + Base UI carried over)
 
 The Fresh UI adopts the house standard — Shadcn UI on the **Base UI** primitive layer (not Radix) —
 running on Preact through `preact/compat`. Refines
@@ -833,3 +839,54 @@ openssl, no aws-lc-rs C build. `ingest_github` matches on `ureq::Error::{Status,
 treats a non-2xx as an error, so a 404 is a clean match). The download is verified end-to-end against
 real codeload (opt-in `COMPOSITZ_NET_TESTS=1`). Supersedes the migration plan's `reqwest` line for
 this use; a later need for an async multi-request client (unlikely in core) would reopen the choice.
+
+---
+
+## ADR-028 — Full migration to Tauri 2 + Rust core + React · ✅ Accepted (verified)
+
+Decided 2026-07-03 (user-approved plan: [plans/tauri-migration.md](plans/tauri-migration.md));
+completed and verified 2026-07-05. The Deno/Fresh implementation (`packages/`) was **retired** after
+the Rust stack reached feature parity.
+
+**Context.** The Deno-stack desktop story had structural problems: `deno desktop` was immature (the
+default WebView2 backend crashed at launch — ADR-007 shipped a ~440 MB CEF bundle as a workaround),
+auto-update on Windows (the primary platform) had no path, and the UI reached core over
+localhost+SSE — an open local port. Two research workflows (deno-desktop maturity; a full technical
+validation of the Tauri alternative) fed the decision, including machine-verified spikes: bollard
+against the real engine, a headless-buildable workspace shape, and the vp + shadcn toolchain
+end-to-end.
+
+**Decision.** Rebuild on:
+
+- **`crates/core`** — Rust core over **bollard** (npipe/unix/tcp, rustls/ring, no openssl),
+  replacing the hand-rolled Engine client (ADR-002) and the Zod model (ADR-005; now serde
+  `deny_unknown_fields` + explicit refinements + **schemars** for the JSON Schema).
+- **`crates/cli`** — clap CLI, a single static binary for headless Linux.
+- **`crates/desktop`** — Tauri 2. Request/response = commands returning `Result<T, AppError>`
+  (serde-tagged → TS discriminated union); streams (build/runtime logs, snapshots) =
+  `tauri::ipc::Channel`. **HTTP+SSE removed entirely — no localhost port.** Typed bindings are
+  GENERATED by tauri-specta (pinned trio: tauri-specta =2.0.0-rc.21 / specta =2.0.0-rc.22 /
+  specta-typescript =0.0.9 — rc.23+ overhauled features and MSRV).
+- **`frontend/`** — React 19 SPA (vite-plus, Tailwind v4, Shadcn + **Base UI** — ADR-018's component
+  choice carried over, minus the preact/compat shim), zustand, server-confirmed state (no optimistic
+  updates), a stateful mock backend for browser dev.
+
+**Execution.** Phased port (walking skeleton → core → CLI → desktop backend → React UI → docs +
+retirement), with the Deno behavior tests ported first as the spec of each core module, adversarial
+multi-agent reviews per phase, a real-engine E2E round-trip, and three Windows real-machine
+verification rounds. The one empirical unknown — long-lived streams over the Windows named pipe —
+was killed first, in Phase 0.
+
+**Consequences:**
+
+- ADR-002/005/007/008/011/012/016/018 are superseded/obsolete (marked in place). The domain
+  decisions (ADR-001, 003, 004, 006, 009, 010, 014, 015, 017, 019–027) carried over.
+- Store writes became atomic (temp+fsync+rename) as a structural property of the port — closing the
+  `config.yaml` known issue — and per-instance display names (`meta.name`) landed with the port.
+- Two committed artifacts are generator-owned: `frontend/src/ipc/bindings.ts` (`export_bindings`
+  test) and `spec/compositz.schema.json` (`export_schema` test). Regenerate via `cargo test`; a CI
+  freshness gate is pending.
+- The desktop crate builds locally only inside the nix devShell (`flake.nix`; webkit2gtk), and ships
+  from CI windows-latest. `COMPOSITZ_DOCKER_HOST` (not `DOCKER_HOST`) selects the engine endpoint.
+- The frontend has no unit tests yet (`passWithNoTests`) — a deliberate deferral, revisit when the
+  UI stabilizes.

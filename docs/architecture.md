@@ -2,158 +2,177 @@
 
 ## Overview
 
-Compositz is a single Deno workspace. A TypeScript **core library** owns all Docker and recipe
-logic; thin consumers (CLI and the Fresh UI) sit on top.
+Compositz is a Cargo workspace plus a standalone frontend project. A Rust **core crate**
+owns all Docker and recipe logic; two thin consumers (a CLI and a Tauri desktop backend)
+sit on top, and a React SPA renders the desktop UI over typed IPC.
 
 ```
-┌─────────────┐      ┌────────────────────────────┐
-│   CLI       │      │  ui (Fresh 2 / Vite)        │
-│ (Linux-1st) │      │  + desktop (deno desktop)   │
-└──────┬──────┘      └─────────────┬──────────────┘
-       │                           │  in-process core calls (route handlers)
-       └─────────────┬─────────────┘
-                     ▼
-           ┌───────────────────┐
-           │  @compositz/core  │  Engine client · recipes · operations
-           └─────────┬─────────┘
-                     ▼ transport abstraction
-           ┌───────────────────┐
-           │   Docker Engine    │  unix socket (Linux) / named pipe (Windows)
-           └───────────────────┘
+┌─────────────┐      ┌─────────────────────────────────────┐
+│   CLI       │      │  desktop (Tauri 2)                   │
+│ (crates/cli)│      │  crates/desktop ◀─IPC─▶ frontend/    │
+└──────┬──────┘      └──────────┬──────────────────────────┘
+       │  in-process core calls │
+       └───────────┬────────────┘
+                   ▼
+         ┌──────────────────┐
+         │  compositz-core  │  engine access · recipes · operations · views
+         │  (crates/core)   │
+         └────────┬─────────┘
+                  ▼ bollard
+         ┌──────────────────┐
+         │  Docker Engine    │  named pipe (Windows) / unix socket (Linux) / tcp
+         └──────────────────┘
 ```
 
-Every consumer **calls core directly, in-process**: the CLI from its commands, the UI from its Fresh
-route handlers (server-only), and the desktop is that same Fresh app packaged by `deno desktop`. A
-Hono API server was prototyped then retired ([ADR-013](decisions.md)) — a headless `compositz serve`
-could revive that surface later if needed.
+There is **no local HTTP server and no open localhost port**: the CLI calls core
+in-process, and the desktop UI talks to its Rust backend over Tauri IPC only. (The
+predecessor stack served the UI over localhost + SSE; the migration removed that
+surface — see [ADR-028](decisions.md).)
 
 ## Components
 
-| Package | Responsibility                                                                                                                                                                                                 |
-| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `core`  | Docker Engine API client, transport abstraction, recipe/manifest model, **bundle ingestion + the instance store**, build, high-level operations (install/up/down)                                              |
-| `cli`   | Linux-first command surface and the primary debugging tool                                                                                                                                                     |
-| `ui`    | Management UI — **Fresh 2 (Vite)** ([ADR-008](decisions.md)); calls core in-process from route handlers (no separate API server). Packaged as the **desktop** app by `deno desktop` ([ADR-016](decisions.md)). |
+| Piece            | Responsibility                                                                                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `crates/core`    | Engine access via [bollard](https://github.com/fussybeaver/bollard), recipe/manifest model, bundle + GitHub ingestion, instance store, build, operations (install/up/down/delete/export/duplicate), row/settings view derivation, HTTP readiness probing |
+| `crates/cli`     | `compositz` — Linux-first command surface (clap) and the primary debugging tool                                                                                    |
+| `crates/desktop` | Tauri 2 backend: 15 IPC commands + push streams (`tauri::ipc::Channel`), window shell, plugins (single-instance, dialog, log, window-state)                        |
+| `frontend/`      | React 19 SPA (vite-plus, Tailwind v4, shadcn/Base UI, zustand) — the desktop webview                                                                               |
 
-## Docker transport abstraction
+## Engine access
 
-The seam that keeps Docker-specifics contained (so a future swap to WSL Containers / Podman stays
-cheap). Everything above speaks plain HTTP/1.1 over a `DuplexConn`.
+Core connects with **bollard** (Windows named pipe / unix socket / tcp — no openssl;
+TLS is rustls over ring). The endpoint comes from `COMPOSITZ_DOCKER_HOST` when set
+(deliberately namespaced — it never fights over the ambient `DOCKER_HOST` slot), else
+bollard's platform default. Long-lived streams (logs, events, build output) were the
+one empirical risk on Windows named pipes and were verified live before the stack was
+adopted.
 
-- `DuplexConn` — a minimal bidirectional byte stream (`write` / pull-based `read` / `close`).
-- Endpoints: `unix` (Linux/macOS, native `Deno.connect`), `npipe` (Windows, via `node:net`), `tcp`
-  (fallback). Resolved from `DOCKER_HOST` or a platform default. See
-  [`transport.ts`](../packages/core/src/transport.ts).
-- **Windows named pipe** is reached through Deno's `node:net` compat layer
-  (`net.connect("\\\\.\\pipe\\docker_engine")`). `Deno.connect` does not support Windows named
-  pipes; `node:net` does (since Deno 2.6.2).
-
-On top of the transport, a hand-rolled minimal HTTP/1.1 client
-([`http.ts`](../packages/core/src/http.ts)):
-
-- One fresh connection per request with `Connection: close` — trivial framing, no keep-alive state,
-  and streaming endpoints just stay open until EOF.
-- A single buffered `ByteReader` spans the header/body boundary (so a hijacked log stream never
-  loses its leading bytes).
-- Body framing: `Transfer-Encoding: chunked`, `Content-Length`, or close-delimited.
-- Helpers: `collect`, `readText`, `jsonLines` (newline-delimited JSON for build/pull progress).
-
-`EngineClient` ([`engine/client.ts`](../packages/core/src/engine/client.ts)) is the typed surface:
-`ping` · `version` · `pull` · `create` · `start` · `stop` · `wait` · `remove` · `inspect` · `logs` ·
-`build` · `ps` · `imageExists`. Container logs are demultiplexed from Docker's 8-byte stream framing
-([`engine/logs.ts`](../packages/core/src/engine/logs.ts)); TTY containers stream raw and bypass the
-demuxer.
+Destructive engine calls are structurally scoped to managed objects: containers
+`compositz-<instanceId>` (label `io.compositz.instance`), per-instance images
+`compositz/<instanceId>:<version>`, per-mount volumes `compositz_<instanceId>_<name>`.
+Shared caches (`compositz_uv`, `compositz_hf`, `compositz_cache_*`) are never
+enumerated for deletion.
 
 ## Recipe pipeline
 
-A **recipe** is a directory bundle: `compositz.yaml` (manifest) + `Dockerfile` + assets. It is
-**ingested to create an instance** — the self-contained, deployed unit ([ADR-017](decisions.md)).
-See [recipe-format.md](recipe-format.md) / [recipe-ingestion.md](recipe-ingestion.md).
+A **recipe** is a directory bundle: `compositz.yaml` (manifest) + `Dockerfile` +
+assets. It is **ingested to create an instance** — the self-contained deployed unit
+([ADR-017](decisions.md)). See [recipe-format.md](recipe-format.md) /
+[recipe-ingestion.md](recipe-ingestion.md).
 
 ```
-bundle (tar/tar.gz/dir) ──ingestBundle──▶ extract(secure) + parseManifest(Zod) ─▶ <instanceId>/app/
-                                                                                          │
-Manifest ⊕ instanceId ──toCreateSpec──▶ ContainerCreateSpec ─▶ create+start ◀────────────┤
-Dockerfile + assets ──tarContext(@std/tar)──▶ tar ──▶ POST /build ─▶ compositz/<instanceId> image
+bundle (tar/tar.gz/dir/GitHub) ─ingest_bundle─▶ extract(contained) + parse_manifest ─▶ <instanceId>/app/
+                                                                                             │
+Manifest ⊕ instanceId ⊕ config.yaml ──to_create_spec──▶ create + start ◀────────────────────┤
+Dockerfile + assets ──tar context──▶ POST /build ─▶ compositz/<instanceId> image ◀──────────┘
 ```
 
-- **Manifest** ([`recipe/manifest.ts`](../packages/core/src/recipe/manifest.ts)) is a Zod schema —
-  the single source of truth for the runtime validator, the inferred TS types, and the generated
-  JSON Schema (`deno task schema` → [`spec/`](../spec/compositz.schema.json)).
-- **Ingestion** ([`recipe/ingest.ts`](../packages/core/src/recipe/ingest.ts)) securely extracts a
-  bundle (rejecting absolute / `..` / symlink / hardlink entries), Zod-validates it, mints an
-  `instanceId` (`<appId>-<rand>`), and writes `<instancesDir>/<instanceId>/app/`.
-  `duplicateInstance` copies only the bundle (not the data).
-- **Instance store** ([`recipe/instance.ts`](../packages/core/src/recipe/instance.ts)) loads/lists
-  instances from app-data ([`storage.ts`](../packages/core/src/storage.ts) `instancesDir()`); a
-  **bundle loader** ([`recipe/loader.ts`](../packages/core/src/recipe/loader.ts)) reads the
-  manifest + build context of one bundle into memory.
-- **Build** ([`build.ts`](../packages/core/src/build.ts)) packs the context into a tar and
-  `EngineClient.build` streams the classic `POST /build` log.
-- **Run mapping** ([`recipe/run.ts`](../packages/core/src/recipe/run.ts)) translates the manifest +
-  `instanceId` into a container spec (ports, env, volumes, GPU, labels) and derives the per-instance
-  image tag / container name / web URL.
-- **Operations** ([`recipe/operations.ts`](../packages/core/src/recipe/operations.ts)):
-  `installInstance` (build/pull), `up` (create+start, GPU tri-state), `down` (stop+remove).
+- **Manifest** ([`manifest.rs`](../crates/core/src/recipe/manifest.rs)): serde structs
+  (`deny_unknown_fields`) + explicit cross-field validation; the same types derive the
+  JSON Schema committed at [`spec/compositz.schema.json`](../spec/compositz.schema.json)
+  (regenerated by core's `export_schema` test).
+- **Ingestion** ([`ingest.rs`](../crates/core/src/recipe/ingest.rs)): streams a tar /
+  tar.gz (flate2 `MultiGzDecoder`) to disk with containment (absolute / `..` / symlink /
+  hardlink entries rejected), validates the manifest, mints an `instanceId`
+  (`<appId>-<rand>`), and **atomically publishes** the assembled directory (staging
+  tempdir → single rename). `duplicate_instance` copies only the definition, never data.
+- **GitHub sourcing** ([`github.rs`](../crates/core/src/recipe/github.rs)):
+  `owner/repo[/subdir][@ref]` → codeload tarball over HTTPS (ureq, rustls/ring —
+  [ADR-027](decisions.md)); no `git` binary, no GitHub API, public repos only.
+- **Instance store** ([`instance.rs`](../crates/core/src/recipe/instance.rs)): loads /
+  lists instances from app-data ([`storage.rs`](../crates/core/src/storage.rs)); every
+  file it writes (`meta.json`, `config.yaml`, `.launched.yaml`) is an atomic
+  same-directory temp+fsync+rename.
+- **Run mapping** ([`run.rs`](../crates/core/src/recipe/run.rs)): manifest ⊕ override →
+  container spec (ports, env, mounts, GPU, labels). Managed cache paths are injected as
+  create-time `Env` (they override the image's own `ENV` — [ADR-024](decisions.md)).
+- **Operations** ([`operations.rs`](../crates/core/src/recipe/operations.rs)):
+  `install_instance` (build/pull, streamed log), `up` (create+start, GPU tri-state,
+  port deconflict), `down` (stop+remove), delete helpers (image / data volumes),
+  `export_mount` (tar via a never-started helper container + the archive API).
+- **Views** ([`view.rs`](../crates/core/src/view.rs) /
+  [`probe.rs`](../crates/core/src/probe.rs)): pure derivations joining store instances
+  with live engine state into UI rows; readiness is a real **HTTP probe** against the
+  published web port (a bare TCP connect is meaningless — docker-proxy accepts
+  immediately; [ADR-026](decisions.md)).
+
+## Desktop IPC
+
+The UI ⇄ backend contract is **typed end-to-end**:
+
+- Request/response = Tauri **commands** returning `Result<T, AppError>`; `AppError` is a
+  serde-tagged enum that lands in TypeScript as a discriminated union.
+- Streams (install/build log, runtime logs, instance snapshots) =
+  **`tauri::ipc::Channel`** pushes. Subscriptions register an `AbortHandle`; explicit
+  `unsubscribe`, a failed send, and window destruction all tear the pump down.
+- The snapshot pump is a single `select!` loop per subscription (event-driven from
+  Docker `/events`, with warming re-probes and a safety refresh) — one in-flight
+  snapshot at a time, so a stale push can never overwrite a newer one.
+- [`bindings.ts`](../frontend/src/ipc/bindings.ts) is **generated** from the Rust types
+  by tauri-specta (the desktop crate's `export_bindings` test) — no hand-maintained
+  duplicate type definitions.
+
+The frontend crosses one seam ([`client.ts`](../frontend/src/ipc/client.ts)); under
+plain `vp dev` in a browser a stateful mock backend is injected instead, so the whole
+UI is drivable without Rust or Docker. State is a zustand store with **no optimistic
+updates** — rows re-derive from server-confirmed snapshots and refetches only.
 
 ## Naming & branding
 
-All externally-visible names live in [`brand.ts`](../packages/core/src/brand.ts) and key off the
-**instance id** ([ADR-017](decisions.md)): image tag `compositz/<instanceId>:<version>` (a `build`
-recipe; `image` recipes use the referenced image), container `compositz-<instanceId>`, volume
-`compositz_<instanceId>_<name>`, labels `io.compositz.{instance,recipe,managed,version}` (`recipe`
-carries the app id). Tentative — change here only.
+All externally-visible names live in [`brand.rs`](../crates/core/src/brand.rs) and key
+off the **instance id** ([ADR-017](decisions.md)): image `compositz/<instanceId>:<version>`
+(a `build` recipe; `image` recipes run the referenced image as-is), container
+`compositz-<instanceId>`, volume `compositz_<instanceId>_<name>`, labels
+`io.compositz.{instance,recipe,managed,version}` (`recipe` carries the app id).
+"compositz" is a working title — change it there only.
 
 ## GPU model
 
 GPU is **default-on (opt-out)**. The manifest declares `gpu: required | preferred | none`.
 
-- `required` — always attach a GPU; fail if unavailable.
-- `preferred` — try with GPU, **transparently fall back to CPU** on failure.
+- `required` — always attach a GPU; fail to start if unavailable.
+- `preferred` — try with GPU, fall back to CPU on failure (`up` reports `used_gpu`).
 - `none` — never attach.
 
-Attachment uses `HostConfig.DeviceRequests`. The canonical `--gpus all` shape is
-`{ Driver: "", Count: -1, Capabilities: [["gpu"]] }` (empty driver; the daemon picks). A Linux CDI
-variant (`{ Driver: "cdi", DeviceIDs: ["nvidia.com/gpu=all"] }`) is provided for Docker 28.3+ on
-Linux. Runtime detection (nvidia vs CDI) is a Phase 3 item.
+Attachment uses `HostConfig.DeviceRequests` with the canonical `--gpus all` shape
+(`{ Driver: "", Count: -1, Capabilities: [["gpu"]] }`). Runtime detection (nvidia vs
+CDI) is a Phase 3 item ([roadmap](roadmap.md)).
 
 ## Isolation & threat model
 
-- The **app** runs in its own container — that is the isolation boundary, and the whole point vs
-  Pinokio.
-- The **manager** (the CLI and the Fresh UI / desktop) is **trusted** and runs with broad
-  permissions. On Windows the `node:net` named-pipe transport in fact requires `--allow-all` (a Deno
-  constraint); this is consistent with the model — the manager legitimately needs to spawn Docker,
-  read/write files, and use the network.
-- Per-recipe **strict isolation** (copy-mode caches, per-app volumes) is a deferred opt-out for
-  troubleshooting (Phase 3).
+- The **app** runs in its own container — that is the isolation boundary, and the whole
+  point vs Pinokio (which runs apps directly on the host).
+- The **manager** (CLI, desktop backend) is **trusted** and holds broad OS + Docker
+  rights; recipes are **trust-gated at import** ([ADR-020](decisions.md)) because a
+  Dockerfile build executes arbitrary code.
+- No localhost port is opened (IPC only), and `open_service_url` refuses anything but
+  http(s) on loopback.
+- Shared caches are a cooperative namespace, not a security boundary — see
+  [limitations.md](limitations.md).
 
 ## Python AI apps: the uv runtime model
 
-For Python apps (most local-AI tools), dependency resolution uses **uv** with a verified model (see
-the `compositz-uv-model` design note):
+For Python apps (most local-AI tools), dependency resolution uses **uv**
+([ADR-006](decisions.md), [ADR-024](decisions.md)):
 
-- Slim image; resolve at **container startup** (`uv sync --frozen`), not baked into the image.
-- `UV_LINK_MODE=hardlink`, with the uv cache and per-app venvs **co-located on one persistent
-  volume** so hardlinks dedup wheels across apps and survive `uv cache clean`.
-- Repair is an explicit fallback (`uv sync --reinstall` only on a guarded import check).
-- Multi-daemon containers use **s6-overlay v3** (real PID1, reaping, service deps) rather than
-  compose — WSL-Containers compose support is unreliable, hence the single-container rule.
+- Slim image; resolve at **container startup** (`uv sync --frozen`), not baked into the
+  image.
+- `UV_LINK_MODE=hardlink`, with the uv cache and per-instance venvs **co-located on one
+  shared volume** (`compositz_uv`) so hardlinks dedup wheels across apps.
+- The `venv` preset injects `VIRTUAL_ENV` + `UV_PROJECT_ENVIRONMENT` (same path) +
+  `UV_CACHE_DIR` + `UV_PYTHON_INSTALL_DIR`; see [recipe-format.md](recipe-format.md).
+- Multi-daemon containers use **s6-overlay v3** inside one image rather than compose
+  ([ADR-001](decisions.md)).
 
-## Verified foundations (empirical, on the dev machine 2026-06-28)
+## Empirical grounding
 
-These were proven against a live Docker Desktop (Engine API 1.54), not just designed:
+The load-bearing unknowns were verified on real machines, not just designed:
 
-- **Windows npipe → Engine HTTP** via `node:net` works (`/_ping` → 200). The previously feared
-  Windows blocker is gone. Requires `--allow-all`.
-- **Full container round-trip** (pull → create → start → streamed multiplexed logs → wait → remove)
-  works through the hand-rolled client.
-- **`POST /build`** with an `@std/tar` context returns the **classic builder** stream (`{stream}` +
-  terminal `{aux.ID}`), not BuildKit — the parser matches.
-- **Deno Desktop**: `deno desktop` **auto-detects the Fresh app** (`packages/ui`) and embeds its
-  built `_fresh/` into one native binary ([ADR-016](decisions.md)); core's npipe transport works
-  _inside_ the desktop runtime; `npm:zod` bundles in. The default **WebView2 backend crashes**
-  (`0xC0000409`, a laufey 0.4.0 ↔ WebView2 149 skew, fixed upstream in
-  [denoland/deno#35566](https://github.com/denoland/deno/pull/35566), canary-only); the **CEF
-  backend renders** today (verified: builds `dist/compositz.AppImage`, and the PoC read back the
-  served page `document.title`).
+- **Windows named-pipe streaming** — long-lived `/events` + log streams through bollard
+  over npipe, verified on the primary Windows target (the last technical risk of the
+  migration).
+- **Real-engine E2E** — an env-gated integration suite (`COMPOSITZ_DOCKER_HOST`) runs
+  the full import → build → up → probe → down → delete round-trip against a live
+  engine, with exact-id teardown.
+- **Desktop app** — installed and exercised on Windows across three verification
+  rounds (streams, dialogs, drag-drop import, settings/restart, export).

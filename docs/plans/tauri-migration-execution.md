@@ -1,5 +1,8 @@
 # Tauri 移行 実行計画 — Phase 1〜5 詳細（Opus 単独遂行版）
 
+> **✅ 完遂 (2026-07-05)**: 全 Phase 完了・Deno ツリー退役済み。歴史的記録として保存
+> （恒久記録: [ADR-028](../decisions.md)）。
+
 親計画: [tauri-migration.md](tauri-migration.md)（承認済み）。本書はその実行詳細で、 **Fable
 不在・Opus が主導する前提**の手順書。実装セッションは冒頭で memory と本書を読むこと。
 

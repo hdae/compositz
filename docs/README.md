@@ -1,67 +1,63 @@
-# Compositz — Plan & Design Docs
+# Compositz — Design Docs
 
-> **Working title.** `compositz` is a tentative name; the project name, manifest filename
-> (`compositz.yaml`), and Docker label namespace (`io.compositz.*`) may change. They are centralized
-> in [`packages/core/src/brand.ts`](../packages/core/src/brand.ts) so a rename is a one-file edit.
+> **Working title.** `compositz` is a tentative name; the project name, manifest
+> filename (`compositz.yaml`), and Docker label namespace (`io.compositz.*`) may change.
+> They are centralized in [`crates/core/src/brand.rs`](../crates/core/src/brand.rs) so a
+> rename is a one-file edit.
 
-Compositz runs each local-AI app as **one isolated Docker container** — combining Pinokio's
-one-click install UX with real container isolation and Dockge-style management. **Windows desktop
-app + Linux CLI.**
+Compositz runs each local-AI app as **one isolated Docker container** — combining
+Pinokio's one-click install UX with real container isolation and Dockge-style
+management. **Windows desktop app (Tauri 2) + Linux CLI.**
 
-The differentiator vs Pinokio: Pinokio runs apps uncontainerized, directly on the host (a security
-risk). Compositz puts every app in its own container, so the isolation boundary is structural. The
-_manager_ is trusted; the _apps_ are sandboxed.
+The differentiator vs Pinokio: Pinokio runs apps uncontainerized, directly on the host
+(a security risk). Compositz puts every app in its own container, so the isolation
+boundary is structural. The _manager_ is trusted; the _apps_ are sandboxed.
 
 ## Documents
 
-| Doc                                        | What's in it                                                                                           |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| [architecture.md](architecture.md)         | Components, the Docker transport, the recipe pipeline, GPU, the uv runtime model, verified foundations |
-| [roadmap.md](roadmap.md)                   | Phase 0–4 with current status and concrete next steps                                                  |
-| [decisions.md](decisions.md)               | Decision log (ADR-style) with rationale and evidence                                                   |
-| [recipe-format.md](recipe-format.md)       | The `compositz.yaml` manifest spec + authoring guide                                                   |
-| [recipe-ingestion.md](recipe-ingestion.md) | Recipe sourcing (tar/GitHub), instance-centric storage, launch config + increment plan                 |
-| [known-issues.md](known-issues.md)         | Open / being-worked problems                                                                           |
-| [limitations.md](limitations.md)           | Intentional by-design constraints (not bugs)                                                           |
+| Doc                                        | What's in it                                                                                 |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| [architecture.md](architecture.md)         | Components, engine access, the recipe pipeline, desktop IPC, GPU, the uv runtime model      |
+| [roadmap.md](roadmap.md)                   | Phases with current status and concrete next steps                                          |
+| [decisions.md](decisions.md)               | Decision log (ADR-style) with rationale and evidence                                        |
+| [recipe-format.md](recipe-format.md)       | The `compositz.yaml` manifest spec + authoring guide                                        |
+| [recipe-ingestion.md](recipe-ingestion.md) | Recipe sourcing (tar/GitHub), instance-centric storage, launch config                       |
+| [known-issues.md](known-issues.md)         | Open / being-worked problems                                                                 |
+| [limitations.md](limitations.md)           | Intentional by-design constraints (not bugs)                                                 |
+| [plans/](plans/tauri-migration.md)         | The (completed) Tauri migration plan — historical record                                     |
 
-## Status at a glance (2026-06-30)
+## Status at a glance (2026-07-05)
 
-| Component       | Status                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/core` | ✅ Implemented + tested. Docker Engine client, transports, recipe model (Zod), **bundle + GitHub ingestion + instance store** (instance-centric, [ADR-017](decisions.md)), **per-instance override** (`config.yaml`, [ADR-022](decisions.md)), build, operations                                                                                                                                                                                    |
-| `packages/cli`  | ✅ `doctor` / `import` / `ls` / `duplicate` / `install` / `up` / `down` / `rm` / `ps` / `hello` — verified against the live engine                                                                                                                                                                                                                                                                                                                  |
-| `packages/ui`   | 🔄 **Fresh 2 (Vite): instance list + live SSE status + up/down + install-with-build-log + recipe-bundle import** — all via in-process `@compositz/core` from route handlers (see [ADR-008](decisions.md#adr-008--ui-framework-fresh-2-vite--accepted) / [ADR-013](decisions.md#adr-013--retire-packagesserver-hono-the-ui-calls-core-in-process--accepted-reversible)). Packaged as the **desktop** app by `deno desktop` ([ADR-016](decisions.md)) |
+| Component        | Status                                                                                                                                        |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `crates/core`    | ✅ Implemented + tested. Engine access (bollard), recipe model, bundle + GitHub ingestion, instance store, per-instance override, operations, views |
+| `crates/cli`     | ✅ `doctor` / `hello` / `import` / `ls` / `duplicate` / `install` / `up` / `down` / `rm` / `ps` / `export` — verified against the live engine |
+| `crates/desktop` | ✅ Tauri 2 backend: 15 typed IPC commands + Channel push streams (snapshots, build/runtime logs), verified on Windows                          |
+| `frontend/`      | ✅ React dashboard: import (file / drag-drop / GitHub) → trust gate → install (build log) → up/down → tabs (logs / services / settings) → delete/duplicate/export |
 
-| Phase                                                                                    | Status                                                                                                                                                                                                                                                                                                            |
-| ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **0 — Foundations PoC** (Docker control on Win+Linux; Deno Desktop window)               | ✅ Done, empirically verified                                                                                                                                                                                                                                                                                     |
-| **1 — Recipe → build → run**                                                             | ✅ Core flow done, verified                                                                                                                                                                                                                                                                                       |
-| **2 — Management UI**                                                                    | 🔄 In progress — `packages/ui` (Fresh 2/Vite): instance list + live status + up/down + install build-log + **RI-2 ingestion** + **RI-3 GitHub** + **RI-4 per-instance override** (Settings tab + `config.yaml` applied at `up`, ADR-022) done — RI-1..4 complete. Deferred: mode selector. Hono retired (ADR-013) |
-| **3 — Hardening** (shared cache, volumes/GC, GPU detection, s6 multi-daemon, versioning) | ⏳ Planned                                                                                                                                                                                                                                                                                                        |
-| **4 — Packaging & distribution** (signing, update, catalog, recipe tooling)              | ⏳ Planned                                                                                                                                                                                                                                                                                                        |
+The Deno/Fresh predecessor implementation was retired after parity was verified
+([ADR-028](decisions.md)); its behavior tests were ported as the spec of the Rust core.
 
 ## Quick start
 
 ```sh
-deno task doctor                       # ping the engine, print versions
-deno task hello                        # full container round-trip
-deno task cli import recipes/hello-web # ingest a bundle → instance "hello-web-<rand>"
-deno task cli up hello-web-<rand>      # build + run it; prints http://localhost:8090/
-deno task ui                           # management UI (instance list + import)
-deno task desktop                      # build the CEF desktop app bundle → dist/compositz/
+cargo run -q -p compositz-cli -- doctor           # ping the engine, print versions
+cargo run -q -p compositz-cli -- import recipes/hello-web
+cargo run -q -p compositz-cli -- up hello-web-<rand>   # build + run; prints the web URL
+pnpm -C frontend dev                               # UI dev against the mock backend
 ```
 
-Requires **Deno ≥ 2.9** and **Docker** (Engine API ≥ 1.43; on Windows, Docker Desktop with the WSL2
-Linux engine).
+Requires **Rust stable** and **Docker** (Engine API ≥ 1.43; on Windows, Docker Desktop
+with the WSL2 engine). See the [root README](../README.md) for the full command tour.
 
 ## Repository layout
 
 ```
-packages/core/      TypeScript library: Engine API client, transports, recipe model, ingestion + instance store, operations
-packages/cli/       Linux-first CLI (also the debugging surface)
-packages/ui/        Management UI (Fresh 2 / Vite) — in-process @compositz/core; packaged as the desktop app by `deno desktop`
+crates/core/        Rust library: engine access, recipe model, ingestion + instance store, operations, views
+crates/cli/         `compositz` CLI (clap) — Linux-first, also the debugging surface
+crates/desktop/     Tauri 2 desktop backend
+frontend/           React SPA (vite-plus) — the desktop webview; browser-dev via a mock backend
 recipes/            Sample recipe bundles (compositz.yaml + Dockerfile + assets) to import
-spec/               Generated JSON Schema for the manifest
-scripts/            Dev scripts (e.g. schema generation)
+spec/               JSON Schema for the manifest (generated by core's export_schema test)
 docs/               This documentation
 ```

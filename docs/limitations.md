@@ -20,10 +20,13 @@ What genuinely remains out of reach:
 - **Env-deaf apps:** an app that hard-codes paths in code/config ignores the injected env entirely.
   Declare a plain per-instance `mounts:` volume for those; a `target:` graft (mount the shared cache
   volume at the app's own path) is sketched in ADR-024 but not implemented.
-- **Precedence (by design):** preset vars > user per-instance env override (Settings tab) > manifest
-  `env` default > image `ENV` ([`run.ts`](../packages/core/src/recipe/run.ts) builds the env map in
-  that order). NOTE: the Settings tab **cannot** override a preset-injected variable — opting out of
-  a preset means editing the recipe.
+- **Precedence (by design):** preset vars > user per-instance env override (Settings
+  tab) / manifest `env` default > image `ENV`
+  ([`run.rs`](../crates/core/src/recipe/run.rs) builds the env map in that order).
+  Two consequences: the Settings tab **cannot** override a preset-injected variable
+  (opting out of a preset means editing the recipe), and a user override only takes
+  effect for a variable the manifest **declares** — an override keyed to an undeclared
+  name is never emitted.
 
 ## Shared caches are a cooperative namespace, not an isolation boundary
 
@@ -43,15 +46,17 @@ What genuinely remains out of reach:
 ## Bundle extraction has no size cap (a decompression bomb can fill the disk)
 
 - **What:** `ingest_bundle` streams every archive entry to disk with NO size cap
-  ([`ingest.ts`](../packages/core/src/recipe/ingest.ts) / `crates/core/src/recipe/ingest.rs`) — a
-  gzip bomb or a petabyte-sized tar entry fills the local disk. Extraction is otherwise fully
-  contained (no path escape / no link planting — proven by a differential fuzz in Phase 1e), so the
-  worst case is a **recoverable local disk-fill**, never a traversal.
-- **Threat model (accepted, but narrowing):** the module doc declares resource-exhaustion bombs out
-  of scope because recipes were first-party and trust-gated at import (ADR-020). **RI-3 GitHub
-  ingestion widened this** — `import github:some/repo` streams an *untrusted third party's* tarball
-  through the same uncapped path, so a malicious repo is a disk-fill vector against the user's
-  machine. The same exposure exists in the Deno original (parity), so the Rust port did not change it.
+  ([`ingest.rs`](../crates/core/src/recipe/ingest.rs)) — a gzip bomb or a
+  petabyte-sized tar entry fills the local disk. Extraction is otherwise fully
+  contained (no path escape / no link planting — adversarially reviewed and
+  differentially fuzzed), so the worst case is a **recoverable local disk-fill**, never
+  a traversal.
+- **Threat model (accepted, but narrowing):** the module doc declares
+  resource-exhaustion bombs out of scope because recipes were first-party and
+  trust-gated at import (ADR-020). **GitHub ingestion widened this** —
+  `import github:some/repo` streams an *untrusted third party's* tarball through the
+  same uncapped path, so a malicious repo is a disk-fill vector against the user's
+  machine.
 - **Fix direction (deferred, needs a decision):** a configurable extracted-size / entry-count cap
   that aborts and cleans the staging dir, surfaced as a clear error. Parallels the shared-cache
   "revisit before third-party recipes" caveat above; both are the same third-party-trust theme.

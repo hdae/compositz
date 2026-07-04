@@ -1,12 +1,13 @@
 # Recipe ingestion, storage & launch configuration
 
-> Status: **manifest v2 + storage + effective-spec are implemented & verified (RI-1 done)** —
-> decisions in
-> [ADR-014](decisions.md#adr-014--recipe-sourcing-3-tier-storage--manifest-v2--accepted) /
-> [ADR-015](decisions.md#adr-015--manifest-v2-core-structured-mounts--createmountpoint-managed-cache-layout--accepted-verified),
-> live manifest in [recipe-format.md](recipe-format.md). **RI-1..4 are done** — manifest v2,
-> ingestion (tar/dir + GitHub), and the per-instance override (`config.yaml` + Settings tab). This
-> doc holds their design plus the increment plan.
+> Status: **fully implemented & verified** — manifest v2, ingestion (tar/dir + GitHub),
+> instance-centric storage, and the per-instance override (`config.yaml` + Settings tab).
+> Decisions in [ADR-014](decisions.md#adr-014--recipe-sourcing-3-tier-storage--manifest-v2--accepted) /
+> [ADR-015](decisions.md#adr-015--manifest-v2-core-structured-mounts--createmountpoint-managed-cache-layout--accepted-verified) /
+> [ADR-017](decisions.md) / [ADR-021](decisions.md) / [ADR-022](decisions.md); the live
+> field reference is [recipe-format.md](recipe-format.md). The implementation lives in
+> [`crates/core/src/recipe/`](../crates/core/src/recipe/). This doc holds the design;
+> the increment plan at the bottom is a historical record of how it landed.
 
 ## Guiding principle — every field maps to a Docker concept
 
@@ -73,17 +74,18 @@ is imported to **create an instance** (`<app-data>/instances/<instanceId>/app/`)
 - **tar / tar.gz bundle** — the recipe dir packed; uploaded/dropped in the UI. (`.zip` is out of
   scope; GitHub codeload is `.tar.gz` anyway.)
 - **local directory** — a recipe dir on disk (dev seed: `compositz import recipes/hello-web`).
-- **GitHub** (RI-3 ✅) — `owner/repo[/subdir][@ref]` (subdir before ref; an optional `github:`
+- **GitHub** — `owner/repo[/subdir][@ref]` (subdir before ref; an optional `github:`
   prefix; `@ref` omitted ⇒ default branch): download the codeload tarball
   (`codeload.github.com/<owner>/<repo>/tar.gz/<ref|HEAD>`) over HTTPS, extract, validate, create.
-  **No `git` binary, no GitHub API** — plain HTTPS + `@std/tar`. Public repos only. CLI:
-  `compositz import github:owner/repo[/subdir][@ref]`; in the UI, a "From GitHub" modal feeds the
-  same trust-gate flow. See [ADR-021](decisions.md).
+  **No `git` binary, no GitHub API** — plain HTTPS ([ADR-027](decisions.md)) + streamed tar
+  extraction. Public repos only. CLI: `compositz import github:owner/repo[/subdir][@ref]`; in the
+  UI, a "From GitHub" dialog feeds the same trust-gate flow. See [ADR-021](decisions.md).
 
-Ingest = extract (security-hardened: reject absolute / `..` / symlink / hardlink entries) →
-**Zod-validate** → mint `instanceId` → store under `instances/<instanceId>/`. To run a **second
-copy**, re-import (or `duplicate`, which copies only `app/`, never persistent data). Building the
-image is the separate **Install** step.
+Ingest = extract (contained: reject absolute / `..` / symlink / hardlink entries) →
+**validate the manifest** → mint `instanceId` → **atomically publish** under
+`instances/<instanceId>/` (staging dir → single rename, so a failed import never leaves a
+half-instance). To run a **second copy**, re-import (or `duplicate`, which copies only `app/`,
+never persistent data). Building the image is the separate **Install** step.
 
 ## Manifest v2 (implemented in RI-1)
 
@@ -185,29 +187,30 @@ remaps, env values, and per-mount `placement` (bind/volume). At `up` the effecti
 merges it, so the CLI and UI both honor it without wiring; see [ADR-022](decisions.md)).
 
 The override schema is a strict **subset** of the in-memory `LaunchConfig`:
-`{ hostPorts, env,
-placement }`, each keyed by the manifest `name`, Zod-validated. **`dataRoot` is
-intentionally not persisted** here — it is an install-wide concern (one data-root), deferred to a
-future `settings.yaml`; `up` supplies the default. Bind host-paths stay **derived** from the mount
-name (`<data-root>/<instanceId>/<name>`) — placement is the only mount override (no arbitrary host
-path).
+`{ hostPorts, env, placement }`, each keyed by the manifest `name`, validated against
+the instance's definition on save. **`dataRoot` is intentionally not persisted** here —
+it is an install-wide concern (one data-root), deferred to a future `settings.yaml`;
+`up` supplies the default. Bind host-paths stay **derived** from the mount name
+(`<data-root>/<instanceId>/<name>`) — placement is the only mount override (no
+arbitrary host path).
 
-**UI (RI-4):** a **Settings** tab on each instance edits these three; it loads on open, flags a host
-port already used by another instance's DEFINITION and suggests a free one (client-reactive — it
-recomputes as you type and catches stopped instances; ADR-023), requires `required` env values
-before Save, and **PUTs only the values that differ** from the defaults (a minimal `config.yaml`).
-Saving is **server-confirmed**; the override applies on the **next start** — after a save while
-running, a **Restart now** button (down → up) applies it. A web service's displayed port follows
+**UI:** a **Settings** tab on each instance edits these three; it loads on open, flags
+a host port already used by another instance's DEFINITION and suggests a free one
+(client-reactive — it recomputes as you type and catches stopped instances; ADR-023),
+requires `required` env values before Save, and **saves only the values that differ**
+from the defaults (a minimal `config.yaml`). Saving is **server-confirmed**; the
+override applies on the **next start** — after a save while running, a **Restart now**
+button (down → up) applies it. A web service's displayed port follows
 **live ▷ override ▷ manifest** (ADR-023).
 
-## Increment plan
+## Increment plan (historical — all delivered)
 
 | Inc.     | Scope                                                                                                                                                                                                                                                              |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **RT**   | ✅ Docker `/events` real-time status (done & verified).                                                                                                                                                                                                            |
-| **RI-1** | ✅ **Manifest v2** (Zod + recipe-format) + storage layout + data-root + bind/volume mounts (structured `Mounts` + `CreateMountpoint`) + cache provisioning & env injection + effective-spec derivation (manifest ⊕ launch override) in core. Done & live-verified. |
-| **RI-2** | **Instance store + ingestion** (tar/tar.gz/dir → extract → validate → mint `instanceId` → create instance) + instanceId-threaded naming + `duplicate`. See [ADR-017](decisions.md).                                                                                |
-| **RI-3** | ✅ **GitHub ingestion** (`owner/repo[/subdir][@ref]` → codeload tarball → create instance; no `git`/API, public-only) — core + CLI + UI ("From GitHub" modal → trust gate). See [ADR-021](decisions.md).                                                           |
+| **RT**   | ✅ Docker `/events` real-time status.                                                                                                                                                                                                                              |
+| **RI-1** | ✅ **Manifest v2** + storage layout + data-root + bind/volume mounts (structured `Mounts` + `CreateMountpoint`) + cache provisioning & env injection + effective-spec derivation (manifest ⊕ launch override) in core.                                             |
+| **RI-2** | ✅ **Instance store + ingestion** (tar/tar.gz/dir → extract → validate → mint `instanceId` → create instance) + instanceId-threaded naming + `duplicate`. See [ADR-017](decisions.md).                                                                             |
+| **RI-3** | ✅ **GitHub ingestion** (`owner/repo[/subdir][@ref]` → codeload tarball → create instance; no `git`/API, public-only) — core + CLI + UI ("From GitHub" dialog → trust gate). See [ADR-021](decisions.md).                                                          |
 | **RI-4** | ✅ Per-instance **override** persistence (`config.yaml`, applied at `up`) + **Settings tab** UI (host-port remap w/ free-port suggest, env values, placement). Multi-web "Open UI" done via Services tab. See [ADR-022](decisions.md). dataRoot deferred.          |
 
 ## Open details
@@ -217,7 +220,7 @@ Resolved in RI-1 (now in [recipe-format.md](recipe-format.md) /
 the injected-env list per cache type, the in-container `/compositz` layout, per-OS default
 data-root + app-data dir, and bind-source creation (daemon-side `CreateMountpoint`).
 
-Still open for later increments:
+Still open:
 
 - **Windows bind on Docker Desktop**: `CreateMountpoint` handles source creation, but Docker Desktop
   file-sharing for the data-root drive still needs first-run handling (packaging).
