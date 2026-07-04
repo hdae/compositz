@@ -9,8 +9,8 @@ export const commands = {
 /**
  * The initial dashboard: every stored instance as a row, joined with a live engine
  * read (running + installed). When the engine is unreachable the rows still list
- * (installed unknown, nothing running) — parity with the Deno index render. The
- * live/probed updates arrive over `subscribe_instances`.
+ * (installed unknown, nothing running). The live/probed updates arrive over
+ * `subscribe_instances`.
  */
 async listInstanceRows() : Promise<Result<InstanceRow[], AppError>> {
     try {
@@ -23,7 +23,7 @@ async listInstanceRows() : Promise<Result<InstanceRow[], AppError>> {
 /**
  * Bring an instance up: build the image if it is missing (drained silently — the
  * explicit build-with-log path is `instance_install`), create + start, and return
- * the published web URL. Mirrors the Deno `up` action.
+ * the published web URL.
  */
 async instanceUp(id: string) : Promise<Result<UpView, AppError>> {
     try {
@@ -34,8 +34,8 @@ async instanceUp(id: string) : Promise<Result<UpView, AppError>> {
 }
 },
 /**
- * Stop + remove an instance's container. The id is validated at the boundary (★ F5)
- * before it reaches the engine op.
+ * Stop + remove an instance's container. The id is validated at the boundary before
+ * it reaches the engine op (every command that accepts an instance id MUST do so).
  */
 async instanceDown(id: string) : Promise<Result<null, AppError>> {
     try {
@@ -49,7 +49,7 @@ async instanceDown(id: string) : Promise<Result<null, AppError>> {
  * Stop + remove the container, the per-instance built image, and (by default) the
  * per-instance DATA VOLUMES; then the definition. A load of the (best-effort)
  * definition precedes removal so the image tag + volume names are known; a missing
- * definition still gets its dir removed. Mirrors the Deno `delete` action.
+ * definition still gets its dir removed.
  */
 async instanceDelete(id: string, opts: DeleteOpts) : Promise<Result<DeleteView, AppError>> {
     try {
@@ -62,7 +62,7 @@ async instanceDelete(id: string, opts: DeleteOpts) : Promise<Result<DeleteView, 
 /**
  * Derive a fresh instance from an existing one (copies the bundle + Settings
  * override minus ports; data starts empty), deconflict its DEFINED ports, and
- * return the finished view + bumps. Mirrors the Deno `duplicate` action.
+ * return the finished view + bumps.
  */
 async instanceDuplicate(id: string) : Promise<Result<ImportView, AppError>> {
     try {
@@ -75,7 +75,7 @@ async instanceDuplicate(id: string) : Promise<Result<ImportView, AppError>> {
 /**
  * The Settings view-model for an instance: each manifest port/env/mount with its
  * author default + saved override, plus the host ports DEFINED by OTHER instances
- * and whether a restart is needed. Mirrors the Deno config `GET`.
+ * and whether a restart is needed.
  */
 async getConfig(id: string) : Promise<Result<InstanceSettings, AppError>> {
     try {
@@ -87,8 +87,7 @@ async getConfig(id: string) : Promise<Result<InstanceSettings, AppError>> {
 },
 /**
  * Validate an override (value ranges + keys must name manifest items) and persist
- * it to `config.yaml`; it takes effect on the next `up`. Mirrors the Deno config
- * `PUT`.
+ * it to `config.yaml`; it takes effect on the next `up`.
  */
 async setConfig(id: string, over: Override) : Promise<Result<SetConfigView, AppError>> {
     try {
@@ -101,8 +100,7 @@ async setConfig(id: string, over: Override) : Promise<Result<SetConfigView, AppE
 /**
  * Import a recipe bundle from a local path (a tar / tar.gz archive file or a
  * directory) into a new instance, then deconflict its host ports. The frontend
- * picks the path via the dialog plugin. Mirrors the Deno file-upload import
- * (path-based here rather than a streamed body).
+ * picks the path via the dialog plugin.
  */
 async importRecipe(source: string) : Promise<Result<ImportView, AppError>> {
     try {
@@ -115,7 +113,6 @@ async importRecipe(source: string) : Promise<Result<ImportView, AppError>> {
 /**
  * Import a recipe from a GitHub source spec (`owner/repo[/subdir][@ref]`, optional
  * `github:` prefix), download + ingest it, then deconflict. Public repos only.
- * Mirrors the Deno GitHub import.
  */
 async importGithub(spec: string) : Promise<Result<ImportView, AppError>> {
     try {
@@ -128,7 +125,7 @@ async importGithub(spec: string) : Promise<Result<ImportView, AppError>> {
 /**
  * Export one persisted mount's data as a tar written to `dest` (the frontend picks
  * `dest` via the dialog plugin). Works on a stopped instance (a throwaway helper
- * reads the data). Mirrors the Deno export route + CLI `export`.
+ * reads the data).
  */
 async exportMount(id: string, mount: string, dest: string) : Promise<Result<null, AppError>> {
     try {
@@ -142,7 +139,7 @@ async exportMount(id: string, mount: string, dest: string) : Promise<Result<null
  * Open a LOCAL web-service URL in the OS default browser via the opener plugin.
  * Locked down: only http(s) localhost URLs, passed as a direct arg (the plugin
  * never shells out), so neither command injection nor an arbitrary opener
- * (file://, app protocols, remote hosts) is possible. Mirrors the Deno `open`.
+ * (file://, app protocols, remote hosts) is possible.
  */
 async openServiceUrl(url: string) : Promise<Result<null, AppError>> {
     try {
@@ -178,7 +175,7 @@ async streamLogs(id: string, onLog: TAURI_CHANNEL<LogEvent>) : Promise<Result<nu
 },
 /**
  * Build (or pull) an instance's image, streaming the build log. Returns a
- * subscription id. Mirrors the Deno install stream.
+ * subscription id.
  */
 async instanceInstall(id: string, onProgress: TAURI_CHANNEL<InstallEvent>) : Promise<Result<number, AppError>> {
     try {
@@ -219,8 +216,7 @@ export type AppError = { kind: "badRequest"; message: string } | { kind: "intern
  */
 export type ContainerStatus = { instance: string | null; state: string; ports: PublishedPort[] }
 /**
- * Delete options (mirrors the Deno delete body): remove the data volumes, and the
- * host-browsable bind data.
+ * Delete options: remove the data volumes, and the host-browsable bind data.
  */
 export type DeleteOpts = { volumes: boolean; bindData: boolean }
 /**
@@ -246,8 +242,7 @@ override?: string | null }
  */
 export type ImportView = { view: InstanceView; bumps: PortBump[] }
 /**
- * One line of build output, the built image tag on success, or an error — mirrors
- * the Deno install NDJSON (`{type:"log"}` … `{type:"done"}` / `{type:"error"}`).
+ * One line of build output, the built image tag on success, or an error.
  */
 export type InstallEvent = { type: "log"; line: string } | { type: "done"; tag: string } | { type: "error"; error: string }
 /**
@@ -301,9 +296,9 @@ webPorts: WebPort[];
  */
 imageTag: string }
 /**
- * One line of a container's logs, the end-of-stream marker, or an error — mirrors
- * the Deno logs.ts SSE `log` / `end` / `logerror` events. (Core's `log_stream`
- * yields already-demuxed lines, so there is no per-line stdout/stderr tag.)
+ * One line of a container's logs, the end-of-stream marker, or an error. (Core's
+ * `log_stream` yields already-demuxed lines, so there is no per-line stdout/stderr
+ * tag.)
  */
 export type LogEvent = { type: "log"; line: string } | { type: "end" } | { type: "error"; error: string }
 /**
@@ -379,12 +374,11 @@ ready: boolean }
  */
 export type SetConfigView = { restartNeeded: boolean }
 /**
- * A managed-container snapshot push, or an engine-offline notice — mirrors the Deno
- * events.ts SSE `snapshot` / `offline` events.
+ * A managed-container snapshot push, or an engine-offline notice.
  */
 export type SnapshotEvent = { type: "snapshot"; containers: ContainerStatus[] } | { type: "offline"; error: string }
 /**
- * The result of bringing an instance up (mirrors the Deno `up` action response).
+ * The result of bringing an instance up.
  */
 export type UpView = { id: string; usedGpu: boolean; 
 /**
