@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { InstanceTable } from "@/components/InstanceTable";
+import { InstanceList } from "@/components/InstanceList";
 import { ImportBar } from "@/components/ImportBar";
 import { DropZone } from "@/components/DropZone";
 import { TrustDialog } from "@/components/TrustDialog";
@@ -108,7 +108,7 @@ export const App = () => {
           </div>
         )}
 
-        <InstanceTable />
+        <InstanceList />
       </div>
 
       <DropZone />
