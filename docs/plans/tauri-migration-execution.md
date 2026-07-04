@@ -195,5 +195,15 @@ ThemeProvider。zustand store は関心ごとに小さく分割。
         明示宣言。
       - 3e(90506d6): plugin 登録(single-instance 最初/dialog/log/window-state) + capabilities。
         review 0 ブロッカー。
-- [ ] Phase 4 — React UI
+- [~] Phase 4 — React UI（**4a ✅ / 4b〜4f 未**）
+      - 4a(c9ae23f): **flake.nix でローカルビルド環境確立**（単一 nixpkgs-unstable + rust-overlay
+        1.96.1 の devShell。webkit2gtk-4.1/gtk3/dbus/libsoup の pkg-config を stdenv hook で配線）。
+        **「desktop はローカル compile 不可・CI 専用」の前提を撤回** — 以後 fmt/clippy/test/bindings
+        生成をローカル flake で実検証。**devbox は project shell でも pkg-config を配線せず不可**
+        （version も per-package 独立 pin で GUI 版ズレ）→ flake へ。bindings 生成を canonical な
+        `#[test] export_bindings` に一本化（run() の debug-only export 撤去）、`frontend/src/ipc/
+        bindings.ts`(15 コマンド+23 型) 生成・格納（決定的）。specta-typescript を dev-deps へ。
+        clippy(collapsible_if) 2件を let-chains へ collapse（CI は desktop 非対象のため flake で初検出）。
+      - 4b〜4f: skeleton 破棄 → shadcn/theme/shell → list/actions → dialogs → detail tabs →
+        banners/parity。既知 quirk: bindings の `TAURI_CHANNEL` 名前衝突を配線時に潰す。
 - [ ] Phase 5 — parity + docs + 退役（+ Windows 実機確認 #3）

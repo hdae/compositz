@@ -5,8 +5,8 @@
 
 ## Current focus
 
-**Tauri 全面移行 — Phase 1（core）+ Phase 2（CLI）+ Phase 3（desktop backend）完了。次は
-Phase 4（React UI）。** 計画:
+**Tauri 全面移行 — Phase 1〜3 完了。Phase 4（React UI）着手中: 4a（flake ビルド環境 +
+bindings 生成）✅（c9ae23f）。次は 4b（frontend 再構築）。** 計画:
 [docs/plans/tauri-migration.md](../docs/plans/tauri-migration.md)（承認済み親計画）+
 [docs/plans/tauri-migration-execution.md](../docs/plans/tauri-migration-execution.md)
 （**実行詳細・例外時対応 — 実装セッションはこちらに従う**）。
@@ -42,6 +42,11 @@ Phase 4（React UI）。** 計画:
   desktop pump と同型の `.next().await` テストをコンパイル証明として維持する。
 - **vp/rolldown toolchain に esbuild は無い** — esbuild 系オプション禁止（minify は "oxc"）。
   vite-plus は 0.1.24 系 catalog pin（0.2.x は test に bin 無し）。
+- **desktop はローカル compile 可能（`flake.nix` 経由）** — `nix develop -c cargo <fmt|clippy|test>`。
+  webkit2gtk-4.1/gtk3/dbus/libsoup の pkg-config `.dev` を stdenv setup hook が配線する。
+  **devbox（global も project も）は配線せず不可**（かつ per-package 独立 pin で GUI 版ズレ）。
+  bindings は `cargo test -p compositz-desktop export_bindings` で生成（決定的・tauri-specta rc.21
+  は Cargo.lock 固定）。flakes は `~/.config/nix/nix.conf` で有効化済み。「desktop は CI 専用」は撤回。
 - **Docker は TCP で到達**: `COMPOSITZ_DOCKER_HOST=tcp://host.docker.internal:2375`（この dev 環境
   自体が同じ engine 上の container — 統合テストは compositz-test-* 命名 + 正確な id で後始末、
   prune/一括系 絶対禁止、共有 cache volume に触れない）。
@@ -67,13 +72,18 @@ tauri-specta は **=2.0.0-rc.21 / specta =2.0.0-rc.22 / specta-typescript =0.0.9
 DevTools 不可のため新コマンドの直接検証は未。**このエラーの修正 = Phase 4 の frontend 再構築
 （★Phase 4 の最初のタスク）。**
 
-**NEXT: Phase 4 — React UI。** 旧 `frontend/src/`（Phase 0 skeleton: App.tsx / ipc/{index,mock,
-types}.ts / components / store — 全て throwaway）を破棄し、新スタックで再構築。仕様は Deno
-`packages/ui/islands/InstanceList.tsx`(1,434 行モノリス)の分解。tauri-specta 生成の
-`frontend/src/ipc/bindings.ts`（desktop の dev 起動 `if cfg!(debug_assertions)` で生成）を型付き
-IPC 層として使う。新コマンド= list_instance_rows / instance_up/down/delete/duplicate /
+**4a ✅（c9ae23f）**: flake.nix でローカルビルド環境確立 + `frontend/src/ipc/bindings.ts` 生成・
+格納（15 コマンド + 23 型）。生成は export_bindings テスト（run() の dev-run export は撤去）。
+既知 quirk: 生成物に `TAURI_CHANNEL` 型別名と import 名の衝突がある → **IPC 配線時（4b）に潰す**。
+
+**NEXT: 4b〜4f — React UI 再構築。** 旧 `frontend/src/`（Phase 0 skeleton: App.tsx / ipc/{index,
+mock,types}.ts / components / store — 全て throwaway）を破棄し再構築。仕様は Deno
+`packages/ui/islands/InstanceList.tsx`(1,434 行モノリス)の分解。`frontend/src/ipc/bindings.ts` を
+型付き IPC 層に。新コマンド= list_instance_rows / instance_up/down/delete/duplicate /
 get_config/set_config / import_recipe/import_github / export_mount / open_service_url +
-push-stream(subscribe_instances/stream_logs/instance_install/unsubscribe)。挙動 parity は各 ADR
-（execution 計画 Phase 4 節のチェックリスト）。楽観的更新は禁止。shadcn は CLI 追加のみ
-(`--base base`)。再開手順: memory index → execution 計画 Phase 4 → InstanceList.tsx + bindings.ts
-+ 各 ADR。
+push-stream(subscribe_instances/stream_logs/instance_install/unsubscribe)。**楽観的更新3箇所
+（act の start/stop / removeInstance / trustInstall の行挿入）は snapshot/応答駆動へ置換**。挙動
+parity は各 ADR（execution 計画 Phase 4 節）。shadcn は CLI 追加のみ(`--base base`)。分解案=
+InstanceTable/Row/StatusPill/ActionButton/TrustDialog/DeleteDialog/DuplicateDialog/ImportDialog/
+Detail(build/runtime log・services・settings)/banners/ThemeProvider、zustand は小分割。再開手順:
+memory index → execution 計画 Phase 4 → InstanceList.tsx + bindings.ts + 各 ADR。
