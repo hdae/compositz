@@ -910,8 +910,9 @@ swap in unreviewed code.
   re-trust gate. `commit_update` swaps `app/` (rename-out, rename-in, best-effort rollback),
   updates `meta.source` + a new `updatedAt` field (`createdAt` and the rename override are
   preserved), and drops the staging. `discard_update` is the decline path (idempotent).
-- **GitHub-only (v1)**: `file:` / `dir:` / `upload` / `duplicate:` provenance has no re-fetchable
-  origin — the UI disables Update with the reason; re-import covers those.
+- **GitHub-only (v1)**: `file:` / `dir:` / `upload` provenance has no re-fetchable origin — the UI
+  disables Update (no inline reason — the source on the provenance line explains it, and Base UI
+  swallows pointer events on disabled items anyway); re-import covers those.
 - **Same-app invariant (MUST)**: the staged manifest's `id` must equal the instance's `app_id`,
   checked at prepare AND revalidated at commit — the instance id keys the image tag and volume
   names, so a different app under the same id would silently attach foreign data. A version/name
@@ -934,3 +935,41 @@ place — and the duplicate relationship moved to its own `meta.duplicatedFrom` 
 card provenance line). `duplicate:<id>` source strings no longer occur. Displayed times are
 always LOCAL (CLI `ls` converts; the UI hover shows the local timestamp); storage stays UTC.
 Re-upload update for `file:`/`upload` sources is roadmap follow-up.
+
+## ADR-030 — wslc engine access via a spawned dial-stdio bridge · ✅ Accepted (Windows verification pending)
+
+Decided 2026-07-14.
+
+**Context.** WSL Containers (wslc) — the project's founding bet (Windows-standard container
+runtime, no Docker Desktop) — runs real moby but publishes NEITHER a named pipe NOR a TCP port.
+The one reported doorway is `wslc system session run docker system dial-stdio`: a bridge process
+whose stdin/stdout is a single raw connection to the daemon's HTTP API
+(fabric8io/docker-maven-plugin#1928 — implementation-reported, not a documented contract).
+Waiting on microsoft/WSL#40976 for a REST endpoint was the previous position; the bridge unblocks
+us without it.
+
+**Decision.** `crates/core/src/dial_stdio.rs` + `Endpoint::Wslc` (`COMPOSITZ_DOCKER_HOST=wslc://`):
+
+- **No bollard fork**: bollard 0.21's `connect_with_custom_transport` accepts a request→response
+  closure; we hand it our own hyper_util legacy `Client` whose connector spawns ONE bridge process
+  per pooled connection (child stdout+stdin joined into a duplex stream, `kill_on_drop` ties the
+  process lifetime to the pooled connection's). Everything above the connector — pooling,
+  keep-alive, chunked streaming — is stock hyper, identical to the TCP path.
+- **Generic by construction**: the transport takes any argv; `wslc://` binds it to the fixed wslc
+  invocation. Tests bridge with `socat` (STDIO ⇄ TCP/unix — byte-for-byte the same shape) against
+  the real engine: ping / version / label-filtered list, plus an event-stream hold-open. CI
+  installs socat so the transport stays covered.
+- **`wslc://` takes no remainder** (v1): no distro/session selector grammar is defined; accepting
+  one silently would freeze accidental strings into a de-facto contract.
+- **Error chain flattened at the transport**: hyper's Display hides sources ("client error
+  (Connect)"), which would make `doctor` unable to distinguish "wslc not installed" from "daemon
+  down" — the transport flattens the chain into the surfaced message.
+- **Windows specifics**: `CREATE_NO_WINDOW` on the spawn (wslc.exe is console-subsystem; without
+  the flag every pooled connection would flash a console window). Bridge stderr is discarded — the
+  desktop app has no console, and an unread pipe could block the child.
+
+**Consequences.** The readiness probe assumes wslc rides WSL2's localhost forwarding
+(`probe_host` → 127.0.0.1). Real-machine verification still owed: the exact argv, daemon
+autostart behavior when the utility VM is down, long build/log streams over the bridge, and the
+localhost-forwarding assumption. The endpoint slots into the planned engine-connection-settings
+UI as one more choice.

@@ -57,10 +57,16 @@ re-verified on Windows. Highlights of what ships today:
   planned), memory/CPU limits (speculative — only on demand).
 - ⏳ **Ops visibility**: crashed ≠ stopped status, GPU-fallback badge, pull layer
   progress, persistent build logs (all tracked in [known-issues.md](known-issues.md)).
+- 🔄 **wslc (WSL Containers) endpoint** ([ADR-030](decisions.md)): the dial-stdio
+  bridge transport + `COMPOSITZ_DOCKER_HOST=wslc://` landed, socat-bridge-tested
+  against a real engine. Remaining: Windows real-machine verification (exact
+  argv, daemon autostart, long streams, localhost port forwarding), then
+  endpoint auto-detection order (wslc vs Docker Desktop) alongside the
+  connection-settings UI below.
 - ⏳ **Engine connection settings** (user wish): the endpoint is env-only today
   (`COMPOSITZ_DOCKER_HOST`) — make it configurable from the UI and persisted
-  (Docker Desktop / rootless / remote TCP / a future wslc endpoint), with the
-  header badge reflecting the configured target.
+  (Docker Desktop / rootless / remote TCP / wslc), with the header badge
+  reflecting the configured target.
 - ⏳ **GPU runtime detection**: choose nvidia vs CDI from `/info` / `/version`.
 - ⏳ **s6-overlay v3** multi-daemon recipe pattern + an example recipe.
 - ⏳ **Strict isolation** opt-out per recipe (copy-mode cache, per-app cache) for
