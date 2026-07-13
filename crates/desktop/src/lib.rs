@@ -21,8 +21,10 @@ use tauri_specta::{Builder, collect_commands};
 
 /// The tauri-specta command registry. Listing the commands ONCE here keeps the
 /// invoke handler and the generated TypeScript bindings in lockstep — adding a
-/// command in one place cannot drift from the other.
-fn specta_builder() -> Builder<tauri::Wry> {
+/// command in one place cannot drift from the other. `pub` solely for the
+/// `export_bindings` integration test (tests/), which regenerates the committed
+/// frontend bindings from this same registry.
+pub fn specta_builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new().commands(collect_commands![
         // request/response
         commands::list_instance_rows,
@@ -96,37 +98,4 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running Compositz");
-}
-
-#[cfg(test)]
-mod tests {
-    /// Regenerate the frontend's typed IPC bindings from the SAME commands the
-    /// app registers — the canonical tauri-specta workflow, run as a test so it
-    /// is reproducible in the Nix build shell where this crate compiles (the
-    /// headless dev container cannot link webkit outside that shell) and so CI
-    /// can assert the committed bindings are fresh.
-    #[test]
-    fn export_bindings() {
-        let path = "../../frontend/src/ipc/bindings.ts";
-        super::specta_builder()
-            .export(specta_typescript::Typescript::default(), path)
-            .expect("export typescript bindings");
-
-        // tauri-specta rc.21 emits, for a Channel-carrying command surface, a
-        // `TAURI_CHANNEL` placeholder type that collides with the imported
-        // `Channel as TAURI_CHANNEL` (TS2440), plus event scaffolding we never
-        // reference (we push over Channels, not tauri events). Drop the colliding
-        // placeholder so `TAURI_CHANNEL` unambiguously means the imported Channel
-        // for consumers, and prepend `// @ts-nocheck` so `noUnusedLocals` does not
-        // trip on the leftover generated scaffolding. The frontend also excludes
-        // this file from fmt/lint (see vite.config.ts) — its shape is the
-        // generator's, not ours.
-        let generated = std::fs::read_to_string(path).expect("read generated bindings");
-        let body: String = generated
-            .lines()
-            .filter(|line| line.trim() != "export type TAURI_CHANNEL<TSend> = null")
-            .collect::<Vec<_>>()
-            .join("\n");
-        std::fs::write(path, format!("// @ts-nocheck\n{body}\n")).expect("write cleaned bindings");
-    }
 }

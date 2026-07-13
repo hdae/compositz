@@ -56,9 +56,13 @@ jobs:
       # freshness gate lives here, before the expensive installer build: a dirty
       # diff means a command-surface change landed without committing the
       # regenerated bindings — rerun the test locally (nix develop -c cargo test
-      # -p compositz-desktop --lib export_bindings) and commit the result.
+      # -p compositz-desktop --test export_bindings) and commit the result.
+      # An integration test (not --lib): on Windows a test exe needs the app
+      # manifest linked in (see the desktop crate's build.rs) or it dies at load
+      # with STATUS_ENTRYPOINT_NOT_FOUND, and rustc-link-arg-tests is only
+      # guaranteed for integration-test targets.
       - name: Regenerate IPC bindings
-        run: cargo test -p compositz-desktop --lib export_bindings
+        run: cargo test -p compositz-desktop --test export_bindings
 
       - name: Assert committed bindings are fresh
         run: git diff --exit-code -- frontend/src/ipc/bindings.ts
