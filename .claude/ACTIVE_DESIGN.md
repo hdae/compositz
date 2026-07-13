@@ -103,10 +103,18 @@ PROPOSAL・着手前に各 open decisions の回答が必要）。**
 ## Resume point
 
 **2026-07-14 セッション**: CI 鮮度ゲート（30a8d14）→ wslc dial-stdio transport
-（6d0c980 feat / 81d5084 ci socat / dd43594 pool_timer fix / a3c55d3 docs ADR-030）。
-全ゲート緑（core+cli 15 suites 実 engine 込み / desktop clippy+bindings nix / schema・
-bindings 鮮度）。**未了 = wslc の Windows 実機確認**（項目は Current focus 参照）。
-計画承認待ち: `docs/plans/slice-c-build-args.md` / `docs/plans/gc-disk-usage.md`。
-既知の残余: superseded image 回収漏れは GC 対象（known-issues 記録済み）/
-バンドル 521kB 警告は容認中 / dial-stdio の stderr は破棄（診断向上は将来の
-engine 接続設定アークで再訪、ADR-030 記載）。
+（6d0c980 / 81d5084 socat / dd43594 pool_timer / a3c55d3 ADR-030）→ CI windows
+修正（ae82961 = テスト exe に app manifest、integration test 化、CI green 確認済）
+→ **エンジンバッジにバックエンド種別表示（731a38b、`wslc · online` + hover で
+完全 endpoint）**→ docs（8a226ac）。全ゲート緑。
+
+**★次の入力待ち = user の Windows 動作確認報告**:
+① 新 artifact でバッジが「wslc · online」になるか（wslc 接続の確証）。
+② port 切り分け実験 — `wslc run -d --name portprobe -p 8080:80 nginx` →
+`localhost:8080` が開くか（CLI 層 relay か moby 層かの判別。CLI が通って
+API 経由が不達なら根幹の賭けに欠け → compositz 側 relay 等の設計が必要）。
+報告を受けて: port 問題の対応設計 or 次アーク選択。
+
+計画承認待ち: `docs/plans/slice-c-build-args.md` / `docs/plans/gc-disk-usage.md`
+（各 open decisions 要回答）。既知の残余: superseded image 回収漏れは GC 対象 /
+バンドル 521kB 警告は容認中 / dial-stdio の stderr は破棄（ADR-030 記載）。
