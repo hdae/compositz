@@ -18,9 +18,15 @@ docker-maven-plugin#1928 の実装報告 — 仕様保証なし）。bollard
 （hyper-util pool_timer 配線、下記 pitfall）。前回からの HOLD（microsoft/WSL#40976
 待ち）は user 指示で解除 — REST endpoint を待たず dial-stdio 経由で進む。
 
-**Windows 実機確認項目（wslc）**: argv の正しさ / VM 停止時の daemon 自動起動 /
-長時間 build・log ストリーム / published port の localhost forwarding（probe は
-127.0.0.1 前提）/ console window が出ないこと（CREATE_NO_WINDOW）。
+**Windows 実機確認（wslc）— 初回結果**: 接続+install+起動は動作した模様（user
+報告・バッジ表示が無く確証は次回）。**★published port が Windows ブラウザから
+不達** — 最重要 open question: wslc の port forwarding が CLI 層（`wslc run -p`
+だけが Windows 側 relay を張る）か moby 層かで、API 作成コンテナの到達性が決まる。
+判別実験 = `wslc run -d -p 8080:80 nginx` → `localhost:8080`（CLI 経由が通って
+API 経由が通らないなら CLI 層 relay = 根幹の賭けに欠け）。readiness probe も同じ
+localhost 前提を共有。残項目: daemon 自動起動 / 長時間ストリーム / CREATE_NO_WINDOW。
+**バッジで使用バックエンド表示は実装済み（731a38b、engine 接続設定アークの先行
+スライス）— 次回起動時に「wslc · online」で接続確証が取れる。**
 
 **NEXT（要ユーザー選択）: wslc の Windows 実機確認、または計画承認待ちの2本 —
 `docs/plans/slice-c-build-args.md` / `docs/plans/gc-disk-usage.md`（どちらも

@@ -59,14 +59,18 @@ re-verified on Windows. Highlights of what ships today:
   progress, persistent build logs (all tracked in [known-issues.md](known-issues.md)).
 - 🔄 **wslc (WSL Containers) endpoint** ([ADR-030](decisions.md)): the dial-stdio
   bridge transport + `COMPOSITZ_DOCKER_HOST=wslc://` landed, socat-bridge-tested
-  against a real engine. Remaining: Windows real-machine verification (exact
-  argv, daemon autostart, long streams, localhost port forwarding), then
+  against a real engine. First Windows run: connection + install + start
+  appear to work; **published ports were NOT reachable from a Windows browser**
+  (open question — CLI-level `wslc run -p` forwarding vs API-created containers;
+  the readiness probe shares the same localhost assumption). Remaining: pin the
+  forwarding mechanism down, daemon autostart behavior, long streams, then
   endpoint auto-detection order (wslc vs Docker Desktop) alongside the
   connection-settings UI below.
 - ⏳ **Engine connection settings** (user wish): the endpoint is env-only today
   (`COMPOSITZ_DOCKER_HOST`) — make it configurable from the UI and persisted
-  (Docker Desktop / rootless / remote TCP / wslc), with the header badge
-  reflecting the configured target.
+  (Docker Desktop / rootless / remote TCP / wslc). The **header badge part
+  shipped early**: it now shows the resolved backend kind ("wslc · online",
+  hover = the full endpoint string) via `get_engine_endpoint`.
 - ⏳ **GPU runtime detection**: choose nvidia vs CDI from `/info` / `/version`.
 - ⏳ **s6-overlay v3** multi-daemon recipe pattern + an example recipe.
 - ⏳ **Strict isolation** opt-out per recipe (copy-mode cache, per-app cache) for
