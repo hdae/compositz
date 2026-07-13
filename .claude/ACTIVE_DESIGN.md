@@ -85,6 +85,11 @@ PROPOSAL・着手前に各 open decisions の回答が必要）。**
 - **hyper-util legacy Client は pool_timer 既定 None** — idle 回収（90s 既定）は timer を
   配線しない限り一切走らない。接続=プロセスの dial-stdio では滞留が実害（dial_stdio.rs は
   TokioTimer 配線済み）。自前 hyper client を作る時は必ず確認。
+- **Windows の tauri テスト exe は app manifest が無いと起動不能**（STATUS_ENTRYPOINT_NOT_FOUND
+  = comctl32 v5 が解決され v6 専用 import が欠落）。tauri-build の manifest は
+  `rustc-link-arg-bins`(bin 限定)。対処 = desktop/build.rs が **test ターゲットにのみ**
+  /MANIFEST:EMBED（`rustc-link-arg-tests` は integration test でのみ確実 → export_bindings は
+  tests/ に置く。bin と重複させると RT_MANIFEST 二重でリンカエラー）。
 - **dial-stdio のローカル検証は socat 同形ブリッジ**（`socat STDIO TCP:…`/`UNIX-CONNECT:…`）。
   wslc.exe はこの環境（WSL2 上のコンテナ、interop 無し）から触れない — wslc 固有部の検証は
   Windows 実機のみ。
