@@ -35,6 +35,12 @@ jobs:
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
 
+      # The dial-stdio transport test bridges to the engine through socat
+      # (stdio ⇄ unix socket here — the same shape as wslc's bridge); without
+      # socat the test self-skips and the transport goes uncovered.
+      - name: Install socat
+        run: sudo apt-get install -y socat
+
       # Format and lint the whole workspace (all crates, incl. desktop, are
       # checked for formatting — fmt needs no compilation).
       - name: cargo fmt
