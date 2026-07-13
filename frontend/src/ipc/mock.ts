@@ -18,6 +18,7 @@ import { deriveServices } from "@/lib/rows";
 import type {
   ContainerStatus,
   DeleteView,
+  EndpointSummary,
   EnvSetting,
   ImportView,
   InstallEvent,
@@ -349,6 +350,12 @@ export function installBrowserMock(): () => void {
   installed = true;
   mockIPC((cmd: string, payload?: InvokeArgs) => {
     switch (cmd) {
+      case "get_engine_endpoint":
+        return {
+          kind: "mock",
+          description: "browser dev mock (no real engine)",
+        } satisfies EndpointSummary;
+
       case "list_instance_rows":
         return DEFS.map(buildRow);
 

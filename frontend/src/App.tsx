@@ -14,34 +14,35 @@ import { UpdateDialog } from "@/components/UpdateDialog";
 import { GithubImportDialog } from "@/components/GithubImportDialog";
 import { cn } from "@/lib/utils";
 import { installMockIfNeeded } from "@/ipc/client";
+import type { EndpointSummary } from "@/ipc/client";
 import { useInstancesStore } from "@/store/instances";
 import { ThemeToggle } from "@/theme/ThemeToggle";
 
-/** Engine reachability, worn as a badge next to the app title. */
-const EngineBadge = ({ kind }: { kind: "connecting" | "online" | "offline" }) => {
-  if (kind === "online") {
-    return (
-      <Badge
-        variant="outline"
-        className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-      >
-        engine online
-      </Badge>
-    );
-  }
-  if (kind === "connecting") {
-    return (
-      <Badge variant="outline" className="text-muted-foreground">
-        connecting…
-      </Badge>
-    );
-  }
+/**
+ * Engine reachability + WHICH backend, worn as a badge next to the app title:
+ * "wslc · online", "tcp · offline", … (hover = the full endpoint string).
+ * Until the endpoint fetch lands the plain reachability label shows alone.
+ */
+const EngineBadge = ({
+  kind,
+  endpoint,
+}: {
+  kind: "connecting" | "online" | "offline";
+  endpoint: EndpointSummary | undefined;
+}) => {
+  const state = kind === "connecting" ? "connecting…" : `engine ${kind}`;
+  const label = endpoint
+    ? `${endpoint.kind} · ${kind === "connecting" ? "connecting…" : kind}`
+    : state;
+  const className =
+    kind === "online"
+      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+      : kind === "offline"
+        ? "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+        : "text-muted-foreground";
   return (
-    <Badge
-      variant="outline"
-      className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
-    >
-      engine offline
+    <Badge variant="outline" className={className} title={endpoint?.description}>
+      {label}
     </Badge>
   );
 };
@@ -56,6 +57,7 @@ export const App = () => {
   const notice = useInstancesStore((s) => s.notice);
   const dismissNotice = useInstancesStore((s) => s.dismissNotice);
   const snapshot = useInstancesStore((s) => s.snapshot);
+  const endpoint = useInstancesStore((s) => s.endpoint);
 
   useEffect(() => {
     let disposed = false;
@@ -85,7 +87,7 @@ export const App = () => {
       <div className="flex h-screen flex-col">
         <header className="flex shrink-0 items-center gap-3 border-b border-border px-6 py-3">
           <h1 className="text-lg font-semibold tracking-tight">compositz</h1>
-          <EngineBadge kind={snapshot.kind} />
+          <EngineBadge kind={snapshot.kind} endpoint={endpoint} />
           <div className="ml-auto flex items-center gap-2">
             <ImportBar />
             <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>

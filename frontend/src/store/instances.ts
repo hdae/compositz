@@ -18,6 +18,7 @@ import type { LiveSnapshot } from "@/lib/rows";
 import {
   deleteInstance,
   duplicateInstance,
+  getEngineEndpoint,
   importGithub,
   importRecipe,
   installInstance,
@@ -34,6 +35,7 @@ import {
 } from "@/ipc/client";
 import type {
   DeleteOpts,
+  EndpointSummary,
   InstanceRow,
   InstanceView,
   PortBump,
@@ -77,6 +79,8 @@ export type UpdateState = {
 type InstancesState = {
   baseRows: InstanceRow[];
   snapshot: LiveSnapshot;
+  /** Which backend the app talks to (badge display). Static per process. */
+  endpoint: EndpointSummary | undefined;
   /** Rows that flipped to installed since load (via an `instance_install` `done`). */
   installedOverride: Record<string, boolean>;
   busy: Record<string, BusyKind>;
@@ -170,6 +174,7 @@ function duplicateBumpNotice(id: string, bumps: PortBump[]): string {
 export const useInstancesStore = create<InstancesState>((set, get) => ({
   baseRows: [],
   snapshot: { kind: "connecting" },
+  endpoint: undefined,
   installedOverride: {},
   busy: {},
   duplicating: {},
@@ -195,6 +200,14 @@ export const useInstancesStore = create<InstancesState>((set, get) => ({
       snapshotSub = undefined;
     }
     set({ loading: true, error: undefined });
+
+    // Fire-and-forget: the endpoint identity is static per process and only
+    // decorates the badge — a failure just leaves the plain label.
+    void getEngineEndpoint()
+      .then((endpoint) => {
+        if (token === sessionToken) set({ endpoint });
+      })
+      .catch(() => {});
 
     try {
       const rows = await listInstanceRows();

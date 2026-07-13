@@ -27,6 +27,7 @@ use tauri_specta::{Builder, collect_commands};
 pub fn specta_builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new().commands(collect_commands![
         // request/response
+        commands::get_engine_endpoint,
         commands::list_instance_rows,
         commands::instance_up,
         commands::instance_down,

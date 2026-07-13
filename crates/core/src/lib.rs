@@ -104,6 +104,54 @@ pub fn connect() -> Result<EngineHandle, Error> {
     Ok(EngineHandle { docker })
 }
 
+/// The endpoint identity the UI badge wears: a compact transport `kind`
+/// (`tcp` / `unix` / `npipe` / `wslc` / `invalid`) plus the full
+/// `DOCKER_HOST`-style description `doctor` prints. Derived WITHOUT
+/// connecting, so it stays truthful even while the engine is unreachable.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct EndpointSummary {
+    pub kind: String,
+    pub description: String,
+}
+
+/// The endpoint [`connect`] would use, summarized for display. Static per
+/// process (the env is read at startup), so callers can fetch it once.
+pub fn resolved_endpoint_summary() -> EndpointSummary {
+    endpoint_summary_from(std::env::var(DOCKER_HOST_ENV).ok().as_deref())
+}
+
+/// Pure core of [`resolved_endpoint_summary`], testable without mutating the
+/// process environment (env-var writes race across parallel tests).
+fn endpoint_summary_from(raw: Option<&str>) -> EndpointSummary {
+    match raw {
+        Some(raw) if !raw.is_empty() => match parse_docker_host(raw) {
+            Ok(endpoint) => EndpointSummary {
+                kind: endpoint_kind(&endpoint).to_string(),
+                description: describe_endpoint(&endpoint),
+            },
+            // Echoed verbatim — `connect` surfaces the real parse error.
+            Err(_) => EndpointSummary {
+                kind: "invalid".to_string(),
+                description: raw.to_string(),
+            },
+        },
+        _ => EndpointSummary {
+            kind: if cfg!(windows) { "npipe" } else { "unix" }.to_string(),
+            description: local_default_endpoint(),
+        },
+    }
+}
+
+fn endpoint_kind(endpoint: &Endpoint) -> &'static str {
+    match endpoint {
+        Endpoint::Unix { .. } => "unix",
+        Endpoint::Npipe { .. } => "npipe",
+        Endpoint::Tcp { .. } => "tcp",
+        Endpoint::Wslc => "wslc",
+    }
+}
+
 /// The resolved engine endpoint as a `DOCKER_HOST`-style string, WITHOUT connecting
 /// — so `doctor` can print it even when the engine is unreachable (the case where
 /// `connect` itself fails on a missing unix socket). Reads the same env
@@ -111,13 +159,7 @@ pub fn connect() -> Result<EngineHandle, Error> {
 /// default. An unparseable value is echoed verbatim (connect surfaces the real
 /// error).
 pub fn resolved_endpoint_description() -> String {
-    match std::env::var(DOCKER_HOST_ENV) {
-        Ok(raw) if !raw.is_empty() => match parse_docker_host(&raw) {
-            Ok(endpoint) => describe_endpoint(&endpoint),
-            Err(_) => raw,
-        },
-        _ => local_default_endpoint(),
-    }
+    resolved_endpoint_summary().description
 }
 
 /// Render an [`Endpoint`] as a `DOCKER_HOST`-style string, for the `doctor`
@@ -323,6 +365,36 @@ mod tests {
             lines.push(item.expect("no error injected in these fixtures"));
         }
         lines
+    }
+
+    #[test]
+    fn endpoint_summary_names_each_transport_kind() {
+        let tcp = endpoint_summary_from(Some("tcp://host.docker.internal:2375"));
+        assert_eq!(tcp.kind, "tcp");
+        assert_eq!(tcp.description, "tcp://host.docker.internal:2375");
+
+        let wslc = endpoint_summary_from(Some("wslc://"));
+        assert_eq!(wslc.kind, "wslc");
+        assert!(wslc.description.starts_with("wslc://"));
+
+        let unix = endpoint_summary_from(Some("unix:///var/run/docker.sock"));
+        assert_eq!(unix.kind, "unix");
+    }
+
+    #[test]
+    fn endpoint_summary_echoes_an_unparseable_value_as_invalid() {
+        let bad = endpoint_summary_from(Some("ssh://nope"));
+        assert_eq!(bad.kind, "invalid");
+        assert_eq!(bad.description, "ssh://nope");
+    }
+
+    #[test]
+    fn endpoint_summary_falls_back_to_the_platform_local_default() {
+        for absent in [None, Some("")] {
+            let local = endpoint_summary_from(absent);
+            assert_eq!(local.kind, if cfg!(windows) { "npipe" } else { "unix" });
+            assert!(local.description.contains("(local default)"));
+        }
     }
 
     #[tokio::test]

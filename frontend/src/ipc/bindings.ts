@@ -7,6 +7,15 @@
 
 export const commands = {
 /**
+ * The engine endpoint this backend resolved (env override or the platform
+ * local default) — the header badge shows WHICH backend the app is talking
+ * to. Static per process (the env is read at startup), so one fetch at mount
+ * is enough; derived without connecting, so it answers even while offline.
+ */
+async getEngineEndpoint() : Promise<EndpointSummary> {
+    return await TAURI_INVOKE("get_engine_endpoint");
+},
+/**
  * The initial dashboard: every stored instance as a row, joined with a live engine
  * read (running + installed). When the engine is unreachable the rows still list
  * (installed unknown, nothing running). The live/probed updates arrive over
@@ -278,6 +287,13 @@ export type DeleteOpts = { volumes: boolean; bindData: boolean }
  * left behind, unreadable definition). A hard failure is an `AppError` instead.
  */
 export type DeleteView = { warning: string | null }
+/**
+ * The endpoint identity the UI badge wears: a compact transport `kind`
+ * (`tcp` / `unix` / `npipe` / `wslc` / `invalid`) plus the full
+ * `DOCKER_HOST`-style description `doctor` prints. Derived WITHOUT
+ * connecting, so it stays truthful even while the engine is unreachable.
+ */
+export type EndpointSummary = { kind: string; description: string }
 /**
  * One manifest env var in the Settings editor.
  */

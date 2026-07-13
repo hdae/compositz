@@ -152,6 +152,16 @@ async fn engine_snapshot(
 
 // --- commands -------------------------------------------------------------
 
+/// The engine endpoint this backend resolved (env override or the platform
+/// local default) — the header badge shows WHICH backend the app is talking
+/// to. Static per process (the env is read at startup), so one fetch at mount
+/// is enough; derived without connecting, so it answers even while offline.
+#[tauri::command]
+#[specta::specta]
+pub fn get_engine_endpoint() -> compositz_core::EndpointSummary {
+    compositz_core::resolved_endpoint_summary()
+}
+
 /// The initial dashboard: every stored instance as a row, joined with a live engine
 /// read (running + installed). When the engine is unreachable the rows still list
 /// (installed unknown, nothing running). The live/probed updates arrive over

@@ -14,6 +14,7 @@ import type {
   AppError,
   DeleteOpts,
   DeleteView,
+  EndpointSummary,
   ImportView,
   InstallEvent,
   InstanceRow,
@@ -30,6 +31,7 @@ import type {
 export type {
   DeleteOpts,
   DeleteView,
+  EndpointSummary,
   EnvSetting,
   ImportView,
   InstallEvent,
@@ -84,6 +86,15 @@ export async function installMockIfNeeded(): Promise<() => void> {
 }
 
 // --- request/response -----------------------------------------------------
+
+/**
+ * The engine endpoint the backend resolved (env or platform default), for the
+ * header badge. Static per process — one fetch at mount is enough. Infallible
+ * on the backend, hence no Result envelope.
+ */
+export async function getEngineEndpoint(): Promise<EndpointSummary> {
+  return await commands.getEngineEndpoint();
+}
 
 /** The initial dashboard rows (installed/running joined server-side at fetch time). */
 export async function listInstanceRows(): Promise<InstanceRow[]> {
