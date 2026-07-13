@@ -49,9 +49,16 @@ pub fn connect_dial_stdio(argv: &[&str], timeout_secs: u64) -> Result<Docker, Er
     let connector = DialStdioConnector {
         argv: Arc::new(argv.iter().map(|s| s.to_string()).collect()),
     };
+    let mut builder = Client::builder(TokioExecutor::new());
+    // Without a pool timer, hyper-util NEVER reclaims idle connections (the
+    // 90s idle default is inert with the `pool_timer: None` builder default) —
+    // each idle connection here is a live bridge PROCESS, so unreclaimed idles
+    // would pile up wslc.exe sessions until app exit (and could keep the WSL
+    // utility VM awake). The timer makes the idle expiry real.
+    builder.pool_timer(hyper_util::rt::TokioTimer::new());
     // The body type parameter stays inferred (bollard's `BodyType` is not
     // public); `client.request(req)` below pins it to the request's own type.
-    let client = Arc::new(Client::builder(TokioExecutor::new()).build(connector));
+    let client = Arc::new(builder.build(connector));
     let docker = Docker::connect_with_custom_transport(
         move |req: bollard::BollardRequest| {
             let client = Arc::clone(&client);
@@ -118,7 +125,8 @@ fn spawn_bridge(argv: &[String]) -> Result<BridgeStream, std::io::Error> {
         // error instead (spawn failure below, or connection-closed from hyper).
         .stderr(Stdio::null())
         // The bridge must die WITH the connection: hyper drops the pooled
-        // stream on close / idle timeout, and this reaps the child then.
+        // stream on close / idle expiry (see the pool timer above — expiry
+        // does not run without it), and this reaps the child then.
         .kill_on_drop(true);
     #[cfg(windows)]
     {
