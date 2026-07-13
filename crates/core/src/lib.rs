@@ -12,6 +12,7 @@
 
 pub mod brand;
 pub mod build;
+mod dial_stdio;
 mod endpoint;
 mod engine;
 mod error;
@@ -126,6 +127,12 @@ fn describe_endpoint(endpoint: &Endpoint) -> String {
         Endpoint::Unix { path } => format!("unix://{path}"),
         Endpoint::Npipe { path } => format!("npipe://{path}"),
         Endpoint::Tcp { host, port } => format!("tcp://{host}:{port}"),
+        // Name the underlying doorway: with no pipe/port to point at, the
+        // bridge command is the actionable diagnostic (it is what a user would
+        // run by hand to test reachability).
+        Endpoint::Wslc => {
+            "wslc:// (via `wslc system session run docker system dial-stdio`)".to_string()
+        }
     }
 }
 
@@ -150,6 +157,12 @@ fn connect_endpoint(endpoint: Endpoint) -> Result<Docker, Error> {
         Endpoint::Tcp { host, port } => {
             let addr = format!("tcp://{host}:{port}");
             Docker::connect_with_http(&addr, DEFAULT_TIMEOUT, API_DEFAULT_VERSION)?
+        }
+        // Platform-agnostic on purpose: the transport is a generic subprocess
+        // bridge, so a non-Windows host simply fails at first request with
+        // "failed to spawn … `wslc`" — the honest error for that machine.
+        Endpoint::Wslc => {
+            dial_stdio::connect_dial_stdio(dial_stdio::WSLC_DIAL_ARGV, DEFAULT_TIMEOUT)?
         }
         // The transport-specific bollard helpers are platform-gated:
         // `connect_with_unix` is `#[cfg(unix)]`, `connect_with_named_pipe` is

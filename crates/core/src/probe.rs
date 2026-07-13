@@ -60,7 +60,11 @@ fn probe_accepts(host: &str, port: u32, timeout: Duration) -> bool {
 pub fn probe_host(endpoint: &Endpoint) -> String {
     match endpoint {
         Endpoint::Tcp { host, .. } => host.clone(),
-        Endpoint::Unix { .. } | Endpoint::Npipe { .. } => "127.0.0.1".to_string(),
+        // wslc rides WSL2's localhost forwarding: ports published inside the
+        // utility VM surface on the Windows host's loopback, same as Docker
+        // Desktop's daemon behind the local pipe. (Real-machine verification
+        // item — the transport works regardless; only probing would misread.)
+        Endpoint::Unix { .. } | Endpoint::Npipe { .. } | Endpoint::Wslc => "127.0.0.1".to_string(),
     }
 }
 

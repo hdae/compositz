@@ -24,7 +24,9 @@ anyhow = "1"
 # `time` powers the desktop snapshot pump's warming/safety refresh timers
 # (`tokio::time::sleep` + the `select!` timeout arm). bollard enables it transitively,
 # but declare it here so the timer is load-bearing, not incidental.
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+# `process` + `io-util` power core's dial-stdio transport (spawn the wslc bridge
+# process, join its stdout/stdin into one duplex stream).
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process", "io-util"] }
 futures-util = "0.3"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
@@ -66,6 +68,14 @@ bytes = "1"
 # `'static` stream must OWN a cloned `Docker` in its body — an `async_stream`
 # generator does exactly that with zero runtime coupling (vs a spawn+channel).
 async-stream = "0.3"
+# Core's dial-stdio transport (wslc) builds its own hyper client over a
+# subprocess-backed connector and hands it to bollard's custom-transport hook.
+# All three crates are ALREADY in the tree via bollard — declaring them adds no
+# new supply-chain surface, only direct access to types bollard does not
+# re-export (hyper's io traits, the legacy pooling client, tower's Service).
+hyper = { version = "1", default-features = false }
+hyper-util = { version = "0.1", default-features = false, features = ["client-legacy", "http1", "tokio"] }
+tower-service = "0.3"
 # Rust type → TypeScript reflection for the desktop IPC contract, wired
 # to `tauri-specta` in the desktop crate. Core needs only the `Type` derive + serde
 # attribute compat, so it stays an OPTIONAL dep behind core's `specta` feature (the

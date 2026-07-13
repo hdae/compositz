@@ -780,6 +780,8 @@ dependencies = [
  "flate2",
  "futures-util",
  "getrandom 0.2.17",
+ "hyper",
+ "hyper-util",
  "regex",
  "schemars 1.2.1",
  "serde",
@@ -790,6 +792,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tower-service",
  "ureq",
 ]
 
@@ -4598,6 +4601,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",

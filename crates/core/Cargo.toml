@@ -32,6 +32,12 @@ chrono.workspace = true
 ureq.workspace = true
 bytes.workspace = true
 async-stream.workspace = true
+# dial-stdio transport (`dial_stdio.rs`): a hyper connector that spawns a bridge
+# process per pooled connection — see the workspace manifest for why these are
+# direct deps.
+hyper.workspace = true
+hyper-util.workspace = true
+tower-service.workspace = true
 specta = { workspace = true, optional = true }
 # `spawn_blocking` for the readiness probe (`probe.rs`): the blocking ureq HTTP
 # probe runs off the async runtime while `build_snapshot` orchestrates it. `rt` is

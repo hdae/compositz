@@ -11,17 +11,30 @@ pub enum Endpoint {
     Npipe { path: String },
     /// TCP host:port (plain HTTP; TLS is not supported).
     Tcp { host: String, port: u16 },
+    /// WSL Containers' moby daemon, reached by spawning the wslc dial-stdio
+    /// bridge process — wslc publishes neither a pipe nor a TCP port.
+    Wslc,
 }
 
 /// Parse a `DOCKER_HOST`-style string into an [`Endpoint`].
 ///
-/// Accepts `unix://`, `npipe://`, `tcp://`, and `http://`. A `tcp`/`http` URL
-/// without an explicit port defaults to 2375 (the plain-HTTP engine port).
+/// Accepts `unix://`, `npipe://`, `tcp://`, `http://`, and `wslc://`. A
+/// `tcp`/`http` URL without an explicit port defaults to 2375 (the plain-HTTP
+/// engine port).
 pub fn parse_docker_host(raw: &str) -> Result<Endpoint, Error> {
     if let Some(path) = raw.strip_prefix("unix://") {
         return Ok(Endpoint::Unix {
             path: path.to_string(),
         });
+    }
+    if let Some(rest) = raw.strip_prefix("wslc://") {
+        // Nothing may follow the scheme (no distro/session selector is defined
+        // yet) — a remainder is a misconfiguration, so fail loudly rather than
+        // silently ignore it.
+        if !rest.is_empty() {
+            return Err(Error::UnsupportedDockerHost(raw.to_string()));
+        }
+        return Ok(Endpoint::Wslc);
     }
     if let Some(rest) = raw.strip_prefix("npipe://") {
         // e.g. "npipe:////./pipe/docker_engine" -> "\\.\pipe\docker_engine"
@@ -121,6 +134,21 @@ mod tests {
                 port: 2376
             }
         );
+    }
+
+    #[test]
+    fn parses_wslc() {
+        assert_eq!(parse_docker_host("wslc://").unwrap(), Endpoint::Wslc);
+    }
+
+    #[test]
+    fn rejects_wslc_with_a_remainder() {
+        // No selector grammar exists after the scheme yet — accepting one
+        // silently would freeze accidental strings into a de-facto contract.
+        assert!(matches!(
+            parse_docker_host("wslc://ubuntu"),
+            Err(Error::UnsupportedDockerHost(_))
+        ));
     }
 
     #[test]
