@@ -65,10 +65,14 @@ re-verified on Windows. Highlights of what ships today:
   fixed by **delegating container create+start to the `wslc` CLI** with a
   list-layer VmPort→HostPort translation. Constraints on wslc (bindDir / udp /
   env line breaks) fail loudly — see [limitations.md](limitations.md).
-  Remaining: Windows verification of the full instance flow (install → up →
-  browser → down, relay persistence after app exit), daemon autostart behavior,
-  long streams, GPU delegation on a GPU host, then endpoint auto-detection order
-  (wslc vs Docker Desktop) alongside the connection-settings UI below.
+  **Windows-verified end-to-end (2026-07-14)**: install → start → browser reaches
+  `localhost:<port>`, the instance shows in `wslc container list` with its
+  Windows-side port, ready/Open work, stop tears the relay down, and the relay
+  SURVIVES compositz exiting (it belongs to the wslc service — Docker Desktop
+  parity). Remaining (not urgent): explicit daemon-autostart check, long streams,
+  GPU delegation on a GPU host, endpoint auto-detection order (wslc vs Docker
+  Desktop) alongside the connection-settings UI below. Upstream feedback about
+  the Docker-API relay/list gap is deliberately ON HOLD until wslc GAs.
 - ⏳ **Engine connection settings** (user wish): the endpoint is env-only today
   (`COMPOSITZ_DOCKER_HOST`) — make it configurable from the UI and persisted
   (Docker Desktop / rootless / remote TCP / wslc). The **header badge part
