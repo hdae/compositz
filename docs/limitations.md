@@ -60,3 +60,24 @@ What genuinely remains out of reach:
 - **Fix direction (deferred, needs a decision):** a configurable extracted-size / entry-count cap
   that aborts and cleans the staging dir, surfaced as a clear error. Parallels the shared-cache
   "revisit before third-party recipes" caveat above; both are the same third-party-trust theme.
+
+## wslc endpoint: lifecycle-delegation constraints (ADR-031)
+
+On `COMPOSITZ_DOCKER_HOST=wslc://`, container create+start is delegated to the `wslc` CLI so
+published ports get wslc's native Windows relay. The projection refuses (fails loudly, never
+launches a reduced container) anything it cannot express:
+
+- **`placement: bind` mounts are not supported on wslc.** wslc's `-v host:container` shares a
+  WINDOWS path (virtiofs) — semantically different from a Docker bind of an engine-host path, so
+  we refuse rather than reinterpret. (A future slice can map bindDir onto the Windows-path share,
+  which would make binds BETTER on wslc than on the raw Docker API.)
+- **udp ports are not supported on wslc** — its port publishing "currently relays localhost TCP"
+  only.
+- **Env values cannot contain line breaks** — they travel via `--env-file`, a line-based format.
+- **Port display/probing depends on wslc's metadata label**
+  (`com.microsoft.wsl.container.metadata`): wslc publishes an internal VmPort at the moby level
+  and records the Windows-side port only in that label, which we parse to translate listings. It
+  is wslc's own versioned (`V1`) recovery format, but not a documented contract; if it ever fails
+  to parse, listed ports show the unreachable VM-side number and readiness probing degrades.
+- **Upstream:** wslc's TCP publishing is reported to degrade after ~5000 connection cycles
+  (microsoft/WSL#41052) — applies to every wslc-published port, not just ours.

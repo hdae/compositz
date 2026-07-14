@@ -973,3 +973,58 @@ us without it.
 autostart behavior when the utility VM is down, long build/log streams over the bridge, and the
 localhost-forwarding assumption. The endpoint slots into the planned engine-connection-settings
 UI as one more choice.
+
+## ADR-031 — wslc port relay via `wslc create`/`wslc start` delegation · ✅ Accepted (Windows verification pending)
+
+Decided 2026-07-14 (approved as "D-cli").
+
+**Context.** On the wslc endpoint (ADR-030), containers created through the raw Docker API run
+fine but their published ports never reach a Windows browser, and they don't appear in
+`wslc container list`. Real-machine experiments plus a microsoft/WSL source deep-read pinned the
+mechanism: wslc registers the Windows localhost relay ONLY inside its own create/start path
+(`MapPorts()` in its `Start()` — not event-driven; a byte-perfect forged
+`com.microsoft.wsl.container.metadata` label is NOT adopted live, only by session-start recovery),
+keeps its container list in Windows-side private bookkeeping, and rewrites `-p H:C` so moby
+publishes an internally-allocated **VmPort** while the Windows-side `H` exists only in the relay
+bookkeeping + that label (a **dual port namespace**). Three independent recon lines (WSL repo
+issues/PRs, community prior art, exhaustive source-knob enumeration) agree there is no endpoint,
+setting, or workaround that lifts the per-container-relay requirement, and none is planned
+(microsoft/WSL#40976 unanswered).
+
+**Decision.** When the endpoint is `wslc://`, `up` delegates container **create + start** to the
+`wslc` CLI; everything else is unchanged.
+
+- **Same spec, second renderer**: `crates/core/src/wslc_cli.rs` projects the SAME
+  `ContainerCreateBody` the bollard path sends into `wslc create` argv (`--name/--label/-p/-v/
+  --gpus`). Any body field the projection does not carry — including `entrypoint`/`cmd`, which
+  `to_create_spec` never sets — fails loudly (remainder-check against the default struct); never
+  a silently reduced launch.
+- **Env travels via `--env-file`** (a NamedTempFile parsed client-side by wslc.exe): sidesteps the
+  ~32KB command-line limit, argv quoting, and keeps `HF_TOKEN`-class values off the process
+  command line. Values with line breaks are rejected (the format is line-based).
+- **stop/rm/delete stay on the Docker API**: wslc reconciles external stop/destroy through Docker
+  events including relay teardown (source-verified `OnEvent(Stop)` → `UnmapPorts`; confirmed live
+  by the probe6 experiment). Containers are disposable (`up` recreates), so no COM/OpenContainer
+  surface is needed.
+- **Dual-namespace translation at the list layer**: every container listing flows through one
+  fetch (`EngineHandle::list_raw_summaries`) which, on wslc, maps each listed `PublicPort`
+  (VM-side) back to the Windows-side port via the metadata label — fixing the Services display,
+  the launch-time conflict check, and the readiness-probe target in one place.
+- **Why the CLI and not the SDK/COM**: the official C SDK (`wslcsdk.dll`) hardcodes
+  named-session settings + Consomme and thus always lands in an isolated per-app session
+  (microsoft/WSL#40966) — unusable with our shared-dockerd model. The Compat COM layer's
+  `CreateSession(null)` DOES attach to the default session, but Microsoft explicitly has the
+  OpenExisting API shape under reconsideration (#40990/#40997) and the FFI is heavy — kept as the
+  fallback. The CLI is self-consistent by construction (create/start/list and the dial-stdio
+  doorway all resolve the same default per-user session — proven live) and is the same integration
+  surface Microsoft's own VS Code Dev Containers uses.
+
+**Consequences.** Relays are native and OWNED BY THE WSLC SERVICE — they survive compositz
+exiting (Docker Desktop parity), and compositz containers now appear in `wslc container list`.
+Costs: dependence on a preview CLI's argument surface (gated by fail-loud errors and real-machine
+checks; pre-implementation probes verified `-v named-volume`, local-image no-pull, and
+relay+external-rm reconciliation end-to-end); `bindDir`/udp/pinned-host-IP specs fail loudly on
+wslc (see limitations.md); the port translation reads wslc's metadata label — implementation
+behavior, though it is wslc's own versioned (`V1`) recovery format, which must stay parseable
+across service restarts. Still owed on Windows: the full instance flow, relay persistence after
+app exit, and GPU delegation on a GPU host.

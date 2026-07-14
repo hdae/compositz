@@ -57,15 +57,18 @@ re-verified on Windows. Highlights of what ships today:
   planned), memory/CPU limits (speculative — only on demand).
 - ⏳ **Ops visibility**: crashed ≠ stopped status, GPU-fallback badge, pull layer
   progress, persistent build logs (all tracked in [known-issues.md](known-issues.md)).
-- 🔄 **wslc (WSL Containers) endpoint** ([ADR-030](decisions.md)): the dial-stdio
-  bridge transport + `COMPOSITZ_DOCKER_HOST=wslc://` landed, socat-bridge-tested
-  against a real engine. First Windows run: connection + install + start
-  appear to work; **published ports were NOT reachable from a Windows browser**
-  (open question — CLI-level `wslc run -p` forwarding vs API-created containers;
-  the readiness probe shares the same localhost assumption). Remaining: pin the
-  forwarding mechanism down, daemon autostart behavior, long streams, then
-  endpoint auto-detection order (wslc vs Docker Desktop) alongside the
-  connection-settings UI below.
+- 🔄 **wslc (WSL Containers) endpoint** ([ADR-030](decisions.md) transport,
+  [ADR-031](decisions.md) port relay): the dial-stdio bridge landed and was
+  Windows-verified (badge shows `wslc · online`); the first-run "published ports
+  unreachable" mystery was pinned down (wslc registers Windows relays only in its
+  own create/start path, and publishes an internal VmPort at the moby level) and
+  fixed by **delegating container create+start to the `wslc` CLI** with a
+  list-layer VmPort→HostPort translation. Constraints on wslc (bindDir / udp /
+  env line breaks) fail loudly — see [limitations.md](limitations.md).
+  Remaining: Windows verification of the full instance flow (install → up →
+  browser → down, relay persistence after app exit), daemon autostart behavior,
+  long streams, GPU delegation on a GPU host, then endpoint auto-detection order
+  (wslc vs Docker Desktop) alongside the connection-settings UI below.
 - ⏳ **Engine connection settings** (user wish): the endpoint is env-only today
   (`COMPOSITZ_DOCKER_HOST`) — make it configurable from the UI and persisted
   (Docker Desktop / rootless / remote TCP / wslc). The **header badge part
