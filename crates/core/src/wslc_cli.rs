@@ -293,6 +293,69 @@ fn reject_unprojectable(body: &ContainerCreateBody) -> Result<(), Error> {
     Ok(())
 }
 
+/// The Docker label wslc stores its port bookkeeping under (source-verified:
+/// it is wslc's own recovery format, versioned `V1`).
+pub(crate) const WSLC_METADATA_LABEL: &str = "com.microsoft.wsl.container.metadata";
+
+#[derive(serde::Deserialize)]
+struct WslcMetadata {
+    #[serde(rename = "V1")]
+    v1: Option<WslcMetadataV1>,
+}
+
+#[derive(serde::Deserialize)]
+struct WslcMetadataV1 {
+    #[serde(rename = "Ports", default)]
+    ports: Vec<WslcPortMapping>,
+}
+
+#[derive(serde::Deserialize)]
+struct WslcPortMapping {
+    #[serde(rename = "HostPort")]
+    host_port: u16,
+    #[serde(rename = "VmPort")]
+    vm_port: u16,
+}
+
+/// Rewrite each listed public port from wslc's VM-side number to the Windows-side
+/// one. wslc publishes `-p H:C` at the moby level under an internally-allocated
+/// VmPort and keeps the Windows-side `H` only in its relay bookkeeping plus the
+/// metadata label — so on the wslc endpoint the raw `PublicPort` is a number the
+/// user can never reach. Translating at the list layer fixes the Services
+/// display, the launch-time conflict check, and the readiness probe target in
+/// one place. Containers without a parseable label (foreign, or pre-delegation
+/// leftovers) are left untouched.
+pub(crate) fn translate_summary_ports(containers: &mut [bollard::models::ContainerSummary]) {
+    for container in containers.iter_mut() {
+        let Some(map) = container.labels.as_ref().and_then(vmport_to_hostport) else {
+            continue;
+        };
+        for port in container.ports.iter_mut().flatten() {
+            if let Some(host) = port.public_port.and_then(|public| map.get(&public)) {
+                port.public_port = Some(*host);
+            }
+        }
+    }
+}
+
+/// VmPort → HostPort from the metadata label; `None` when the label is absent
+/// or unparseable (a third-party container may carry anything under that key).
+fn vmport_to_hostport(
+    labels: &std::collections::HashMap<String, String>,
+) -> Option<std::collections::HashMap<u16, u16>> {
+    let meta: WslcMetadata = serde_json::from_str(labels.get(WSLC_METADATA_LABEL)?).ok()?;
+    let ports = meta.v1?.ports;
+    match ports.is_empty() {
+        true => None,
+        false => Some(
+            ports
+                .into_iter()
+                .map(|p| (p.vm_port, p.host_port))
+                .collect(),
+        ),
+    }
+}
+
 fn unsupported(name: &str, what: &str) -> Error {
     Error::WslcCli(format!("cannot launch `{name}` via wslc: {what}"))
 }
@@ -387,6 +450,66 @@ mod tests {
             assert!(
                 env_file_lines(&body_with_env(vec![bad])).is_err(),
                 "expected rejection: {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn translates_vm_ports_back_to_windows_ports() {
+        // The exact label wslc wrote for the real portprobe experiment
+        // (`wslc run -p 8080:80` → moby bound VmPort 20002).
+        let label = r#"{"V1":{"Flags":0,"InitProcessFlags":0,"Ports":[{"BindingAddress":"127.0.0.1","ContainerPort":80,"Family":2,"HostPort":8080,"Protocol":6,"VmPort":20002}],"Volumes":[]}}"#;
+        let mut containers = vec![bollard::models::ContainerSummary {
+            labels: Some(std::collections::HashMap::from([(
+                WSLC_METADATA_LABEL.to_string(),
+                label.to_string(),
+            )])),
+            ports: Some(vec![
+                bollard::models::PortSummary {
+                    private_port: 80,
+                    public_port: Some(20002),
+                    ..Default::default()
+                },
+                // A port outside the label's map stays untouched.
+                bollard::models::PortSummary {
+                    private_port: 81,
+                    public_port: Some(9999),
+                    ..Default::default()
+                },
+            ]),
+            ..Default::default()
+        }];
+        translate_summary_ports(&mut containers);
+        let ports = containers[0].ports.as_ref().unwrap();
+        assert_eq!(ports[0].public_port, Some(8080));
+        assert_eq!(ports[1].public_port, Some(9999));
+    }
+
+    #[test]
+    fn missing_or_garbage_label_leaves_ports_untouched() {
+        // The quote-stripped shape PowerShell 5.1 actually produced in the
+        // field experiment — must fail to parse, never half-translate.
+        let mangled = "{V1:{Flags:0,Ports:[{HostPort:8085,VmPort:20044}]}}";
+        for labels in [
+            None,
+            Some(std::collections::HashMap::from([(
+                WSLC_METADATA_LABEL.to_string(),
+                mangled.to_string(),
+            )])),
+        ] {
+            let mut containers = vec![bollard::models::ContainerSummary {
+                labels,
+                ports: Some(vec![bollard::models::PortSummary {
+                    private_port: 80,
+                    public_port: Some(20044),
+                    ..Default::default()
+                }]),
+                ..Default::default()
+            }];
+            translate_summary_ports(&mut containers);
+            assert_eq!(
+                containers[0].ports.as_ref().unwrap()[0].public_port,
+                Some(20044)
             );
         }
     }

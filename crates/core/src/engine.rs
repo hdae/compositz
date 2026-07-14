@@ -119,11 +119,27 @@ impl EngineHandle {
             .all(all)
             .filters(&filters)
             .build();
-        let raw = self.docker().list_containers(Some(options)).await?;
+        let raw = self.list_raw_summaries(options).await?;
         Ok(raw
             .into_iter()
             .map(crate::ContainerSummary::from_bollard)
             .collect())
+    }
+
+    /// THE single container-listing fetch: every list path goes through here so
+    /// the wslc port translation (VM-side public port → Windows-side port, from
+    /// wslc's metadata label) can never be skipped by one caller — display,
+    /// launch-time conflict checks and the readiness probe must all see the
+    /// namespace the user can actually reach (ADR-031).
+    async fn list_raw_summaries(
+        &self,
+        options: bollard::query_parameters::ListContainersOptions,
+    ) -> Result<Vec<bollard::models::ContainerSummary>, crate::Error> {
+        let mut raw = self.docker().list_containers(Some(options)).await?;
+        if self.is_wslc() {
+            crate::wslc_cli::translate_summary_ports(&mut raw);
+        }
+        Ok(raw)
     }
 
     /// Managed containers (running + stopped) as RAW bollard summaries — the
@@ -140,7 +156,7 @@ impl EngineHandle {
             .all(true)
             .filters(&filters)
             .build();
-        Ok(self.docker().list_containers(Some(options)).await?)
+        self.list_raw_summaries(options).await
     }
 
     /// Every host port currently published by a RUNNING container, as a set — the
@@ -149,7 +165,7 @@ impl EngineHandle {
     /// away, so it stays a dedicated query rather than parsing formatted strings.
     pub async fn published_host_ports(&self) -> Result<HashSet<u32>, crate::Error> {
         let options = ListContainersOptionsBuilder::new().all(false).build();
-        let containers = self.docker().list_containers(Some(options)).await?;
+        let containers = self.list_raw_summaries(options).await?;
         let mut ports = HashSet::new();
         for container in containers {
             for port in container.ports.unwrap_or_default() {
