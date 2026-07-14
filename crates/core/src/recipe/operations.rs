@@ -188,6 +188,13 @@ async fn start_with(
     with_gpu: bool,
 ) -> Result<String, Error> {
     let spec = to_create_spec(m, &instance.instance_id, effective, Some(with_gpu))?;
+    // On the wslc endpoint create+start MUST go through the wslc CLI — only its
+    // own create/start path registers the Windows localhost relay for published
+    // ports (ADR-031). Same spec, different renderer; stop/rm stay on the Docker
+    // API (wslc reconciles them through Docker events).
+    if engine.is_wslc() {
+        return crate::wslc_cli::create_and_start(name, &spec).await;
+    }
     let id = engine.create_container(spec, name).await?;
     engine.start_container(&id).await?;
     Ok(id)
