@@ -18,19 +18,23 @@ docker-maven-plugin#1928 の実装報告 — 仕様保証なし）。bollard
 （hyper-util pool_timer 配線、下記 pitfall）。前回からの HOLD（microsoft/WSL#40976
 待ち）は user 指示で解除 — REST endpoint を待たず dial-stdio 経由で進む。
 
-**Windows 実機確認（wslc）— 初回結果**: 接続+install+起動は動作した模様（user
-報告・バッジ表示が無く確証は次回）。**★published port が Windows ブラウザから
-不達** — 最重要 open question: wslc の port forwarding が CLI 層（`wslc run -p`
-だけが Windows 側 relay を張る）か moby 層かで、API 作成コンテナの到達性が決まる。
-判別実験 = `wslc run -d -p 8080:80 nginx` → `localhost:8080`（CLI 経由が通って
-API 経由が通らないなら CLI 層 relay = 根幹の賭けに欠け）。readiness probe も同じ
-localhost 前提を共有。残項目: daemon 自動起動 / 長時間ストリーム / CREATE_NO_WINDOW。
-**バッジで使用バックエンド表示は実装済み（731a38b、engine 接続設定アークの先行
-スライス）— 次回起動時に「wslc · online」で接続確証が取れる。**
+**port 不達の解明 ✅（2026-07-14, 実機実験 + microsoft/WSL ソース精読 + 3系統調査）**:
+バッジ「wslc · online」で接続確証済み。wslc は relay を**自身の create/start 経路で
+のみ**登録（label 駆動✗・イベント駆動✗・公式代替 endpoint 無し・隠し knob 無し —
+issue/コミュニティ/ソース全数の3系統で一致）。CLI と dial-stdio doorway は同一
+default セッション（同一 dockerd）を実機実証。`wslc run -p H:C` は moby へ
+**VmPort（内部採番）**で publish し H↔VmPort を label
+`com.microsoft.wsl.container.metadata` に記帳（**二重番号空間**）。外部 stop/rm への
+帳簿/relay 追随（OnEvent→UnmapPorts）はソース確認済み。
+**対応 = D-cli（`wslc create`+`wslc start` 委譲）をユーザー承認済み — 計画書
+`docs/plans/wslc-cli-lifecycle.md`（APPROVED）。** 棄却: SDK C DLL（named settings+
+Consomme ハードコードで孤立セッション不可避 = #40966 の罠）/ label 偽装（復元専用）/
+自前 nc relay（fallback 以下）。COM Compat null-Settings attach は fallback として温存。
 
-**NEXT（要ユーザー選択）: wslc の Windows 実機確認、または計画承認待ちの2本 —
-`docs/plans/slice-c-build-args.md` / `docs/plans/gc-disk-usage.md`（どちらも
-PROPOSAL・着手前に各 open decisions の回答が必要）。**
+**NEXT: 計画書の実機事前チェック①②③（named volume 構文 / ローカル画像 no-pull /
+create+start relay + 外部 rm 追随）の結果待ち → 通過後に実装（コミット4分割）。**
+他の承認待ち: `docs/plans/slice-c-build-args.md` / `docs/plans/gc-disk-usage.md`
+（PROPOSAL・open decisions 要回答）。
 
 - 体制: routed top tier = **Fable**（narrow-deep/structured）、broad fan-out = Opus、
   mechanical = Sonnet/Haiku。**★opus には schema を付けない**（[[workflow-structuredoutput-fragility]]）。
@@ -99,6 +103,16 @@ PROPOSAL・着手前に各 open decisions の回答が必要）。**
 - **dial-stdio のローカル検証は socat 同形ブリッジ**（`socat STDIO TCP:…`/`UNIX-CONNECT:…`）。
   wslc.exe はこの環境（WSL2 上のコンテナ、interop 無し）から触れない — wslc 固有部の検証は
   Windows 実機のみ。
+- **wslc の port は二重番号空間** — `wslc run/create -p H:C` の moby 実バインドは VmPort
+  （内部採番、例 20002）で、Windows 側 H は wslc の relay 帳簿+label
+  `com.microsoft.wsl.container.metadata` にのみ存在。docker API の PublicPort を
+  そのまま表示/衝突検査/probe に使うと wslc では全部ズレる（→ list 層で label 翻訳）。
+  relay 登録は wslc の create/start 経路のみ（後付け API 無し）。
+- **wslc SDK の C DLL（wslcsdk）は default セッションに入れない**（named settings+
+  Consomme ハードコード）— 使うと孤立セッション行き（microsoft/WSL#40966 の罠）。
+  default セッション attach は COM Compat の null-Settings か wslc.exe CLI のみ。
+- **PowerShell 5.1 → 子プロセスの引数で埋め込み `"` が剥がれる**（CRT 再パースで消える）。
+  実機実験でリテラル JSON を運ぶときは base64 経由（`… | base64 -d | sh`）で輸送。
 
 ## Resume point
 
@@ -108,12 +122,18 @@ PROPOSAL・着手前に各 open decisions の回答が必要）。**
 → **エンジンバッジにバックエンド種別表示（731a38b、`wslc · online` + hover で
 完全 endpoint）**→ docs（8a226ac）。全ゲート緑。
 
-**★次の入力待ち = user の Windows 動作確認報告**:
-① 新 artifact でバッジが「wslc · online」になるか（wslc 接続の確証）。
-② port 切り分け実験 — `wslc run -d --name portprobe -p 8080:80 nginx` →
-`localhost:8080` が開くか（CLI 層 relay か moby 層かの判別。CLI が通って
-API 経由が不達なら根幹の賭けに欠け → compositz 側 relay 等の設計が必要）。
-報告を受けて: port 問題の対応設計 or 次アーク選択。
+**2026-07-14 続き（wslc port 調査セッション）**: バッジ確証✅ / portprobe 実験→
+同一 dockerd 判明 / label 偽装実験（PS 5.1 の引用符剥がれ→base64 で再実験）→
+list は Windows 側私有帳簿と確定 / microsoft/WSL ソース精読（scratchpad/wsl-src に
+shallow clone）で relay 機構・Compat COM・SDK DLL の全経路を確定 / 3 subagent 調査
+（issue・コミュニティ・ソース knob 全数）→ 抜け道なし一致 / **D-cli 承認**・計画書
+`docs/plans/wslc-cli-lifecycle.md` 作成。
+
+**★次の入力待ち = 実機事前チェック①②③の結果**（計画書に PowerShell 手順あり:
+① `wslc create -v named:/path` 受理 ② ローカル限定イメージの create が pull を
+試みない ③ `wslc create -p`+start→relay 到達 → 外部 docker stop/rm → list から消え
+port 不達）。全通過→実装開始（コミット1: wslc_cli.rs argv 射影から）。
+崩れたら設計へ戻る（③崩れ = down も wslc CLI 委譲へ変更）。
 
 計画承認待ち: `docs/plans/slice-c-build-args.md` / `docs/plans/gc-disk-usage.md`
 （各 open decisions 要回答）。既知の残余: superseded image 回収漏れは GC 対象 /
