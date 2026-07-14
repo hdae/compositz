@@ -41,7 +41,8 @@ impl From<CoreError> for AppError {
             CoreError::Engine(_)
             | CoreError::UnsupportedDockerHost(_)
             | CoreError::HomeDirUnresolved(_)
-            | CoreError::Io(_) => Self::Internal(message),
+            | CoreError::Io(_)
+            | CoreError::WslcCli(_) => Self::Internal(message),
         }
     }
 }

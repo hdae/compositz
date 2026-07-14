@@ -351,7 +351,9 @@ fn volume_mount(source: String, target: &str) -> Mount {
 }
 
 /// `--gpus all` for NVIDIA: `Count: -1` = all GPUs, `Capabilities: [["gpu"]]`.
-fn gpu_all_nvidia() -> DeviceRequest {
+/// `pub(crate)`: the wslc argv projection compares device requests against this
+/// exact shape so `--gpus all` is never silently widened (one definition, two users).
+pub(crate) fn gpu_all_nvidia() -> DeviceRequest {
     DeviceRequest {
         driver: Some(String::new()),
         count: Some(-1),

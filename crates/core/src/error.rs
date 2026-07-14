@@ -47,4 +47,11 @@ pub enum Error {
     /// An underlying filesystem operation failed.
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+
+    /// The `wslc` CLI delegation failed (spawn failure, non-zero exit, or a
+    /// container spec the argv projection cannot express) — wslc-endpoint
+    /// container create/start goes through the CLI so ports get a native
+    /// Windows relay (ADR-031).
+    #[error("{0}")]
+    WslcCli(String),
 }

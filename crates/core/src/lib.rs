@@ -21,6 +21,7 @@ pub mod probe;
 pub mod recipe;
 pub mod storage;
 pub mod view;
+pub mod wslc_cli;
 
 pub use endpoint::{Endpoint, parse_docker_host};
 pub use engine::{BuildProgress, EngineVersion, VolumeSummary};
@@ -78,12 +79,21 @@ pub(crate) const DOCKER_HOST_ENV: &str = "COMPOSITZ_DOCKER_HOST";
 #[derive(Clone)]
 pub struct EngineHandle {
     docker: Docker,
+    /// Endpoint is `wslc://` — container create/start MUST go through the `wslc`
+    /// CLI so published ports get a native Windows relay, and listed public
+    /// ports need the VmPort→HostPort label translation (ADR-031).
+    wslc: bool,
 }
 
 impl EngineHandle {
     /// Borrow the underlying bollard client (e.g. for `ping`/`version` in tests).
     pub fn docker(&self) -> &Docker {
         &self.docker
+    }
+
+    /// Whether this handle talks to the engine through the wslc doorway.
+    pub fn is_wslc(&self) -> bool {
+        self.wslc
     }
 }
 
@@ -97,11 +107,16 @@ impl EngineHandle {
 /// must treat a `connect()` error the same as a first-request error, and derive
 /// the endpoint label from [`resolved_endpoint_description`] rather than a handle.
 pub fn connect() -> Result<EngineHandle, Error> {
+    let mut wslc = false;
     let docker = match std::env::var(DOCKER_HOST_ENV) {
-        Ok(raw) if !raw.is_empty() => connect_endpoint(parse_docker_host(&raw)?)?,
+        Ok(raw) if !raw.is_empty() => {
+            let endpoint = parse_docker_host(&raw)?;
+            wslc = matches!(endpoint, Endpoint::Wslc);
+            connect_endpoint(endpoint)?
+        }
         _ => Docker::connect_with_local_defaults()?,
     };
-    Ok(EngineHandle { docker })
+    Ok(EngineHandle { docker, wslc })
 }
 
 /// The endpoint identity the UI badge wears: a compact transport `kind`
